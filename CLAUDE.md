@@ -5,56 +5,67 @@ AI-powered tool that transforms complex technical content into beautiful, intera
 
 **Think:** Brilliant.org quality meets Napkin.ai speed. Gamma-style "paste → polished output" but interactive, not slides.
 
+## Core Architectural Insight
+**The LLM generates structured JSON data, NOT code.** Our pre-built, hand-crafted React renderers interpret the JSON and produce polished interactive output. This gives us:
+- Near-100% generation success rate (JSON is trivially validatable vs code)
+- Consistent visual quality (we control the renderers)
+- Instant template switching (same data, different renderer, zero LLM cost)
+- LLM plays to its strength (understanding content, not writing bug-free React)
+
 ## Repo Structure
 ```
 explainify/
-├── CLAUDE.md            # This file — codebase context for AI agents
-├── REQUIREMENTS.md      # Product requirements & specs
-├── TASKS.md             # Task tracker with status
-├── README.md            # Public-facing repo readme
+├── CLAUDE.md              # This file — codebase context for AI agents
+├── REQUIREMENTS.md        # Product requirements & specs
+├── TASKS.md               # Task tracker with status
+├── README.md              # Public-facing repo readme
 ├── package.json
-├── next.config.js
+├── next.config.ts
 ├── tsconfig.json
-├── .env.example         # Required env vars template
-├── prisma/
-│   └── schema.prisma    # Database schema
+├── .env.example           # Required env vars template
 ├── src/
-│   ├── app/             # Next.js App Router pages
+│   ├── app/               # Next.js App Router pages
 │   │   ├── layout.tsx
-│   │   ├── page.tsx           # Landing page
+│   │   ├── page.tsx             # Landing page
 │   │   ├── create/
-│   │   │   └── page.tsx       # Main creation flow (paste → generate → preview)
+│   │   │   └── page.tsx         # Main creation flow (paste → generate → preview)
 │   │   ├── e/[slug]/
-│   │   │   └── page.tsx       # Published explainer viewer
+│   │   │   └── page.tsx         # Published explainer viewer
 │   │   ├── dashboard/
-│   │   │   └── page.tsx       # User's explainers list
+│   │   │   └── page.tsx         # User's explainers list
 │   │   └── api/
 │   │       ├── generate/
-│   │       │   └── route.ts   # LLM pipeline endpoint
-│   │       ├── publish/
-│   │       │   └── route.ts   # Save & publish explainer
-│   │       └── auth/
-│   │           └── [...nextauth]/route.ts
+│   │       │   └── route.ts     # LLM analysis endpoint
+│   │       └── publish/
+│   │           └── route.ts     # Save & publish explainer
 │   ├── components/
-│   │   ├── ui/                # Shared UI components (shadcn/ui)
-│   │   ├── editor/            # Explainer editor/preview
-│   │   ├── templates/         # Interactive template components
-│   │   └── landing/           # Landing page sections
+│   │   ├── ui/                  # Shared UI components (shadcn/ui)
+│   │   ├── editor/              # Explainer editor/preview
+│   │   ├── renderers/           # Template renderer components
+│   │   │   ├── flow-animator.tsx       # React Flow + Motion (diagrams, flows)
+│   │   │   ├── component-explorer.tsx  # React Flow + Motion (architecture)
+│   │   │   ├── code-walkthrough.tsx    # Shiki + Motion (code tutorials)
+│   │   │   ├── concept-builder.tsx     # Motion + Tailwind (layered concepts)
+│   │   │   ├── compare-contrast.tsx    # Motion + Tailwind (side-by-side)
+│   │   │   ├── decision-tree.tsx       # React Flow tree layout + Motion
+│   │   │   ├── timeline.tsx            # Motion + Tailwind (sequential)
+│   │   │   └── renderer-registry.ts    # Maps template names → renderer components
+│   │   └── landing/             # Landing page sections
 │   ├── lib/
 │   │   ├── llm/
-│   │   │   ├── analyzer.ts    # Pass 1: Content analysis → structured JSON
-│   │   │   ├── generator.ts   # Pass 2: Structure + template → React code
-│   │   │   └── prompts.ts     # System prompts for each pass
-│   │   ├── templates/
-│   │   │   ├── registry.ts    # Template registry & metadata
-│   │   │   ├── flow-animator.tsx
-│   │   │   ├── component-explorer.tsx
-│   │   │   ├── code-walkthrough.tsx
-│   │   │   ├── concept-builder.tsx
-│   │   │   ├── compare-contrast.tsx
-│   │   │   ├── decision-tree.tsx
-│   │   │   └── timeline.tsx
-│   │   ├── db.ts              # Prisma client
+│   │   │   ├── analyzer.ts      # Content analysis → structured JSON (single LLM pass)
+│   │   │   ├── prompts.ts       # System prompts per template type
+│   │   │   └── client.ts        # Bedrock Claude client wrapper
+│   │   ├── schemas/
+│   │   │   ├── base.ts          # Shared schema types (ExplainerData)
+│   │   │   ├── flow.ts          # Flow Animator JSON schema (Zod)
+│   │   │   ├── explorer.ts      # Component Explorer JSON schema
+│   │   │   ├── code.ts          # Code Walkthrough JSON schema
+│   │   │   ├── concept.ts       # Concept Builder JSON schema
+│   │   │   ├── compare.ts       # Compare & Contrast JSON schema
+│   │   │   ├── decision.ts      # Decision Tree JSON schema
+│   │   │   └── timeline.ts      # Timeline JSON schema
+│   │   ├── db.ts                # Database client (Supabase)
 │   │   └── utils.ts
 │   └── styles/
 │       └── globals.css
@@ -64,66 +75,95 @@ explainify/
 ```
 
 ## Tech Stack
-- **Framework:** Next.js 14+ (App Router, Server Actions)
-- **Language:** TypeScript (strict mode)
-- **Styling:** Tailwind CSS + shadcn/ui
-- **Database:** Supabase (PostgreSQL) via Prisma ORM
-- **Auth:** NextAuth.js (GitHub + Google providers)
-- **LLM:** Claude via Amazon Bedrock (us-west-2) — two-pass pipeline
-- **Rendering:** Sandpack (CodeSandbox) for sandboxed iframe preview of generated components
-- **Hosting:** Vercel (frontend) or self-hosted on AWS (ECS Fargate)
-- **Storage:** S3 for generated explainer code bundles
-- **CDN:** CloudFront for published explainer delivery
 
-## Core Architecture — The Two-Pass LLM Pipeline
+### Foundation (every explainer)
+- **Next.js 14+** (App Router, Server Components + Client Components)
+- **TypeScript** (strict mode)
+- **Tailwind CSS** + **shadcn/ui** (styling)
+- **Motion** (formerly Framer Motion) — all animations, transitions, enter/exit
 
-### Pass 1: Content Analyzer
-- Input: Raw pasted content (markdown, text, code, HTML)
-- Output: Structured JSON with:
-  - `contentType`: "architecture" | "api" | "concept" | "tutorial" | "comparison" | "workflow"
-  - `concepts[]`: Key concepts with definitions and relationships
-  - `flow[]`: Sequential steps if applicable
-  - `hierarchy`: Parent-child concept tree
-  - `codeBlocks[]`: Extracted code with annotations
-  - `suggestedTemplate`: Which interaction pattern fits best
-  - `title`, `summary`, `difficulty`
+### Specialized Renderers (loaded per-template)
+- **React Flow** (@xyflow/react) — node-based diagrams for Flow Animator, Component Explorer, Decision Tree templates
+- **Shiki** — VS Code-quality syntax highlighting for Code Walkthrough template
+- **Lucide React** — icons across all templates
 
-### Pass 2: Component Generator
-- Input: Structured JSON from Pass 1 + selected template
-- Output: Self-contained React component code (TSX + inline Tailwind)
-- The component follows the template's interaction pattern but is filled with the specific content
-- Must be sandboxable (no external deps beyond React + Tailwind + Framer Motion)
+### Backend
+- **Claude via Amazon Bedrock** (us-west-2) — content analysis, JSON generation
+- **Supabase** (PostgreSQL) — user data, explainer metadata, generated JSON storage
+- **Zod** — schema validation for all LLM output
 
-### Why Two Passes?
-Single-pass "generate interactive HTML from this text" produces wildly inconsistent results. Separating analysis from generation means:
-1. We can validate/edit the analysis before generating
-2. Users can swap templates without re-analyzing
-3. We can cache analyses and regenerate with different templates cheaply
-4. Quality is more predictable — the template constrains the output
+### Infrastructure
+- **Vercel** or **AWS ECS Fargate** for hosting
+- **Supabase Storage** or **S3** for published explainer JSON blobs
+- **CloudFront** CDN for serving published explainers
 
-## Template System
+## Rendering Architecture — JSON DSL Approach
 
-Templates are the core differentiator. Each template is:
-1. A React component with well-defined props interface
-2. A set of interaction patterns (click, hover, step-through, toggle, expand)
-3. Animation presets (Framer Motion)
-4. A prompt fragment that tells the LLM how to structure content for this template
+### How It Works
+```
+User pastes content
+    ↓
+LLM (Claude) analyzes content
+    ↓
+Outputs structured JSON matching a Zod schema
+    ↓
+Our renderer registry picks the right React component
+    ↓
+Pre-built renderer interprets JSON → interactive explainer
+```
 
-### Current Templates (Priority Order)
-1. **Flow Animator** — Step-through with animated arrows. For: request flows, pipelines, processes
-2. **Component Explorer** — Clickable diagram with detail panels. For: architecture, system design
-3. **Code Walkthrough** — Line-by-line annotation with highlights. For: code explanations
-4. **Concept Builder** — Start simple, layer complexity. For: abstract concepts, mental models
-5. **Compare & Contrast** — Side-by-side with toggle/slider. For: tradeoffs, alternatives
-6. **Decision Tree** — Interactive branching. For: choosing between options
-7. **Timeline** — Sequential expandable nodes. For: processes, history, evolution
+### Library Usage Per Template
 
-## Key Design Decisions
-- **Templates over raw code gen:** LLM fills data into proven interaction patterns rather than generating arbitrary JS. Consistent quality > creative freedom.
-- **Sandboxed rendering:** Generated code runs in iframes via Sandpack. Security + embeddability.
-- **React components, not static HTML:** React gives us state management for interactivity without complexity.
-- **Tailwind inline:** No external CSS deps. Everything in one self-contained file.
-- **Framer Motion for animations:** Declarative, React-native, good defaults.
+| Template | Libraries Used | What They Handle |
+|----------|---------------|-----------------|
+| Flow Animator | React Flow + Motion | Animated node diagrams with step-through |
+| Component Explorer | React Flow + Motion | Clickable architecture with detail panels |
+| Code Walkthrough | Shiki + Motion | Syntax highlighted code with annotations |
+| Concept Builder | Motion + Tailwind | Progressive layers that animate in |
+| Compare & Contrast | Motion + Tailwind | Side-by-side with animated toggles |
+| Decision Tree | React Flow (tree layout) + Motion | Interactive branching paths |
+| Timeline | Motion + Tailwind | Sequential expandable nodes |
+
+### Why JSON DSL > Code Generation
+1. **Reliability:** JSON is validatable with Zod. If invalid, targeted retry. No "missing semicolon breaks everything."
+2. **Quality floor:** Renderers are hand-crafted and tested. Every explainer looks professional.
+3. **Template switching:** Same JSON → different renderer → instant, zero LLM cost.
+4. **Embeddable:** Output is JSON + renderer component. No sandbox/iframe needed. Embeds anywhere.
+5. **LLM plays to strength:** LLMs understand content brilliantly. They write buggy interactive code. Let them do what they're good at.
+
+### Example: Flow Animator JSON Schema
+```typescript
+// What the LLM outputs (validated by Zod):
+{
+  "template": "flow-animator",
+  "title": "AgentCore Lambda Relay Flow",
+  "summary": "How requests flow from client through Lambda relay to Bedrock",
+  "steps": [
+    {
+      "id": "client",
+      "label": "Client App",
+      "description": "Sends inference request with auth headers",
+      "icon": "monitor",
+      "details": "The client app packages the prompt...",
+      "codeSnippet": "await fetch('/api/invoke', { headers: { Authorization: token } })"
+    },
+    {
+      "id": "lambda",
+      "label": "Lambda Relay",
+      "description": "SigV4 signing + request transformation",
+      "icon": "function",
+      "details": "Lambda handles the heavy lifting of AWS auth...",
+      "codeSnippet": "const signed = await signV4(request);"
+    }
+  ],
+  "connections": [
+    { "from": "client", "to": "lambda", "label": "HTTPS POST", "animated": true }
+  ],
+  "theme": { "accentColor": "#3b82f6" }
+}
+```
+
+Our `<FlowAnimator data={json} />` component renders this into a fully interactive, animated, pannable diagram. The LLM never touches React code.
 
 ## Environment Variables
 ```
@@ -135,43 +175,44 @@ BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6-v1
 
 # Database
 DATABASE_URL=           # Supabase PostgreSQL connection string
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 
-# Auth
+# Auth (NextAuth.js)
 NEXTAUTH_SECRET=
 NEXTAUTH_URL=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
 
 # Storage
-AWS_S3_BUCKET=          # For published explainer bundles
-CLOUDFRONT_DOMAIN=      # CDN for serving published explainers
+AWS_S3_BUCKET=          # For published explainer bundles (optional — can use Supabase Storage)
 
 # App
-NEXT_PUBLIC_APP_URL=
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 ## Coding Conventions
 - Use Server Components by default; add "use client" only when needed (interactivity, hooks)
 - Keep LLM prompts in `src/lib/llm/prompts.ts` — never inline them
+- All LLM output validated through Zod schemas in `src/lib/schemas/`
 - All API routes return typed responses using Zod schemas
 - Error handling: try/catch with structured error responses, never swallow errors
-- Template components must be self-contained (no imports beyond react, framer-motion, and lucide-react icons)
+- Renderer components receive typed JSON data as props — never raw strings
 - Use `cn()` utility (clsx + tailwind-merge) for conditional classes
+- Dynamic imports for heavy renderers (React Flow, Shiki) — don't bloat initial bundle
 
 ## Commands
 ```bash
 npm run dev          # Start dev server (localhost:3000)
 npm run build        # Production build
 npm run lint         # ESLint
-npm run db:push      # Push Prisma schema to DB
-npm run db:generate  # Generate Prisma client
-npm run db:studio    # Open Prisma Studio
+npm run test         # Run tests
 ```
 
 ## Known Constraints
 - Bedrock Claude has ~200K context window — large docs may need chunking
-- Generated React components must stay under ~500 lines for Sandpack performance
+- React Flow renders best at 1000x600px minimum — responsive design needs special handling on mobile
+- Shiki loads language grammars on demand — first code render has ~100ms delay
 - Free tier: 5 explainers/month per user (rate limit at API layer)
-- Framer Motion animations should use `layout` prop for smooth transitions, avoid heavy spring physics on mobile
+- Motion animations: use `layout` prop for smooth transitions, avoid heavy spring physics on mobile
+- Total renderer bundle (all libs): ~150KB gzipped — but tree-shake so only used renderers ship to client
