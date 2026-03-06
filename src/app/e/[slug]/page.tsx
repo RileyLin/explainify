@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { supabase, getServiceClient } from "@/lib/db";
 import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
 import { ExplainerViewer } from "./viewer";
+import { ExplainerFooter } from "./footer";
 import type { Metadata } from "next";
 
 interface PageProps {
@@ -20,24 +21,39 @@ async function getExplainer(slug: string) {
   return data;
 }
 
-async function incrementViews(slug: string) {
-  try {
-    const svc = getServiceClient();
-    await svc.rpc("increment_views", { explainer_slug: slug });
-  } catch {
-    // Non-critical: don't fail the page if view count fails
-    // We'll use a simpler approach below
-  }
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const explainer = await getExplainer(slug);
   if (!explainer) return { title: "Not Found" };
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const ogImageUrl = `${appUrl}/api/og/${slug}`;
+  const pageUrl = `${appUrl}/e/${slug}`;
+
   return {
     title: `${explainer.title} — Explainify`,
     description: explainer.summary || "Interactive explainer powered by Explainify",
+    openGraph: {
+      title: explainer.title,
+      description: explainer.summary || "Interactive explainer powered by Explainify",
+      url: pageUrl,
+      siteName: "Explainify",
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: explainer.title,
+        },
+      ],
+      type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: explainer.title,
+      description: explainer.summary || "Interactive explainer powered by Explainify",
+      images: [ogImageUrl],
+    },
   };
 }
 
@@ -66,21 +82,18 @@ export default async function ExplainerPage({ params }: PageProps) {
     // Non-critical
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const pageUrl = `${appUrl}/e/${slug}`;
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-6 py-8">
         <ExplainerViewer data={parseResult.data as ExplainerData} />
-
-        {/* Footer */}
-        <div className="mt-12 pb-8 text-center">
-          <a
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-          >
-            <span>✦</span>
-            <span>Made with Explainify</span>
-          </a>
-        </div>
+        <ExplainerFooter
+          url={pageUrl}
+          title={explainer.title}
+          slug={slug}
+        />
       </div>
     </div>
   );

@@ -30,15 +30,26 @@ explainify/
 │   │   ├── page.tsx             # Landing page
 │   │   ├── create/
 │   │   │   └── page.tsx         # Main creation flow (paste → generate → preview)
+│   │   ├── pricing/
+│   │   │   └── page.tsx         # Pricing page (Free vs Pro)
 │   │   ├── e/[slug]/
-│   │   │   └── page.tsx         # Published explainer viewer
+│   │   │   ├── page.tsx         # Published explainer viewer (with OG metadata)
+│   │   │   ├── viewer.tsx       # Client-side renderer wrapper
+│   │   │   └── footer.tsx       # Share buttons + Made with Explainify CTA
 │   │   ├── dashboard/
 │   │   │   └── page.tsx         # User's explainers list
 │   │   └── api/
 │   │       ├── generate/
-│   │       │   └── route.ts     # LLM analysis endpoint (with usage tracking)
+│   │       │   └── route.ts     # LLM analysis endpoint (with usage tracking + Pro bypass)
 │   │       ├── publish/
-│   │       │   └── route.ts     # Save & publish explainer (with auth)
+│   │       │   └── route.ts     # Save & publish explainer (with auth + Pro watermark)
+│   │       ├── og/[slug]/
+│   │       │   └── route.tsx    # Dynamic OG image generation (1200x630)
+│   │       ├── stripe/
+│   │       │   ├── checkout/
+│   │       │   │   └── route.ts # Stripe Checkout session creation
+│   │       │   └── webhook/
+│   │       │       └── route.ts # Stripe webhook handler
 │   │       ├── auth/
 │   │       │   └── [...nextauth]/
 │   │       │       └── route.ts # NextAuth.js v5 catch-all route
@@ -53,6 +64,11 @@ explainify/
 │   │   ├── layout/
 │   │   │   └── header.tsx             # App header with nav + auth
 │   │   ├── editor/              # Explainer editor/preview
+│   │   │   ├── editable-text.tsx      # Inline text editing component
+│   │   │   ├── color-theme-picker.tsx # Accent color picker (8 presets)
+│   │   │   └── animation-speed.tsx    # Speed toggle context + component
+│   │   ├── sharing/             # Social sharing components
+│   │   │   └── social-share.tsx       # Twitter/LinkedIn/Copy/Remix buttons
 │   │   ├── renderers/           # Template renderer components
 │   │   │   ├── flow-animator.tsx       # React Flow + Motion (diagrams, flows)
 │   │   │   ├── component-explorer.tsx  # React Flow + Motion (architecture)
@@ -68,7 +84,12 @@ explainify/
 │   │   ├── llm/
 │   │   │   ├── analyzer.ts      # Content analysis → structured JSON (single LLM pass)
 │   │   │   ├── prompts.ts       # System prompts per template type
-│   │   │   └── client.ts        # Bedrock Claude client wrapper
+│   │   │   ├── client.ts        # Unified LLM client wrapper (uses provider factory)
+│   │   │   └── providers/       # LLM provider implementations
+│   │   │       ├── types.ts     # LLMProvider interface, GenerateOptions, LLMResponse
+│   │   │       ├── openai.ts    # OpenAI provider (GPT-4o via openai package)
+│   │   │       ├── bedrock.ts   # Bedrock Claude provider
+│   │   │       └── index.ts     # Provider factory (getProvider)
 │   │   ├── schemas/
 │   │   │   ├── base.ts          # Shared schema types (ExplainerData)
 │   │   │   ├── flow.ts          # Flow Animator JSON schema (Zod)
@@ -78,6 +99,7 @@ explainify/
 │   │   │   ├── compare.ts       # Compare & Contrast JSON schema
 │   │   │   ├── decision.ts      # Decision Tree JSON schema
 │   │   │   └── timeline.ts      # Timeline JSON schema
+│   │   ├── stripe.ts            # Stripe server client
 │   │   ├── db.ts                # Database client (Supabase)
 │   │   └── utils.ts
 │   └── styles/
@@ -101,9 +123,13 @@ explainify/
 - **Lucide React** — icons across all templates
 
 ### Backend
-- **Claude via Amazon Bedrock** (us-west-2) — content analysis, JSON generation
+- **Multi-provider LLM support** — OpenAI (GPT-4o) default, Bedrock Claude fallback
+  - Provider pattern: `src/lib/llm/providers/` with factory function
+  - Auto-detection: checks `OPENAI_API_KEY` first, falls back to Bedrock
+  - Configurable via `LLM_PROVIDER` and `LLM_MODEL` env vars
 - **Supabase** (PostgreSQL) — user data, explainer metadata, generated JSON storage
 - **NextAuth.js v5** (next-auth@beta) — GitHub + Google OAuth, JWT strategy
+- **Stripe** — Pro subscription ($15/mo), checkout + webhooks
 - **Zod** — schema validation for all LLM output
 
 ### Infrastructure
@@ -181,8 +207,11 @@ Our `<FlowAnimator data={json} />` component renders this into a fully interacti
 
 ## Environment Variables
 ```
-# LLM
-AWS_ACCESS_KEY_ID=
+# LLM (multi-provider)
+LLM_PROVIDER=openai              # openai | bedrock | auto (default: auto)
+LLM_MODEL=gpt-4o                 # Model override (optional)
+OPENAI_API_KEY=                   # Required for OpenAI provider
+AWS_ACCESS_KEY_ID=                # Required for Bedrock provider
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-west-2
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6-v1
@@ -197,6 +226,13 @@ NEXTAUTH_SECRET=
 NEXTAUTH_URL=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Stripe
+STRIPE_SECRET_KEY=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+STRIPE_WEBHOOK_SECRET=
 
 # Storage
 AWS_S3_BUCKET=          # For published explainer bundles (optional — can use Supabase Storage)

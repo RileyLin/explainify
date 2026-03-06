@@ -19,10 +19,38 @@ const FREE_TIER_LIMIT = 5; // generations per month
 
 /**
  * Check and increment usage for authenticated users.
- * Returns null if allowed, or an error message if rate-limited.
+ * Pro users bypass the limit. Returns null if allowed, or an error message if rate-limited.
  */
 async function checkUsage(userId: string): Promise<string | null> {
   const supabase = getServiceClient();
+
+  // Check if user is on Pro plan
+  const { data: user } = await supabase
+    .from("users")
+    .select("plan")
+    .eq("id", userId)
+    .single();
+
+  if (user?.plan === "pro") {
+    // Pro users — still track usage but no limit
+    const month = new Date().toISOString().slice(0, 7);
+    const { data: usage } = await supabase
+      .from("usage")
+      .select("generations")
+      .eq("user_id", userId)
+      .eq("month", month)
+      .single();
+
+    const currentCount = usage?.generations || 0;
+    await supabase
+      .from("usage")
+      .upsert(
+        { user_id: userId, month, generations: currentCount + 1 },
+        { onConflict: "user_id,month" },
+      );
+    return null;
+  }
+
   const month = new Date().toISOString().slice(0, 7); // '2026-03'
 
   // Get current usage
@@ -57,9 +85,10 @@ async function checkUsage(userId: string): Promise<string | null> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { content, template } = body as {
+    const { content, template, model } = body as {
       content?: string;
       template?: string;
+      model?: string;
     };
 
     // Validate input
@@ -94,7 +123,7 @@ export async function POST(request: NextRequest) {
         ? (template as TemplateChoice)
         : "auto";
 
-    const result = await analyzeContent(content, templateChoice);
+    const result = await analyzeContent(content, templateChoice, model);
 
     return NextResponse.json({
       data: result.data,

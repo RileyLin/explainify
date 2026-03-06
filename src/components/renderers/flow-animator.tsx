@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, ChevronRight, X, Play, Pause } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { FlowAnimatorData, FlowNode as FlowNodeType } from "@/lib/schemas/flow";
 
@@ -32,28 +32,43 @@ function getIcon(name?: string) {
   return null;
 }
 
-// ── Custom Node ────────────────────────────────────────────────────
+// ── Custom Node with pulse/glow animation ──────────────────────────
 function CustomFlowNode({ data }: NodeProps) {
-  const nodeData = data as FlowNodeType & { isActive: boolean; onClick: () => void };
+  const nodeData = data as FlowNodeType & { isActive: boolean; isPulsing: boolean; onClick: () => void };
   const Icon = getIcon(nodeData.icon);
 
   return (
     <div
       onClick={nodeData.onClick}
       className={`
-        cursor-pointer rounded-xl border-2 px-4 py-3 min-w-[160px] max-w-[220px] transition-all duration-300 shadow-md
+        cursor-pointer rounded-xl border-2 px-4 py-3 min-w-[160px] max-w-[220px] transition-all duration-300 shadow-md relative
         ${nodeData.isActive
-          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50 shadow-blue-500/25 shadow-lg scale-105"
+          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50 shadow-blue-500/25 shadow-lg"
           : "border-border bg-card hover:border-blue-300 hover:shadow-lg"
         }
       `}
     >
+      {/* Pulse glow ring */}
+      {nodeData.isPulsing && (
+        <motion.div
+          initial={{ opacity: 0.8, scale: 0.95 }}
+          animate={{ opacity: 0, scale: 1.15 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="absolute inset-0 rounded-xl border-2 border-blue-400 pointer-events-none"
+          style={{ boxShadow: "0 0 20px rgba(59, 130, 246, 0.4)" }}
+        />
+      )}
       <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-2 !h-2" />
-      <div className="flex items-center gap-2 mb-1">
-        {Icon && <Icon className={`${nodeData.isActive ? "text-blue-500" : "text-muted-foreground"}`} size={18} />}
-        <span className="font-semibold text-sm text-foreground">{nodeData.label}</span>
-      </div>
-      <p className="text-xs text-muted-foreground leading-relaxed">{nodeData.description}</p>
+      <motion.div
+        animate={nodeData.isPulsing ? { scale: [1, 1.05, 1] } : { scale: 1 }}
+        transition={{ duration: 0.35, ease: "easeInOut" }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          {Icon && <Icon className={`${nodeData.isActive ? "text-blue-500" : "text-muted-foreground"}`} size={18} />}
+          <span className="font-semibold text-sm text-foreground">{nodeData.label}</span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">{nodeData.description}</p>
+      </motion.div>
       <Handle type="source" position={Position.Bottom} className="!bg-blue-500 !w-2 !h-2" />
     </div>
   );
@@ -99,10 +114,12 @@ function DetailPanel({ node, onClose }: { node: FlowNodeType; onClose: () => voi
 
 // ── Inner Flow (needs ReactFlowProvider ancestor) ──────────────────
 function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
-  const { fitView, setCenter } = useReactFlow();
+  const { setCenter } = useReactFlow();
   const [activeStep, setActiveStep] = useState(0);
   const [selectedNode, setSelectedNode] = useState<FlowNodeType | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
+  const [glowingEdgeKey, setGlowingEdgeKey] = useState<string | null>(null);
+  const prevStepRef = useRef(0);
 
   const stepOrder = useMemo(
     () => data.stepOrder ?? data.nodes.map((n) => n.id),
@@ -110,7 +127,7 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
   );
   const activeNodeId = stepOrder[activeStep] ?? null;
 
-  // Build React Flow nodes with auto-layout if no positions
+  // Build React Flow nodes
   const rfNodes: Node[] = useMemo(
     () =>
       data.nodes.map((n, i) => ({
@@ -120,43 +137,84 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
         data: {
           ...n,
           isActive: n.id === activeNodeId,
+          isPulsing: n.id === pulsingNodeId,
           onClick: () => setSelectedNode(n),
         },
       })),
-    [data.nodes, activeNodeId]
+    [data.nodes, activeNodeId, pulsingNodeId]
   );
 
+  // Build edges with glow effect on transitioning edge
   const rfEdges: Edge[] = useMemo(
     () =>
-      data.connections.map((c, i) => ({
-        id: `e-${i}`,
-        source: c.from,
-        target: c.to,
-        label: c.label,
-        animated: c.animated ?? true,
-        style: {
-          stroke: c.from === activeNodeId || c.to === activeNodeId ? "#3b82f6" : "#64748b",
-          strokeWidth: c.from === activeNodeId || c.to === activeNodeId ? 2.5 : 1.5,
-        },
-        labelStyle: { fontSize: 11, fill: "#94a3b8" },
-      })),
-    [data.connections, activeNodeId]
+      data.connections.map((c, i) => {
+        const edgeKey = `${c.from}->${c.to}`;
+        const isGlowing = edgeKey === glowingEdgeKey;
+        const isActive = c.from === activeNodeId || c.to === activeNodeId;
+        return {
+          id: `e-${i}`,
+          source: c.from,
+          target: c.to,
+          label: c.label,
+          animated: c.animated ?? true,
+          style: {
+            stroke: isGlowing ? "#60a5fa" : isActive ? "#3b82f6" : "#64748b",
+            strokeWidth: isGlowing ? 4 : isActive ? 2.5 : 1.5,
+            transition: "stroke 0.3s ease, stroke-width 0.3s ease",
+            filter: isGlowing ? "drop-shadow(0 0 6px rgba(59, 130, 246, 0.6))" : "none",
+          },
+          labelStyle: { fontSize: 11, fill: "#94a3b8" },
+        };
+      }),
+    [data.connections, activeNodeId, glowingEdgeKey]
   );
 
   const goStep = useCallback(
     (dir: 1 | -1) => {
       setActiveStep((prev) => {
         const next = Math.max(0, Math.min(stepOrder.length - 1, prev + dir));
+        if (next === prev) return prev;
+
+        const prevNodeId = stepOrder[prev];
+        const nextNodeId = stepOrder[next];
+
+        // Find edge between prev and next nodes to glow
+        const edgeKey = dir === 1
+          ? `${prevNodeId}->${nextNodeId}`
+          : `${nextNodeId}->${prevNodeId}`;
+        
+        // Also check reverse direction for the edge
+        const reverseKey = dir === 1
+          ? `${nextNodeId}->${prevNodeId}`
+          : `${prevNodeId}->${nextNodeId}`;
+        
+        const matchingEdge = data.connections.find(
+          (c) => `${c.from}->${c.to}` === edgeKey || `${c.from}->${c.to}` === reverseKey
+        );
+
+        if (matchingEdge) {
+          setGlowingEdgeKey(`${matchingEdge.from}->${matchingEdge.to}`);
+          setTimeout(() => setGlowingEdgeKey(null), 500);
+        }
+
+        // Delay the pulse animation slightly after edge glow starts
+        setTimeout(() => {
+          setPulsingNodeId(nextNodeId);
+          setTimeout(() => setPulsingNodeId(null), 600);
+        }, 150);
+
         // Center on the active node
-        const node = data.nodes.find((n) => n.id === stepOrder[next]);
+        const node = data.nodes.find((n) => n.id === nextNodeId);
         if (node) {
           const pos = node.position ?? { x: 250, y: next * 140 };
           setTimeout(() => setCenter(pos.x + 100, pos.y + 40, { zoom: 1.2, duration: 500 }), 50);
         }
+
+        prevStepRef.current = prev;
         return next;
       });
     },
-    [stepOrder, data.nodes, setCenter]
+    [stepOrder, data.nodes, data.connections, setCenter]
   );
 
   return (

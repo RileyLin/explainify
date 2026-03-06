@@ -1,20 +1,8 @@
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-} from "@aws-sdk/client-bedrock-runtime";
+import { getProvider, type LLMResponse, type GenerateOptions } from "./providers";
 
-const MODEL_ID = process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-sonnet-4-6-v1";
-const REGION = process.env.AWS_REGION || "us-west-2";
+export type { LLMResponse, GenerateOptions };
 
-let clientInstance: BedrockRuntimeClient | null = null;
-
-function getClient(): BedrockRuntimeClient {
-  if (!clientInstance) {
-    clientInstance = new BedrockRuntimeClient({ region: REGION });
-  }
-  return clientInstance;
-}
-
+// Re-export for backward compatibility
 export interface ClaudeMessage {
   role: "user" | "assistant";
   content: string;
@@ -25,54 +13,45 @@ export interface ClaudeRequest {
   messages: ClaudeMessage[];
   maxTokens?: number;
   temperature?: number;
+  model?: string;
 }
 
-export interface ClaudeResponse {
-  content: string;
-  inputTokens: number;
-  outputTokens: number;
-  stopReason: string;
-}
+export type ClaudeResponse = LLMResponse;
 
+/**
+ * Invoke the configured LLM provider with a JSON generation request.
+ * Supports multi-turn messages by concatenating them for the provider.
+ */
 export async function invokeClaudeJSON(request: ClaudeRequest): Promise<ClaudeResponse> {
-  const client = getClient();
+  const provider = getProvider();
 
-  const body = JSON.stringify({
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: request.maxTokens ?? 8192,
-    temperature: request.temperature ?? 0.3,
-    system: request.system,
-    messages: request.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
+  // For multi-turn messages (retry flow), concatenate into a single user message
+  const userContent = request.messages.length === 1
+    ? request.messages[0].content
+    : request.messages.map((m) => `[${m.role}]: ${m.content}`).join("\n\n");
+
+  return provider.generate(request.system, userContent, {
+    maxTokens: request.maxTokens,
+    temperature: request.temperature,
+    model: request.model,
   });
-
-  const command = new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: "application/json",
-    accept: "application/json",
-    body: new TextEncoder().encode(body),
-  });
-
-  const response = await client.send(command);
-  const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-
-  const content =
-    responseBody.content?.[0]?.type === "text"
-      ? responseBody.content[0].text
-      : "";
-
-  return {
-    content,
-    inputTokens: responseBody.usage?.input_tokens ?? 0,
-    outputTokens: responseBody.usage?.output_tokens ?? 0,
-    stopReason: responseBody.stop_reason ?? "unknown",
-  };
 }
 
 /**
- * Extract JSON from a Claude response that may contain markdown code fences.
+ * Generate content using the LLM provider directly.
+ * Simpler API than invokeClaudeJSON — for new code.
+ */
+export async function generateJSON(
+  systemPrompt: string,
+  userContent: string,
+  options?: GenerateOptions,
+): Promise<LLMResponse> {
+  const provider = getProvider();
+  return provider.generate(systemPrompt, userContent, options);
+}
+
+/**
+ * Extract JSON from an LLM response that may contain markdown code fences.
  */
 export function extractJSON(text: string): string {
   // Try to find JSON in code fences first

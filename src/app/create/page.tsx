@@ -10,6 +10,7 @@ import {
   Check,
   Code2,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import type { ExplainerData } from "@/lib/schemas/base";
@@ -31,6 +32,9 @@ import {
   TimelineRenderer,
   ComponentExplorer,
 } from "@/components/renderers/renderer-registry";
+
+import { ColorThemePicker } from "@/components/editor/color-theme-picker";
+import { AnimationSpeedProvider, SpeedToggle } from "@/components/editor/animation-speed";
 
 type TemplateChoice =
   | "auto"
@@ -249,6 +253,8 @@ export default function CreatePage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<ExplainerData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState("#3b82f6");
+  const [editMode, setEditMode] = useState(false);
 
   // Publishing state
   const [publishing, setPublishing] = useState(false);
@@ -335,6 +341,11 @@ export default function CreatePage() {
     if (newTemplate === "auto" || newTemplate === result?.template) return;
     handleGenerate(newTemplate);
   };
+
+  /** Update result data in-memory (for inline editing) */
+  const updateResult = useCallback((updater: (data: ExplainerData) => ExplainerData) => {
+    setResult((prev) => prev ? updater(prev) : prev);
+  }, []);
 
   const renderResult = () => {
     if (!result) return null;
@@ -440,74 +451,99 @@ export default function CreatePage() {
 
         {/* Result */}
         {result && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-muted-foreground">Template:</span>
-              {templates.filter((t) => t.value !== "auto").map((t) => (
+          <AnimationSpeedProvider>
+            <div className="space-y-6">
+              {/* Template switcher row */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-muted-foreground">Template:</span>
+                {templates.filter((t) => t.value !== "auto").map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => handleTemplateSwitch(t.value)}
+                    disabled={generating}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      result.template === t.value
+                        ? "bg-blue-500 text-white"
+                        : "bg-muted text-muted-foreground hover:text-foreground"
+                    } ${generating ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+                <div className="ml-auto flex items-center gap-2">
+                  {!publishedUrl && (
+                    <button
+                      onClick={handlePublish}
+                      disabled={publishing}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-all"
+                    >
+                      {publishing ? (
+                        <><Loader2 size={14} className="animate-spin" />Publishing...</>
+                      ) : (
+                        <><Share2 size={14} />Publish</>
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setResult(null); setGenerating(false); setPublishedUrl(null); setPublishedSlug(null); setError(null); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-all"
+                  >
+                    ← Back to editor
+                  </button>
+                </div>
+              </div>
+
+              {/* Editor controls: color picker, speed toggle, edit mode */}
+              <div className="flex items-center gap-4 flex-wrap border border-border rounded-lg px-4 py-2.5 bg-card">
+                <ColorThemePicker selected={accentColor} onSelect={setAccentColor} />
+                <div className="h-5 w-px bg-border" />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Speed:</span>
+                  <SpeedToggle />
+                </div>
+                <div className="h-5 w-px bg-border" />
                 <button
-                  key={t.value}
-                  onClick={() => handleTemplateSwitch(t.value)}
-                  disabled={generating}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    result.template === t.value
+                  onClick={() => setEditMode(!editMode)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                    editMode
                       ? "bg-blue-500 text-white"
                       : "bg-muted text-muted-foreground hover:text-foreground"
-                  } ${generating ? "opacity-50 cursor-not-allowed" : ""}`}
+                  }`}
                 >
-                  {t.label}
-                </button>
-              ))}
-              <div className="ml-auto flex items-center gap-2">
-                {!publishedUrl && (
-                  <button
-                    onClick={handlePublish}
-                    disabled={publishing}
-                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-all"
-                  >
-                    {publishing ? (
-                      <><Loader2 size={14} className="animate-spin" />Publishing...</>
-                    ) : (
-                      <><Share2 size={14} />Publish</>
-                    )}
-                  </button>
-                )}
-                <button
-                  onClick={() => { setResult(null); setGenerating(false); setPublishedUrl(null); setPublishedSlug(null); setError(null); }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-all"
-                >
-                  ← Back to editor
+                  <Pencil size={12} />
+                  {editMode ? "Editing" : "Edit"}
                 </button>
               </div>
+
+              {generating && (
+                <div className="flex items-center justify-center py-24">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={32} className="animate-spin text-blue-500" />
+                    <p className="text-sm text-muted-foreground">Re-generating with new template...</p>
+                  </div>
+                </div>
+              )}
+
+              {publishedUrl && (
+                <div className="p-4 rounded-xl border border-green-500/30 bg-green-50 dark:bg-green-950/20 space-y-3">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200">🎉 Published! Your explainer is live:</p>
+                  <div className="flex items-center gap-2">
+                    <input type="text" readOnly value={publishedUrl} className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-black/20 border border-green-300 dark:border-green-700 text-sm text-foreground font-mono" />
+                    <button onClick={() => handleCopy("url")} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 transition-all shrink-0">
+                      {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
+                      {copied === "url" ? "Copied!" : "Copy URL"}
+                    </button>
+                  </div>
+                  <button onClick={() => handleCopy("embed")} className="flex items-center gap-1 text-xs text-green-700 dark:text-green-300 hover:underline">
+                    <Code2 size={12} />
+                    {copied === "embed" ? "Embed code copied!" : "Copy embed code"}
+                  </button>
+                </div>
+              )}
+
+              {!generating && renderResult()}
             </div>
-
-            {generating && (
-              <div className="flex items-center justify-center py-24">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 size={32} className="animate-spin text-blue-500" />
-                  <p className="text-sm text-muted-foreground">Re-generating with new template...</p>
-                </div>
-              </div>
-            )}
-
-            {publishedUrl && (
-              <div className="p-4 rounded-xl border border-green-500/30 bg-green-50 dark:bg-green-950/20 space-y-3">
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">🎉 Published! Your explainer is live:</p>
-                <div className="flex items-center gap-2">
-                  <input type="text" readOnly value={publishedUrl} className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-black/20 border border-green-300 dark:border-green-700 text-sm text-foreground font-mono" />
-                  <button onClick={() => handleCopy("url")} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 transition-all shrink-0">
-                    {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
-                    {copied === "url" ? "Copied!" : "Copy URL"}
-                  </button>
-                </div>
-                <button onClick={() => handleCopy("embed")} className="flex items-center gap-1 text-xs text-green-700 dark:text-green-300 hover:underline">
-                  <Code2 size={12} />
-                  {copied === "embed" ? "Embed code copied!" : "Copy embed code"}
-                </button>
-              </div>
-            )}
-
-            {!generating && renderResult()}
-          </div>
+          </AnimationSpeedProvider>
         )}
       </div>
     </div>

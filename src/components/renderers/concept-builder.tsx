@@ -26,13 +26,22 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
       exit={{ opacity: 0, y: -20, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className={`
-        relative border-2 rounded-xl p-5 transition-colors
+        relative border-2 rounded-xl p-5 overflow-hidden
         ${isLatest
           ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-lg shadow-blue-500/10"
           : "border-border bg-card"
         }
       `}
     >
+      {/* Background pulse animation on new layer */}
+      {isLatest && (
+        <motion.div
+          initial={{ opacity: 0.3 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="absolute inset-0 bg-blue-400/20 dark:bg-blue-500/15 pointer-events-none rounded-xl"
+        />
+      )}
       <div className="flex items-start gap-3">
         <div
           className={`

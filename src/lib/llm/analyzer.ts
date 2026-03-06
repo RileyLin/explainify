@@ -26,6 +26,7 @@ export class AnalysisError extends Error {
 export async function analyzeContent(
   content: string,
   template: TemplateChoice,
+  model?: string,
 ): Promise<AnalyzerResult> {
   if (!content.trim()) {
     throw new AnalysisError("Content cannot be empty", "INVALID_INPUT");
@@ -44,6 +45,7 @@ export async function analyzeContent(
       messages: [{ role: "user", content: userMessage }],
       maxTokens: 8192,
       temperature: 0.3,
+      model,
     });
 
     totalInputTokens += response.inputTokens;
@@ -66,10 +68,10 @@ export async function analyzeContent(
       !firstError.message.includes("JSON") &&
       !("issues" in firstError)
     ) {
-      // Check if it's a Bedrock API error
-      if (firstError.name?.includes("Bedrock") || firstError.name?.includes("Credential")) {
+      // Check if it's an API error
+      if (firstError.name?.includes("Bedrock") || firstError.name?.includes("Credential") || firstError.name?.includes("API")) {
         throw new AnalysisError(
-          `Bedrock API error: ${firstError.message}`,
+          `LLM API error: ${firstError.message}`,
           "LLM_ERROR",
           firstError.message,
         );
@@ -96,6 +98,7 @@ export async function analyzeContent(
         ],
         maxTokens: 8192,
         temperature: 0.2,
+        model,
       });
 
       totalInputTokens += retryResponse.inputTokens;

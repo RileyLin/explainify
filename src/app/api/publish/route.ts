@@ -43,10 +43,21 @@ export async function POST(request: NextRequest) {
     // Get authenticated user (optional — anonymous publishing allowed)
     const session = await auth();
     const userId = session?.user?.id || null;
+    const supabase = getServiceClient();
+
+    // Check if Pro user (for watermark removal)
+    let isProUser = false;
+    if (userId) {
+      const { data: user } = await supabase
+        .from("users")
+        .select("plan")
+        .eq("id", userId)
+        .single();
+      isProUser = user?.plan === "pro";
+    }
 
     const validData = parseResult.data;
     const slug = generateSlug();
-    const supabase = getServiceClient();
 
     const insertData: Record<string, unknown> = {
       slug,
@@ -57,6 +68,7 @@ export async function POST(request: NextRequest) {
       source_content: sourceContent || null,
       is_public: true,
       user_id: userId,
+      show_watermark: !isProUser,
     };
 
     const { error: insertError } = await supabase.from("explainers").insert(insertData);

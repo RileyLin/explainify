@@ -41,6 +41,38 @@ function Badge({
   );
 }
 
+// ── Highlight Overlay with smooth transitions ───────────────────────
+function HighlightOverlay({
+  annotation,
+  lineHeight,
+}: {
+  annotation: CodeAnnotation | null;
+  lineHeight: number;
+}) {
+  if (!annotation) return null;
+
+  const top = (annotation.startLine - 1) * lineHeight;
+  const height = (annotation.endLine - annotation.startLine + 1) * lineHeight;
+
+  return (
+    <motion.div
+      key={`${annotation.id}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25, ease: "easeInOut" }}
+      className="absolute left-0 right-0 pointer-events-none"
+      style={{
+        top: `${top}px`,
+        height: `${height}px`,
+        background: "rgba(59, 130, 246, 0.15)",
+        borderLeft: "3px solid #3b82f6",
+        marginTop: "16px", // account for pre padding
+      }}
+    />
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
   const [activeBlockId, setActiveBlockId] = useState(data.blocks[0].id);
@@ -135,16 +167,13 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
           <div ref={codeRef} className="overflow-auto max-h-[500px] relative">
             {highlightedHtml[activeBlock.id] ? (
               <div className="relative">
-                {/* Highlight overlay */}
-                {activeAnnotation && (
-                  <style>{`
-                    .code-container .line:nth-child(n+${activeAnnotation.startLine}):nth-child(-n+${activeAnnotation.endLine}) {
-                      background: rgba(59, 130, 246, 0.15) !important;
-                      border-left: 3px solid #3b82f6;
-                      padding-left: 13px !important;
-                    }
-                  `}</style>
-                )}
+                {/* Animated highlight overlay */}
+                <AnimatePresence mode="wait">
+                  <HighlightOverlay
+                    annotation={activeAnnotation}
+                    lineHeight={24}
+                  />
+                </AnimatePresence>
                 <div
                   className="code-container text-sm [&_pre]:!p-4 [&_pre]:!m-0 [&_.line]:px-4 [&_.line]:leading-6"
                   dangerouslySetInnerHTML={{ __html: highlightedHtml[activeBlock.id] }}
