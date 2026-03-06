@@ -8,18 +8,32 @@ import type { NextAuthConfig } from "next-auth";
  * 
  * Uses JWT strategy (no database adapter) to keep things simple.
  * User data is synced to Supabase `users` table via callbacks.
+ * 
+ * Auth is optional — if NEXTAUTH_SECRET is not set, auth endpoints
+ * will return errors but the rest of the app works fine.
  */
-export const authConfig: NextAuthConfig = {
-  providers: [
+
+// Build providers list dynamically — only include providers with credentials
+const providers: NextAuthConfig["providers"] = [];
+if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
+  providers.push(
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID,
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    }),
+    })
+  );
+}
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
-  ],
+    })
+  );
+}
+
+export const authConfig: NextAuthConfig = {
+  providers,
   pages: {
     signIn: "/auth/signin",
   },

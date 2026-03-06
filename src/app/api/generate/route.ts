@@ -22,7 +22,8 @@ const FREE_TIER_LIMIT = 5; // generations per month
  * Pro users bypass the limit. Returns null if allowed, or an error message if rate-limited.
  */
 async function checkUsage(userId: string): Promise<string | null> {
-  const supabase = getServiceClient();
+  try {
+    const supabase = getServiceClient();
 
   // Check if user is on Pro plan
   const { data: user } = await supabase
@@ -80,6 +81,10 @@ async function checkUsage(userId: string): Promise<string | null> {
     );
 
   return null;
+  } catch {
+    // Supabase not configured — skip usage tracking
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -106,16 +111,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check usage for authenticated users
-    const session = await auth();
-    if (session?.user?.id) {
-      const usageError = await checkUsage(session.user.id);
-      if (usageError) {
-        return NextResponse.json(
-          { error: usageError, code: "RATE_LIMITED" },
-          { status: 429 },
-        );
+    // Check usage for authenticated users (skip if auth is not configured)
+    try {
+      const session = await auth();
+      if (session?.user?.id) {
+        const usageError = await checkUsage(session.user.id);
+        if (usageError) {
+          return NextResponse.json(
+            { error: usageError, code: "RATE_LIMITED" },
+            { status: 429 },
+          );
+        }
       }
+    } catch {
+      // Auth not configured — skip usage tracking
     }
 
     const templateChoice: TemplateChoice =
