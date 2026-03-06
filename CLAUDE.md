@@ -173,10 +173,10 @@ AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-west-2
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6-v1
 
-# Database
-DATABASE_URL=           # Supabase PostgreSQL connection string
+# Database (Supabase)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=          # Server-side only, bypasses RLS
 
 # Auth (NextAuth.js)
 NEXTAUTH_SECRET=

@@ -68,19 +68,20 @@
 ## Phase 2: Polish & Publish (Weeks 3-4)
 
 ### 2A: LLM Integration
-- [ ] Build content analyzer prompt (system prompt per template)
-- [ ] Implement Bedrock Claude client
-- [ ] Wire /api/generate endpoint
-- [ ] Zod validation of LLM output with retry on failure
-- [ ] Test with diverse content samples
+- [x] Build content analyzer prompt (system prompt per template)
+- [x] Implement Bedrock Claude client
+- [x] Wire /api/generate endpoint
+- [x] Zod validation of LLM output with retry on failure
+- [x] Tests: 18 new tests for client, prompts, analyzer (all passing)
+- [ ] Test with diverse content samples (needs manual testing with live Bedrock)
 
 ### 2B: Publishing System
-- [ ] Database schema for explainers (Supabase)
-- [ ] Publish flow: save generated JSON + metadata to DB
-- [ ] Public viewer page (/e/[slug]) — loads and renders published explainer
-- [ ] Embed code generator (iframe snippet)
-- [ ] Download as standalone HTML
-- [ ] "Made with Explainify" watermark on free tier
+- [x] Database schema for explainers (Supabase) — migration applied
+- [x] Publish flow: save generated JSON + metadata to DB
+- [x] Public viewer page (/e/[slug]) — loads and renders published explainer
+- [x] Embed code generator (iframe snippet)
+- [ ] Download as standalone HTML (deferred)
+- [x] "Made with Explainify" watermark on free tier
 
 ### 2C: Auth & User Management
 - [ ] NextAuth.js setup (GitHub + Google OAuth)
@@ -102,7 +103,7 @@
 - [ ] Timeline template
 - [ ] Component Explorer template
 
-**Status:** ⬜ Not started
+**Status:** 🔵 In progress (2A + 2B core complete, 2C/2D/2E not started)
 
 ---
 
