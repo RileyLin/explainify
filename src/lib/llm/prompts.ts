@@ -147,6 +147,203 @@ Rules:
 - Use concrete examples and analogies where possible.
 `;
 
+export const COMPARE_CONTRAST_PROMPT = `${SHARED_INSTRUCTIONS}
+
+You will generate a Compare & Contrast explainer — side-by-side analysis of 2-4 items across multiple dimensions.
+Best for: technology comparisons, framework evaluations, tool selection, pros/cons analysis, alternative evaluations.
+
+Output this exact JSON shape:
+{
+  "template": "compare-contrast",
+  "meta": {
+    "title": "string (descriptive title)",
+    "summary": "string (1-2 sentence summary)",
+    "difficulty": "beginner" | "intermediate" | "advanced",
+    "template": "compare-contrast"
+  },
+  "items": [
+    {
+      "id": "string (unique identifier)",
+      "name": "string (item name)",
+      "description": "string (brief description)",
+      "icon": "string (optional, lucide icon name)",
+      "pros": ["string (advantage 1)", "string (advantage 2)", ...],
+      "cons": ["string (disadvantage 1)", "string (disadvantage 2)", ...]
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "string (unique identifier)",
+      "name": "string (dimension name, e.g. 'Performance', 'Cost')",
+      "description": "string (what this dimension measures)"
+    }
+  ],
+  "comparison": [
+    {
+      "dimensionId": "string (references a dimension id)",
+      "ratings": [
+        {
+          "itemId": "string (references an item id)",
+          "value": "string (descriptive rating)",
+          "score": number (optional, 0-10 numeric score)
+        }
+      ]
+    }
+  ]
+}
+
+${DIFFICULTY_INSTRUCTION}
+
+Rules:
+- Compare exactly 2-4 items. Each must have at least 2 pros and 2 cons.
+- Create 3-6 comparison dimensions that are meaningful and differentiating.
+- Every comparison row must have ratings for ALL items.
+- "score" is optional but helpful for visual comparison (0-10 scale).
+- "value" should be a concise descriptive rating (e.g. "Excellent — sub-10ms latency", "Limited — requires plugins").
+- Be balanced and fair — avoid blatant bias toward one item.
+`;
+
+export const DECISION_TREE_PROMPT = `${SHARED_INSTRUCTIONS}
+
+You will generate a Decision Tree explainer — an interactive branching path that guides the reader to a recommendation.
+Best for: choosing between technologies, debugging guides, decision frameworks, "which X should I use?" content.
+
+Output this exact JSON shape:
+{
+  "template": "decision-tree",
+  "meta": {
+    "title": "string (descriptive title)",
+    "summary": "string (1-2 sentence summary)",
+    "difficulty": "beginner" | "intermediate" | "advanced",
+    "template": "decision-tree"
+  },
+  "rootId": "string (id of the starting question node)",
+  "nodes": [
+    {
+      "id": "string (unique identifier)",
+      "question": "string (optional, the question to ask — for non-leaf nodes)",
+      "answer": "string (optional, the recommendation — for leaf nodes)",
+      "description": "string (explanation or context)",
+      "icon": "string (optional, lucide icon name)",
+      "isLeaf": boolean (true if this is a terminal/recommendation node)
+    }
+  ],
+  "edges": [
+    {
+      "from": "string (source node id)",
+      "to": "string (target node id)",
+      "label": "string (the answer/choice that leads to this node)"
+    }
+  ]
+}
+
+${DIFFICULTY_INSTRUCTION}
+
+Rules:
+- The tree must have exactly one root node (referenced by "rootId").
+- Non-leaf nodes MUST have "question" set. Leaf nodes MUST have "answer" set.
+- Each non-leaf node should have 2-4 outgoing edges (choices).
+- Leaf nodes should have 0 outgoing edges.
+- Create 5-12 total nodes with 3-6 leaf nodes (recommendations).
+- "description" provides context for each node — why this question matters or why this recommendation applies.
+- Edge "label" should be a concise answer choice (e.g. "Yes", "Need real-time updates", "Budget < $100/mo").
+- Ensure every node is reachable from the root via edges.
+`;
+
+export const TIMELINE_PROMPT = `${SHARED_INSTRUCTIONS}
+
+You will generate a Timeline explainer — a chronological sequence of events or milestones.
+Best for: history of a technology, evolution of standards, project milestones, version changelogs, biographical events.
+
+Output this exact JSON shape:
+{
+  "template": "timeline",
+  "meta": {
+    "title": "string (descriptive title)",
+    "summary": "string (1-2 sentence summary)",
+    "difficulty": "beginner" | "intermediate" | "advanced",
+    "template": "timeline"
+  },
+  "events": [
+    {
+      "id": "string (unique identifier)",
+      "title": "string (event title)",
+      "date": "string (optional, specific date like '2023-03' or 'March 2023')",
+      "period": "string (optional, time period like 'Early 2020s' or 'Phase 1')",
+      "description": "string (1-2 sentence description)",
+      "details": "string (optional, deeper explanation)",
+      "icon": "string (optional, lucide icon name)",
+      "tags": ["string (optional category/topic tags)"]
+    }
+  ],
+  "direction": "vertical" | "horizontal"
+}
+
+${DIFFICULTY_INSTRUCTION}
+
+Rules:
+- Create 4-10 events in chronological or logical order.
+- Each event must have either "date" or "period" (or both).
+- "description" is the primary content — 1-2 clear sentences.
+- "details" provides optional deeper context (2-4 sentences).
+- "tags" help categorize events (e.g. ["breaking-change", "security"], ["milestone", "open-source"]).
+- Default to "direction": "vertical" unless the content clearly suits horizontal layout.
+- Events should tell a coherent story or progression.
+`;
+
+export const COMPONENT_EXPLORER_PROMPT = `${SHARED_INSTRUCTIONS}
+
+You will generate a Component Explorer explainer — an interactive architecture diagram with categorized, connected components.
+Best for: system architecture, microservice maps, library internals, dependency graphs, infrastructure diagrams.
+
+Output this exact JSON shape:
+{
+  "template": "component-explorer",
+  "meta": {
+    "title": "string (descriptive title)",
+    "summary": "string (1-2 sentence summary)",
+    "difficulty": "beginner" | "intermediate" | "advanced",
+    "template": "component-explorer"
+  },
+  "components": [
+    {
+      "id": "string (unique identifier)",
+      "name": "string (component name)",
+      "description": "string (1-2 sentence description)",
+      "details": "string (optional, deeper explanation)",
+      "icon": "string (optional, lucide icon name)",
+      "category": "string (optional, category id for grouping/coloring)"
+    }
+  ],
+  "connections": [
+    {
+      "from": "string (source component id)",
+      "to": "string (target component id)",
+      "label": "string (optional, connection description)",
+      "type": "data" | "control" | "dependency" (optional, connection type)
+    }
+  ],
+  "categories": [
+    {
+      "id": "string (unique identifier)",
+      "name": "string (display name)",
+      "color": "string (optional, hex color like '#3b82f6')"
+    }
+  ]
+}
+
+${DIFFICULTY_INSTRUCTION}
+
+Rules:
+- Create 4-10 components that represent the major parts of the system.
+- Assign components to 2-4 categories for visual grouping.
+- Create meaningful connections showing how components interact.
+- Use connection "type" to distinguish data flow, control flow, and dependencies.
+- "details" should explain the component's role in depth (2-4 sentences).
+- Every component id must be unique. Every connection must reference valid component ids.
+- "categories" with "color" help distinguish groups visually (use hex colors).
+`;
+
 export const AUTO_DETECT_PROMPT = `${SHARED_INSTRUCTIONS}
 
 You are analyzing content to determine the best explainer template, then generating the explainer.
@@ -155,12 +352,16 @@ First, analyze the content and decide which template fits best:
 - "flow-animator": Use for architecture diagrams, request flows, data pipelines, process flows, system interactions, sequences of events/steps.
 - "code-walkthrough": Use for code examples, programming tutorials, library usage, algorithms, API documentation, design patterns. Only use this if the content contains substantial code.
 - "concept-builder": Use for abstract concepts, theory, mental models, educational explanations, "how X works" topics without specific code or flow diagrams.
+- "compare-contrast": Use for comparisons between technologies, frameworks, tools, or approaches. Pros/cons lists. "X vs Y" content.
+- "decision-tree": Use for decision guides, troubleshooting trees, "which X should I use?", choosing between options based on criteria.
+- "timeline": Use for chronological content, history, evolution, milestones, version changelogs, project progress.
+- "component-explorer": Use for system architecture, microservice maps, infrastructure diagrams, dependency graphs with multiple interconnected components.
 
 Then generate the explainer using the chosen template's schema.
 
 IMPORTANT: Your output must be ONLY the JSON for the chosen template. No analysis text, no preamble.
 
-Here are the three possible output schemas:
+Here are the seven possible output schemas:
 
 --- FLOW ANIMATOR ---
 {
@@ -187,12 +388,55 @@ Here are the three possible output schemas:
   "layers": [{ "id": "string", "title": "string", "description": "string", "visualLabel": "string?", "details": "string?", "icon": "string?" }]
 }
 
+--- COMPARE & CONTRAST ---
+{
+  "template": "compare-contrast",
+  "meta": { "title": "string", "summary": "string", "difficulty": "beginner"|"intermediate"|"advanced", "template": "compare-contrast" },
+  "items": [{ "id": "string", "name": "string", "description": "string", "icon": "string?", "pros": ["string"], "cons": ["string"] }],
+  "dimensions": [{ "id": "string", "name": "string", "description": "string" }],
+  "comparison": [{ "dimensionId": "string", "ratings": [{ "itemId": "string", "value": "string", "score": "number?" }] }]
+}
+
+--- DECISION TREE ---
+{
+  "template": "decision-tree",
+  "meta": { "title": "string", "summary": "string", "difficulty": "beginner"|"intermediate"|"advanced", "template": "decision-tree" },
+  "rootId": "string",
+  "nodes": [{ "id": "string", "question": "string?", "answer": "string?", "description": "string", "icon": "string?", "isLeaf": "boolean" }],
+  "edges": [{ "from": "string", "to": "string", "label": "string" }]
+}
+
+--- TIMELINE ---
+{
+  "template": "timeline",
+  "meta": { "title": "string", "summary": "string", "difficulty": "beginner"|"intermediate"|"advanced", "template": "timeline" },
+  "events": [{ "id": "string", "title": "string", "date": "string?", "period": "string?", "description": "string", "details": "string?", "icon": "string?", "tags": ["string?"] }],
+  "direction": "vertical"|"horizontal"
+}
+
+--- COMPONENT EXPLORER ---
+{
+  "template": "component-explorer",
+  "meta": { "title": "string", "summary": "string", "difficulty": "beginner"|"intermediate"|"advanced", "template": "component-explorer" },
+  "components": [{ "id": "string", "name": "string", "description": "string", "details": "string?", "icon": "string?", "category": "string?" }],
+  "connections": [{ "from": "string", "to": "string", "label": "string?", "type": "data"|"control"|"dependency" }],
+  "categories": [{ "id": "string", "name": "string", "color": "string?" }]
+}
+
 ${DIFFICULTY_INSTRUCTION}
 
 Pick the template that best fits the content, then output ONLY the JSON.
 `;
 
-export type TemplateChoice = "auto" | "flow-animator" | "code-walkthrough" | "concept-builder";
+export type TemplateChoice =
+  | "auto"
+  | "flow-animator"
+  | "code-walkthrough"
+  | "concept-builder"
+  | "compare-contrast"
+  | "decision-tree"
+  | "timeline"
+  | "component-explorer";
 
 export function getSystemPrompt(template: TemplateChoice): string {
   switch (template) {
@@ -202,6 +446,14 @@ export function getSystemPrompt(template: TemplateChoice): string {
       return CODE_WALKTHROUGH_PROMPT;
     case "concept-builder":
       return CONCEPT_BUILDER_PROMPT;
+    case "compare-contrast":
+      return COMPARE_CONTRAST_PROMPT;
+    case "decision-tree":
+      return DECISION_TREE_PROMPT;
+    case "timeline":
+      return TIMELINE_PROMPT;
+    case "component-explorer":
+      return COMPONENT_EXPLORER_PROMPT;
     case "auto":
       return AUTO_DETECT_PROMPT;
   }

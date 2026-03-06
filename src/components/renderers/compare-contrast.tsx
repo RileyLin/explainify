@@ -1,0 +1,210 @@
+"use client";
+
+import { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
+import type { CompareContrastData } from "@/lib/schemas/compare";
+
+interface CompareContrastProps {
+  data: CompareContrastData;
+}
+
+export function CompareContrast({ data }: CompareContrastProps) {
+  const [activeTab, setActiveTab] = useState<"overview" | "dimensions">("overview");
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+
+  const colors = [
+    { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400", accent: "bg-blue-500" },
+    { bg: "bg-emerald-500/10", border: "border-emerald-500/30", text: "text-emerald-400", accent: "bg-emerald-500" },
+    { bg: "bg-amber-500/10", border: "border-amber-500/30", text: "text-amber-400", accent: "bg-amber-500" },
+    { bg: "bg-purple-500/10", border: "border-purple-500/30", text: "text-purple-400", accent: "bg-purple-500" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold text-foreground">{data.meta.title}</h2>
+        <p className="text-muted-foreground">{data.meta.summary}</p>
+        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+          {data.meta.difficulty}
+        </span>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-2 border-b border-border pb-1">
+        <button
+          onClick={() => setActiveTab("overview")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            activeTab === "overview"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Pros & Cons
+        </button>
+        <button
+          onClick={() => setActiveTab("dimensions")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            activeTab === "dimensions"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Comparison Matrix
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {activeTab === "overview" && (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="grid gap-4"
+            style={{ gridTemplateColumns: `repeat(${Math.min(data.items.length, 2)}, 1fr)` }}
+          >
+            {data.items.map((item, idx) => {
+              const color = colors[idx % colors.length];
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className={`rounded-xl border ${color.border} ${color.bg} p-5 space-y-4`}
+                >
+                  <div>
+                    <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                  </div>
+
+                  {/* Pros */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                      <ThumbsUp size={12} />
+                      Pros
+                    </div>
+                    <ul className="space-y-1">
+                      {item.pros.map((pro, pi) => (
+                        <motion.li
+                          key={pi}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.1 + pi * 0.05 }}
+                          className="flex items-start gap-2 text-sm text-foreground/80"
+                        >
+                          <span className="text-emerald-400 mt-0.5 shrink-0">+</span>
+                          {pro}
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Cons */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+                      <ThumbsDown size={12} />
+                      Cons
+                    </div>
+                    <ul className="space-y-1">
+                      {item.cons.map((con, ci) => (
+                        <motion.li
+                          key={ci}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.1 + ci * 0.05 + 0.2 }}
+                          className="flex items-start gap-2 text-sm text-foreground/80"
+                        >
+                          <span className="text-red-400 mt-0.5 shrink-0">−</span>
+                          {con}
+                        </motion.li>
+                      ))}
+                    </ul>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+
+        {activeTab === "dimensions" && (
+          <motion.div
+            key="dimensions"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-x-auto"
+          >
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-3 text-muted-foreground font-medium">Dimension</th>
+                  {data.items.map((item, idx) => {
+                    const color = colors[idx % colors.length];
+                    return (
+                      <th key={item.id} className={`text-left p-3 font-medium ${color.text}`}>
+                        {item.name}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {data.comparison.map((row, ri) => {
+                  const dim = data.dimensions.find((d) => d.id === row.dimensionId);
+                  return (
+                    <motion.tr
+                      key={row.dimensionId}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: ri * 0.05 }}
+                      className="border-b border-border/50 hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="p-3">
+                        <div className="font-medium text-foreground">{dim?.name ?? row.dimensionId}</div>
+                        {dim?.description && (
+                          <div className="text-xs text-muted-foreground mt-0.5">{dim.description}</div>
+                        )}
+                      </td>
+                      {data.items.map((item) => {
+                        const rating = row.ratings.find((r) => r.itemId === item.id);
+                        return (
+                          <td key={item.id} className="p-3 text-foreground/80">
+                            {rating ? (
+                              <div className="space-y-1">
+                                <span>{rating.value}</span>
+                                {rating.score !== undefined && (
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
+                                      <motion.div
+                                        className="h-full bg-blue-500 rounded-full"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(rating.score / 10) * 100}%` }}
+                                        transition={{ delay: ri * 0.05 + 0.3 }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{rating.score}/10</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

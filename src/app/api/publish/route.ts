@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/db";
 import { ExplainerDataSchema } from "@/lib/schemas/base";
+import { auth } from "@/lib/auth";
 
 /**
  * Generate a short random slug (8 chars, alphanumeric).
- * No extra dependency needed.
  */
 function generateSlug(length = 8): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -40,11 +40,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get authenticated user (optional — anonymous publishing allowed)
+    const session = await auth();
+    const userId = session?.user?.id || null;
+
     const validData = parseResult.data;
     const slug = generateSlug();
     const supabase = getServiceClient();
 
-    const { error: insertError } = await supabase.from("explainers").insert({
+    const insertData: Record<string, unknown> = {
       slug,
       title: validData.meta.title,
       summary: validData.meta.summary,
@@ -52,24 +56,19 @@ export async function POST(request: NextRequest) {
       data: validData as unknown as Record<string, unknown>,
       source_content: sourceContent || null,
       is_public: true,
-    });
+      user_id: userId,
+    };
+
+    const { error: insertError } = await supabase.from("explainers").insert(insertData);
 
     if (insertError) {
       console.error("Supabase insert error:", insertError);
-      // If slug collision (very unlikely), retry once
+      // If slug collision, retry once
       if (insertError.code === "23505") {
         const retrySlug = generateSlug(10);
         const { error: retryError } = await supabase
           .from("explainers")
-          .insert({
-            slug: retrySlug,
-            title: validData.meta.title,
-            summary: validData.meta.summary,
-            template: validData.template,
-            data: validData as unknown as Record<string, unknown>,
-            source_content: sourceContent || null,
-            is_public: true,
-          });
+          .insert({ ...insertData, slug: retrySlug });
 
         if (retryError) {
           return NextResponse.json(

@@ -33,4 +33,5 @@ export interface ExplainerRow {
   updated_at: string;
   views: number;
   is_public: boolean;
+  user_id: string | null;
 }

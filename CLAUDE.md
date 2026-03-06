@@ -24,6 +24,7 @@ explainify/
 ├── tsconfig.json
 ├── .env.example           # Required env vars template
 ├── src/
+│   ├── middleware.ts       # Auth middleware (protects /dashboard)
 │   ├── app/               # Next.js App Router pages
 │   │   ├── layout.tsx
 │   │   ├── page.tsx             # Landing page
@@ -35,11 +36,22 @@ explainify/
 │   │   │   └── page.tsx         # User's explainers list
 │   │   └── api/
 │   │       ├── generate/
-│   │       │   └── route.ts     # LLM analysis endpoint
-│   │       └── publish/
-│   │           └── route.ts     # Save & publish explainer
+│   │       │   └── route.ts     # LLM analysis endpoint (with usage tracking)
+│   │       ├── publish/
+│   │       │   └── route.ts     # Save & publish explainer (with auth)
+│   │       ├── auth/
+│   │       │   └── [...nextauth]/
+│   │       │       └── route.ts # NextAuth.js v5 catch-all route
+│   │       └── explainers/
+│   │           └── [id]/
+│   │               └── route.ts # Delete explainer endpoint
 │   ├── components/
 │   │   ├── ui/                  # Shared UI components (shadcn/ui)
+│   │   ├── auth/                # Auth components
+│   │   │   ├── sign-in-button.tsx     # Sign in/out button with user menu
+│   │   │   └── session-provider.tsx   # NextAuth session provider wrapper
+│   │   ├── layout/
+│   │   │   └── header.tsx             # App header with nav + auth
 │   │   ├── editor/              # Explainer editor/preview
 │   │   ├── renderers/           # Template renderer components
 │   │   │   ├── flow-animator.tsx       # React Flow + Motion (diagrams, flows)
@@ -47,11 +59,12 @@ explainify/
 │   │   │   ├── code-walkthrough.tsx    # Shiki + Motion (code tutorials)
 │   │   │   ├── concept-builder.tsx     # Motion + Tailwind (layered concepts)
 │   │   │   ├── compare-contrast.tsx    # Motion + Tailwind (side-by-side)
-│   │   │   ├── decision-tree.tsx       # React Flow tree layout + Motion
+│   │   │   ├── decision-tree.tsx       # Motion + Tailwind (interactive branching)
 │   │   │   ├── timeline.tsx            # Motion + Tailwind (sequential)
-│   │   │   └── renderer-registry.ts    # Maps template names → renderer components
+│   │   │   └── renderer-registry.tsx   # Maps template names → renderer components
 │   │   └── landing/             # Landing page sections
 │   ├── lib/
+│   │   ├── auth.ts              # NextAuth.js v5 config (GitHub + Google providers)
 │   │   ├── llm/
 │   │   │   ├── analyzer.ts      # Content analysis → structured JSON (single LLM pass)
 │   │   │   ├── prompts.ts       # System prompts per template type
@@ -90,6 +103,7 @@ explainify/
 ### Backend
 - **Claude via Amazon Bedrock** (us-west-2) — content analysis, JSON generation
 - **Supabase** (PostgreSQL) — user data, explainer metadata, generated JSON storage
+- **NextAuth.js v5** (next-auth@beta) — GitHub + Google OAuth, JWT strategy
 - **Zod** — schema validation for all LLM output
 
 ### Infrastructure

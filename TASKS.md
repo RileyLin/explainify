@@ -84,11 +84,14 @@
 - [x] "Made with Explainify" watermark on free tier
 
 ### 2C: Auth & User Management
-- [ ] NextAuth.js setup (GitHub + Google OAuth)
-- [ ] User dashboard — list of created explainers
-- [ ] Edit/delete existing explainers
-- [ ] Usage tracking (generations per month)
-- [ ] Free tier enforcement (5/month limit)
+- [x] NextAuth.js v5 setup (GitHub + Google OAuth providers)
+- [x] Database migration: users table, usage table, user_id on explainers
+- [x] Session provider + Header with sign-in/out UI
+- [x] User dashboard — list of created explainers with delete
+- [x] Wire auth to publish — user_id saved with explainer
+- [x] Usage tracking (generations per month)
+- [x] Free tier enforcement (5/month limit, 429 on exceed)
+- [ ] OAuth client IDs needed from Riley (GitHub + Google)
 
 ### 2D: Editor Enhancements
 - [ ] Inline text editing (modify labels, descriptions without regenerating)
@@ -98,12 +101,15 @@
 - [ ] Undo/redo
 
 ### 2E: Additional Templates
-- [ ] Compare & Contrast template
-- [ ] Decision Tree template
-- [ ] Timeline template
-- [ ] Component Explorer template
+- [x] Compare & Contrast template (schema + renderer + prompt + tests)
+- [x] Decision Tree template (schema + renderer + prompt + tests)
+- [x] Timeline template (schema + renderer + prompt + tests)
+- [x] Component Explorer template (schema + renderer + prompt + tests)
+- [x] All 7 templates wired: schemas, renderers, prompts, registry, create page, viewer
+- [x] Mock data for all 7 templates in create page
+- [x] 89 tests passing (up from 39)
 
-**Status:** 🔵 In progress (2A + 2B core complete, 2C/2D/2E not started)
+**Status:** ✅ Phase 2C + 2E complete (OAuth client IDs needed from Riley)
 
 ---
 

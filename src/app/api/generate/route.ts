@@ -1,8 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeContent, AnalysisError } from "@/lib/llm/analyzer";
+import { auth } from "@/lib/auth";
+import { getServiceClient } from "@/lib/db";
 import type { TemplateChoice } from "@/lib/llm/prompts";
 
-const VALID_TEMPLATES = ["auto", "flow-animator", "code-walkthrough", "concept-builder"] as const;
+const VALID_TEMPLATES = [
+  "auto",
+  "flow-animator",
+  "code-walkthrough",
+  "concept-builder",
+  "compare-contrast",
+  "decision-tree",
+  "timeline",
+  "component-explorer",
+] as const;
+
+const FREE_TIER_LIMIT = 5; // generations per month
+
+/**
+ * Check and increment usage for authenticated users.
+ * Returns null if allowed, or an error message if rate-limited.
+ */
+async function checkUsage(userId: string): Promise<string | null> {
+  const supabase = getServiceClient();
+  const month = new Date().toISOString().slice(0, 7); // '2026-03'
+
+  // Get current usage
+  const { data: usage } = await supabase
+    .from("usage")
+    .select("generations")
+    .eq("user_id", userId)
+    .eq("month", month)
+    .single();
+
+  const currentCount = usage?.generations || 0;
+
+  if (currentCount >= FREE_TIER_LIMIT) {
+    return `You've reached the free tier limit of ${FREE_TIER_LIMIT} generations this month. Upgrade to Pro for unlimited access.`;
+  }
+
+  // Upsert the usage count
+  await supabase
+    .from("usage")
+    .upsert(
+      {
+        user_id: userId,
+        month,
+        generations: currentCount + 1,
+      },
+      { onConflict: "user_id,month" }
+    );
+
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +75,18 @@ export async function POST(request: NextRequest) {
         { error: "Content exceeds maximum length of 100,000 characters" },
         { status: 400 },
       );
+    }
+
+    // Check usage for authenticated users
+    const session = await auth();
+    if (session?.user?.id) {
+      const usageError = await checkUsage(session.user.id);
+      if (usageError) {
+        return NextResponse.json(
+          { error: usageError, code: "RATE_LIMITED" },
+          { status: 429 },
+        );
+      }
     }
 
     const templateChoice: TemplateChoice =
