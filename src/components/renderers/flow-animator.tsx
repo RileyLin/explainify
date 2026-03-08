@@ -239,7 +239,7 @@ const SPEED_INTERVALS: Record<string, number> = {
 };
 
 // ── Inner Flow (needs ReactFlowProvider ancestor) ──────────────────
-function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData; autoPlay?: boolean }) {
+function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideControls?: boolean }) {
   const { setCenter } = useReactFlow();
   const { speed } = useAnimationSpeed();
 
@@ -412,7 +412,7 @@ function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData;
     <div className="flex flex-col gap-0">
       <div className="relative w-full h-[420px] bg-background rounded-xl border border-border overflow-hidden">
         {/* Step controls */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg">
+        {!hideControls && <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg">
           <button
             onClick={() => goStep(-1)}
             disabled={activeStep === 0}
@@ -468,7 +468,7 @@ function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData;
               ↕ TB
             </button>
           </div>
-        </div>
+        </div>}
 
         <ReactFlow
           nodes={rfNodes}
@@ -499,7 +499,7 @@ function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData;
       </div>
 
       {/* Transition Callout Card */}
-      <AnimatePresence mode="wait">
+      {!hideControls && <AnimatePresence mode="wait">
         {transitionCallout && (
           <motion.div
             key={activeStep}
@@ -529,13 +529,13 @@ function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData;
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>}
     </div>
   );
 }
 
 // ── Exported component ─────────────────────────────────────────────
-export function FlowAnimator({ data, autoPlay = false, hideHeader = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideHeader?: boolean }) {
+export function FlowAnimator({ data, autoPlay = false, hideHeader = false, hideControls = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideHeader?: boolean; hideControls?: boolean }) {
   return (
     <div>
       {!hideHeader && (
@@ -545,7 +545,7 @@ export function FlowAnimator({ data, autoPlay = false, hideHeader = false }: { d
         </div>
       )}
       <ReactFlowProvider>
-        <FlowAnimatorInner data={data} autoPlay={autoPlay} />
+        <FlowAnimatorInner data={data} autoPlay={autoPlay} hideControls={hideControls} />
       </ReactFlowProvider>
     </div>
   );
