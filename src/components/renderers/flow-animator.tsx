@@ -452,8 +452,9 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
             nodeColor={(n) => getLayerColor(n.id)}
             nodeStrokeColor={(n) => n.id === activeNodeId ? "#ffffff" : "transparent"}
             nodeStrokeWidth={2}
-            style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
-            maskColor="rgba(0,0,0,0.4)"
+            style={{ background: "#1e293b", border: "1px solid #334155" }}
+            maskColor="rgba(0,0,0,0.35)"
+            className="!rounded-lg"
           />
         </ReactFlow>
 
