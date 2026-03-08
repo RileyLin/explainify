@@ -492,17 +492,21 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
             }}
           />
           <MiniMap
-            nodeColor={(n) => getLayerColor(n.id)}
-            nodeStrokeColor={(n) => n.id === activeNodeId ? "#ffffff" : "transparent"}
-            nodeStrokeWidth={2}
+            nodeColor={(n) => {
+              const color = getLayerColor(n.id);
+              return n.id === activeNodeId ? "#ffffff" : color;
+            }}
+            nodeStrokeWidth={0}
             style={{
               background: "#0f172a",
-              border: "1px solid #1e293b",
+              border: "1px solid #334155",
               borderRadius: "8px",
-              width: 120,
-              height: 80,
+              width: 140,
+              height: 90,
             }}
-            maskColor="rgba(0,0,0,0.5)"
+            maskColor="rgba(15,23,42,0.6)"
+            zoomable
+            pannable
           />
         </ReactFlow>
 
