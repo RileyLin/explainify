@@ -44,7 +44,7 @@ function computeDagreLayout(
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", ranksep: 120, nodesep: 80 });
+  g.setGraph({ rankdir: "LR", ranksep: 140, nodesep: 60 });
 
   nodes.forEach((n) => {
     g.setNode(n.id, { width: 220, height: 80 });
@@ -403,7 +403,7 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
 
   return (
     <div className="flex flex-col gap-0">
-      <div className="relative w-full h-[560px] bg-background rounded-xl border border-border overflow-hidden">
+      <div className="relative w-full h-[420px] bg-background rounded-xl border border-border overflow-hidden">
         {/* Step controls */}
         <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg">
           <button
@@ -449,8 +449,11 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
           <Background gap={20} size={1} />
           <Controls showInteractive={false} className="!bg-card !border-border !shadow-lg" />
           <MiniMap
-            nodeColor={(n) => (n.id === activeNodeId ? getLayerColor(n.id) : "#94a3b8")}
-            className="!bg-card !border-border"
+            nodeColor={(n) => getLayerColor(n.id)}
+            nodeStrokeColor={(n) => n.id === activeNodeId ? "#ffffff" : "transparent"}
+            nodeStrokeWidth={2}
+            style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
+            maskColor="rgba(0,0,0,0.4)"
           />
         </ReactFlow>
 
