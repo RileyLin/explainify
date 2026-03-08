@@ -12,5 +12,8 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 /** Monthly Pro subscription price in cents */
 export const PRO_PRICE_CENTS = 1500;
 
+/** Stripe Price ID for Pro Monthly (test mode) */
+export const PRO_PRICE_ID = "price_1T8pkSD9sSLIohn64PXSaKIk";
+
 /** Product name */
 export const PRO_PRODUCT_NAME = "Explainify Pro";

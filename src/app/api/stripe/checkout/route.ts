@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, PRO_PRICE_CENTS, PRO_PRODUCT_NAME } from "@/lib/stripe";
+import { stripe, PRO_PRICE_ID } from "@/lib/stripe";
 import { auth } from "@/lib/auth";
 import { getServiceClient } from "@/lib/db";
 
@@ -55,15 +55,7 @@ export async function POST(request: NextRequest) {
       mode: "subscription",
       line_items: [
         {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: PRO_PRODUCT_NAME,
-              description: "Unlimited explainers, no watermark, private links, custom branding, analytics",
-            },
-            unit_amount: PRO_PRICE_CENTS,
-            recurring: { interval: "month" },
-          },
+          price: PRO_PRICE_ID,
           quantity: 1,
         },
       ],
