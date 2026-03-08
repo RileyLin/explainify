@@ -239,7 +239,7 @@ const SPEED_INTERVALS: Record<string, number> = {
 };
 
 // ── Inner Flow (needs ReactFlowProvider ancestor) ──────────────────
-function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
+function FlowAnimatorInner({ data, autoPlay = false }: { data: FlowAnimatorData; autoPlay?: boolean }) {
   const { setCenter } = useReactFlow();
   const { speed } = useAnimationSpeed();
 
@@ -247,7 +247,7 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
   const [selectedNode, setSelectedNode] = useState<FlowNodeType | null>(null);
   const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [layoutDirection, setLayoutDirection] = useState<"LR" | "TB">("LR");
 
   const prevStepRef = useRef(0);
@@ -324,9 +324,14 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
       setActiveStep((prev) => {
         const next = Math.max(0, Math.min(stepOrder.length - 1, prev + dir));
         if (next === prev) {
-          // Reached the boundary — stop autoplay if at end
+          // Reached the boundary — loop back to start if autoPlay mode, else stop
           if (fromAutoplay && dir === 1) {
-            setIsPlaying(false);
+            if (autoPlay) {
+              // Loop: reset to step 0 after a brief pause
+              setTimeout(() => setActiveStep(0), 800);
+            } else {
+              setIsPlaying(false);
+            }
           }
           return prev;
         }
@@ -530,15 +535,17 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
 }
 
 // ── Exported component ─────────────────────────────────────────────
-export function FlowAnimator({ data }: { data: FlowAnimatorData }) {
+export function FlowAnimator({ data, autoPlay = false, hideHeader = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideHeader?: boolean }) {
   return (
     <div>
-      <div className="mb-4">
-        <h2 className="text-2xl font-bold text-foreground">{data.meta.title}</h2>
-        <p className="text-muted-foreground mt-1">{data.meta.summary}</p>
-      </div>
+      {!hideHeader && (
+        <div className="mb-4">
+          <h2 className="text-2xl font-bold text-foreground">{data.meta.title}</h2>
+          <p className="text-muted-foreground mt-1">{data.meta.summary}</p>
+        </div>
+      )}
       <ReactFlowProvider>
-        <FlowAnimatorInner data={data} />
+        <FlowAnimatorInner data={data} autoPlay={autoPlay} />
       </ReactFlowProvider>
     </div>
   );

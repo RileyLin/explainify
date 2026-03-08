@@ -50,13 +50,13 @@ function AutoPlayingDemo() {
         className="absolute top-0 left-0 right-0 h-px"
         style={{ background: "linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent)" }}
       />
-      <div className="h-[400px]">
-        <FlowAnimator data={HERO_DEMO_DATA} />
+      <div className="h-[420px]">
+        <FlowAnimator data={HERO_DEMO_DATA} autoPlay hideHeader />
       </div>
       {/* Fade bottom */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
-        style={{ background: "linear-gradient(to top, rgba(10,10,20,0.9), transparent)" }}
+        className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
+        style={{ background: "linear-gradient(to top, rgba(10,10,20,0.95), transparent)" }}
       />
     </div>
   );
