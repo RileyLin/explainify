@@ -51,12 +51,12 @@ Output this exact JSON shape:
 ${DIFFICULTY_INSTRUCTION}
 
 Rules:
-- Create 3-8 nodes that capture the key components/steps
-- Every node must have a unique "id" (lowercase, kebab-case)
+- Create 4-8 nodes that capture the key components/steps
+- Every node must have a unique "id" (lowercase, kebab-case) that includes a LAYER HINT prefix so automatic color grouping triggers. Use prefixes like: "client-browser", "client-app", "gateway-apigw", "gateway-alb", "gateway-cdn", "auth-cognito", "auth-iam", "lambda-handler", "lambda-worker", "service-api", "api-server", "compute-ec2", "db-dynamodb", "db-postgres", "db-redis", "storage-s3", "queue-sqs", "queue-sns", "stream-kinesis", "event-bridge"
 - Connections must reference valid node ids in "from" and "to"
-- At least one connection should have "animated": true
+- For the primary data flow path, always include "animated": true on those connections
 - "stepOrder" should list node ids in logical walkthrough order
-- "details" should provide deeper explanation for each node
+- "details" is REQUIRED on every node — write 2-3 sentences explaining the component's role, how it works, and why it matters in this architecture
 - Include "codeSnippet" where code examples would be illuminating
 - "icon" must be a valid lucide-react icon name (lowercase, kebab-case)
 `;
