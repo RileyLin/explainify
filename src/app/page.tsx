@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "motion/react";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { FlowAnimator } from "@/components/renderers/flow-animator";
 import type { FlowAnimatorData } from "@/lib/schemas/flow";
@@ -220,43 +221,154 @@ function HeroSection() {
   );
 }
 
-// ── How It Works ────────────────────────────────────────────────────
+// ── How It Works — Interactive Stepper ─────────────────────────────
 const HOW_IT_WORKS_STEPS = [
   {
     number: "01",
+    label: "Paste",
     title: "Paste your content",
-    description: "Drop in your technical documentation, architecture spec, code, API docs, or any complex content.",
+    description: "Paste your architecture docs, API specs, code — anything complex.",
+    icon: (
+      <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+      </svg>
+    ),
+    preview: (
+      <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="px-4 pt-3 pb-1 flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
+          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
+          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
+        </div>
+        <div className="p-4 font-mono text-xs space-y-1.5" style={{ color: "#64748b" }}>
+          <p style={{ color: "#94a3b8" }}># API Gateway Design</p>
+          <p>Client → Auth → Rate Limiter → Router</p>
+          <p>Router → ServiceA | ServiceB | ServiceC</p>
+          <p style={{ color: "#94a3b8" }}>## Authentication</p>
+          <p>JWT tokens validated at gateway...</p>
+          <div className="flex items-center gap-0.5 mt-1">
+            <span style={{ color: "#94a3b8" }}>Retry logic with backoff</span>
+            <span className="w-0.5 h-4 ml-0.5 animate-pulse" style={{ background: "#6366f1" }} />
+          </div>
+        </div>
+      </div>
+    ),
   },
   {
     number: "02",
+    label: "AI Analyzes",
     title: "AI analyzes & visualizes",
-    description: "Our AI understands the structure, picks the best interactive template, and generates a structured explainer.",
+    description: "AI picks the best template and generates an interactive diagram in seconds.",
+    icon: (
+      <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+      </svg>
+    ),
+    preview: (
+      <div className="rounded-xl p-5 flex flex-col items-center gap-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        {/* Pulsing dots loader */}
+        <div className="flex items-center gap-2">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ background: "#6366f1" }}
+              animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 0.9, delay: i * 0.2, repeat: Infinity }}
+            />
+          ))}
+        </div>
+        <p className="text-xs" style={{ color: "#64748b" }}>Analyzing structure...</p>
+        {/* Mini node diagram */}
+        <div className="w-full flex items-center justify-center gap-3 mt-1">
+          {["Client", "Gateway", "DB"].map((label, i) => (
+            <div key={label} className="flex items-center gap-3">
+              <div className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}>
+                {label}
+              </div>
+              {i < 2 && (
+                <motion.div
+                  className="w-6 h-px"
+                  style={{ background: "rgba(99,102,241,0.4)" }}
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1.2, delay: i * 0.3, repeat: Infinity }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
   },
   {
     number: "03",
-    title: "Share interactive explainer",
-    description: "Get a shareable link, embed in your docs, or download as standalone HTML. Beautiful on every device.",
+    label: "Share",
+    title: "Share & embed",
+    description: "Get a shareable link. Embed in Notion, docs, or anywhere with one line of HTML.",
+    icon: (
+      <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+      </svg>
+    ),
+    preview: (
+      <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <p className="text-xs font-medium" style={{ color: "#94a3b8" }}>🎉 Your explainer is live!</p>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 px-3 py-2 rounded-lg text-xs font-mono truncate" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }}>
+            explainify.app/e/api-gateway-design-x7k
+          </div>
+          <div className="px-3 py-2 rounded-lg text-xs font-medium shrink-0" style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac" }}>
+            Copy
+          </div>
+        </div>
+        <div className="text-xs" style={{ color: "#475569" }}>
+          {'<iframe src="explainify.app/e/..." />'}
+        </div>
+      </div>
+    ),
   },
 ];
 
 function HowItWorksSection() {
+  const [activeStep, setActiveStep] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (paused) return;
+    intervalRef.current = setInterval(() => {
+      setActiveStep((s) => (s + 1) % HOW_IT_WORKS_STEPS.length);
+    }, 3000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [paused]);
+
+  const handleStepClick = (i: number) => {
+    setPaused(true);
+    setActiveStep(i);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  };
+
+  const step = HOW_IT_WORKS_STEPS[activeStep];
+
   return (
     <section
       className="relative py-24 md:py-32 overflow-hidden"
-      style={{ background: "#0d0d14", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+      style={{ background: "#0a0a0f", borderTop: "1px solid rgba(255,255,255,0.06)" }}
     >
-      {/* Subtle center glow */}
       <div
         className="absolute inset-x-0 top-0 h-px"
         style={{ background: "linear-gradient(90deg, transparent, rgba(99,102,241,0.3), transparent)" }}
       />
 
-      <div className="relative max-w-5xl mx-auto px-6">
+      <div className="relative max-w-4xl mx-auto px-6">
+        {/* Section header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-16"
+          className="mb-12"
         >
           <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "#6366f1" }}>
             How it works
@@ -266,48 +378,76 @@ function HowItWorksSection() {
           </h2>
         </motion.div>
 
-        <div className="flex flex-col gap-0">
-          {HOW_IT_WORKS_STEPS.map((step, i) => (
-            <motion.div
-              key={step.number}
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: i * 0.15, ease: [0.16, 1, 0.3, 1] }}
-              className="relative flex gap-8 md:gap-16 items-start py-10 group"
-              style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,0.06)" : undefined }}
+        {/* Step tabs */}
+        <div className="flex gap-2 mb-8 flex-wrap">
+          {HOW_IT_WORKS_STEPS.map((s, i) => (
+            <button
+              key={s.number}
+              onClick={() => handleStepClick(i)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+              style={{
+                background: activeStep === i ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${activeStep === i ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.08)"}`,
+                color: activeStep === i ? "#a5b4fc" : "#475569",
+              }}
             >
-              {/* Giant faded number */}
-              <span
-                className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 text-[8rem] lg:text-[10rem] font-black select-none pointer-events-none leading-none"
-                style={{
-                  color: "rgba(99,102,241,0.05)",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {step.number}
+              <span style={{ color: activeStep === i ? "#6366f1" : "rgba(99,102,241,0.3)", fontWeight: 700, fontSize: "0.7rem" }}>
+                {s.number}
               </span>
+              {s.label}
+            </button>
+          ))}
+        </div>
 
-              {/* Step number (mobile/left) */}
-              <span
-                className="shrink-0 text-4xl md:text-5xl font-black leading-none"
-                style={{ color: "rgba(99,102,241,0.2)" }}
+        {/* Animated content panel */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeStep}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="grid md:grid-cols-2 gap-8 items-center"
+          >
+            {/* Left: icon + text */}
+            <div className="flex flex-col gap-4">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", color: "#818cf8" }}
               >
-                {step.number}
-              </span>
-
-              {/* Content */}
-              <div className="flex flex-col gap-2 max-w-lg">
-                <h3
-                  className="text-xl md:text-2xl font-bold transition-colors"
-                  style={{ color: "#f1f5f9" }}
-                >
+                {step.icon}
+              </div>
+              <div>
+                <h3 className="text-xl md:text-2xl font-bold mb-2" style={{ color: "#f1f5f9" }}>
                   {step.title}
                 </h3>
                 <p className="text-base leading-relaxed" style={{ color: "#64748b" }}>
                   {step.description}
                 </p>
               </div>
-            </motion.div>
+            </div>
+
+            {/* Right: mock UI preview */}
+            <div>{step.preview}</div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Progress dots */}
+        <div className="flex items-center justify-center gap-3 mt-10">
+          {HOW_IT_WORKS_STEPS.map((_, i) => (
+            <motion.button
+              key={i}
+              onClick={() => handleStepClick(i)}
+              className="rounded-full"
+              style={{
+                width: activeStep === i ? 24 : 8,
+                height: 8,
+                background: activeStep === i ? "#6366f1" : "rgba(255,255,255,0.1)",
+                transition: "width 0.3s ease, background 0.3s ease",
+              }}
+              animate={activeStep === i ? { scale: [1, 1.15, 1] } : { scale: 1 }}
+              transition={activeStep === i ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : {}}
+            />
           ))}
         </div>
       </div>
