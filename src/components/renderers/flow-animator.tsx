@@ -40,11 +40,12 @@ function getLayerColor(id: string): string {
 // ── Dagre auto-layout ──────────────────────────────────────────────
 function computeDagreLayout(
   nodes: FlowNodeType[],
-  connections: FlowAnimatorData["connections"]
+  connections: FlowAnimatorData["connections"],
+  direction: "LR" | "TB" = "LR"
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", ranksep: 140, nodesep: 60 });
+  g.setGraph({ rankdir: direction, ranksep: direction === "LR" ? 140 : 120, nodesep: direction === "LR" ? 60 : 80 });
 
   nodes.forEach((n) => {
     g.setNode(n.id, { width: 220, height: 80 });
@@ -247,6 +248,7 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
   const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [layoutDirection, setLayoutDirection] = useState<"LR" | "TB">("LR");
 
   const prevStepRef = useRef(0);
 
@@ -256,10 +258,10 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
   );
   const activeNodeId = stepOrder[activeStep] ?? null;
 
-  // ── Dagre layout (memoized per data) ──────────────────────────────
+  // ── Dagre layout (memoized per data + direction) ──────────────────
   const dagrePositions = useMemo(
-    () => computeDagreLayout(data.nodes, data.connections),
-    [data.nodes, data.connections]
+    () => computeDagreLayout(data.nodes, data.connections, layoutDirection),
+    [data.nodes, data.connections, layoutDirection]
   );
 
   // ── Build React Flow nodes ─────────────────────────────────────────
@@ -433,6 +435,34 @@ function FlowAnimatorInner({ data }: { data: FlowAnimatorData }) {
           >
             {isPlaying ? <Pause size={16} /> : <Play size={16} />}
           </button>
+          {/* Layout toggle */}
+          <div className="w-px h-4 bg-border mx-1" />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setLayoutDirection("LR")}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                layoutDirection === "LR"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              title="Left-to-right layout"
+              aria-pressed={layoutDirection === "LR"}
+            >
+              ↔ LR
+            </button>
+            <button
+              onClick={() => setLayoutDirection("TB")}
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                layoutDirection === "TB"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              title="Top-to-bottom layout"
+              aria-pressed={layoutDirection === "TB"}
+            >
+              ↕ TB
+            </button>
+          </div>
         </div>
 
         <ReactFlow
