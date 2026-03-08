@@ -482,14 +482,27 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           maxZoom={2}
         >
           <Background gap={20} size={1} />
-          <Controls showInteractive={false} className="!bg-card !border-border !shadow-lg" />
+          <Controls
+            showInteractive={false}
+            style={{
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            }}
+          />
           <MiniMap
             nodeColor={(n) => getLayerColor(n.id)}
             nodeStrokeColor={(n) => n.id === activeNodeId ? "#ffffff" : "transparent"}
             nodeStrokeWidth={2}
-            style={{ background: "#1e293b", border: "1px solid #334155" }}
-            maskColor="rgba(0,0,0,0.35)"
-            className="!rounded-lg"
+            style={{
+              background: "#0f172a",
+              border: "1px solid #1e293b",
+              borderRadius: "8px",
+              width: 120,
+              height: 80,
+            }}
+            maskColor="rgba(0,0,0,0.5)"
           />
         </ReactFlow>
 

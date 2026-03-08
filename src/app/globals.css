@@ -124,3 +124,28 @@
     @apply bg-background text-foreground;
   }
 }
+/* ── ReactFlow dark mode overrides ──────────────────────────────── */
+.react-flow__controls-button {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  fill: #94a3b8 !important;
+}
+.react-flow__controls-button:hover {
+  background: #334155 !important;
+  fill: #f1f5f9 !important;
+}
+.react-flow__controls-button svg {
+  fill: #94a3b8;
+}
+.react-flow__controls-button:hover svg {
+  fill: #f1f5f9;
+}
+.react-flow__minimap {
+  background: #0f172a !important;
+}
+.react-flow__minimap-mask {
+  fill: rgba(0,0,0,0.5) !important;
+}
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
