@@ -98,13 +98,16 @@ export default function PricingPage() {
               <div className="flex items-center gap-2 mb-2">
                 <Zap size={20} className="text-blue-500" />
                 <h2 className="text-xl font-bold text-foreground">Pro</h2>
+                <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 border border-green-500/30">
+                  30-day free trial
+                </span>
               </div>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-foreground">$15</span>
+                <span className="text-4xl font-bold text-foreground">$9</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                For power users and teams
+                Free for 30 days, then $9/mo. Cancel anytime.
               </p>
             </div>
 

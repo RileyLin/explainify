@@ -40,7 +40,7 @@ export function CheckoutButton({ className }: { className?: string }) {
         ) : (
           <>
             <Zap size={16} />
-            Upgrade to Pro
+            Start Free Trial
           </>
         )}
       </button>
