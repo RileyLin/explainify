@@ -12,6 +12,7 @@ import {
   AlertCircle,
   LayoutDashboard,
   Zap,
+  GitMerge,
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -77,6 +78,17 @@ export default function CreatePage() {
   const [usage, setUsage] = useState<{ count: number; limit: number; plan: string } | null>(null);
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
+  // Mermaid import state
+  const [inputMode, setInputMode] = useState<"text" | "mermaid">("text");
+  const [mermaidContent, setMermaidContent] = useState(
+    `graph TD
+    A[Client] --> B[Load Balancer]
+    B --> C[Server 1]
+    B --> D[Server 2]
+    C --> E[(Database)]
+    D --> E`
+  );
+
   // Publishing state
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -97,8 +109,12 @@ export default function CreatePage() {
   const handleGenerate = useCallback(
     async (overrideTemplate?: TemplateChoice) => {
       const chosenTemplate = overrideTemplate ?? template;
-      const inputContent = content.trim();
-      if (!inputContent) return;
+      // Build input content — Mermaid mode prefixes with special marker
+      const baseContent = inputMode === "mermaid" ? mermaidContent : content;
+      const inputContent = inputMode === "mermaid"
+        ? `[MERMAID_IMPORT]\n${baseContent.trim()}`
+        : baseContent.trim();
+      if (!inputContent || (inputMode === "mermaid" && !mermaidContent.trim())) return;
 
       setGenerating(true);
       setResult(null);
@@ -148,11 +164,12 @@ export default function CreatePage() {
     const handleSave = async () => {
     if (!result || savedToDashboard) return;
     setSaving(true);
+    const sourceContent = inputMode === "mermaid" ? mermaidContent : content;
     try {
       const response = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: result, sourceContent: content || undefined, isPublic: false }),
+        body: JSON.stringify({ data: result, sourceContent: sourceContent || undefined, isPublic: false }),
       });
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
@@ -171,11 +188,12 @@ export default function CreatePage() {
   const handlePublish = async () => {
     if (!result) return;
     setPublishing(true);
+    const sourceContent = inputMode === "mermaid" ? mermaidContent : content;
     try {
       const response = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: result, sourceContent: content || undefined, isPublic: true }),
+        body: JSON.stringify({ data: result, sourceContent: sourceContent || undefined, isPublic: true }),
       });
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
@@ -328,16 +346,62 @@ export default function CreatePage() {
         {/* Input section */}
         {!result && !generating && (
           <div className="space-y-6">
+            {/* Input mode tabs */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-muted border border-border w-fit">
+              <button
+                onClick={() => setInputMode("text")}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  inputMode === "text"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Text / Docs
+              </button>
+              <button
+                onClick={() => setInputMode("mermaid")}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  inputMode === "mermaid"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <GitMerge size={14} />
+                Import Mermaid
+              </button>
+            </div>
+
             <div>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Paste your technical documentation, architecture spec, code, or any complex content here..."
-                className="w-full min-h-[300px] p-4 rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono text-sm leading-relaxed"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Supports markdown, plain text, code, or any structured content.
-              </p>
+              {inputMode === "text" ? (
+                <>
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Paste your technical documentation, architecture spec, code, or any complex content here..."
+                    className="w-full min-h-[300px] p-4 rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono text-sm leading-relaxed"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Supports markdown, plain text, code, or any structured content.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <GitMerge size={14} className="text-blue-500" />
+                    <span className="text-sm font-medium text-foreground">Paste your Mermaid diagram</span>
+                    <span className="text-xs text-muted-foreground ml-auto">Automatically converts to Flow Animator</span>
+                  </div>
+                  <textarea
+                    value={mermaidContent}
+                    onChange={(e) => setMermaidContent(e.target.value)}
+                    placeholder={`graph TD\n    A[Start] --> B[Process]\n    B --> C[End]`}
+                    className="w-full min-h-[300px] p-4 rounded-xl border border-blue-500/30 bg-card text-foreground placeholder:text-muted-foreground/50 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono text-sm leading-relaxed"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Supports <code className="text-xs bg-muted px-1 rounded">graph</code>, <code className="text-xs bg-muted px-1 rounded">flowchart</code>, <code className="text-xs bg-muted px-1 rounded">sequenceDiagram</code>, and other Mermaid diagram types.
+                  </p>
+                </>
+              )}
             </div>
 
             <div>
@@ -363,7 +427,7 @@ export default function CreatePage() {
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={() => handleGenerate()}
-                disabled={!content.trim() || generating}
+                disabled={(!content.trim() && inputMode === "text") || (!mermaidContent.trim() && inputMode === "mermaid") || generating}
                 className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/25"
               >
                 {generating ? (

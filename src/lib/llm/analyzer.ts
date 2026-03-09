@@ -2,6 +2,12 @@ import { invokeClaudeJSON, extractJSON } from "./client";
 import { getSystemPrompt, type TemplateChoice } from "./prompts";
 import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
 
+/** Prefix used to signal Mermaid diagram import */
+const MERMAID_PREFIX = "[MERMAID_IMPORT]\n";
+
+const MERMAID_SYSTEM_ADDITION = `
+The user has provided a Mermaid diagram. Convert it to the Explainify flow-animator format, preserving the nodes, edges, and labels. Map node types to appropriate layer categories. Use "flow-animator" as the template.`;
+
 export interface AnalyzerResult {
   data: ExplainerData;
   inputTokens: number;
@@ -32,8 +38,16 @@ export async function analyzeContent(
     throw new AnalysisError("Content cannot be empty", "INVALID_INPUT");
   }
 
-  const systemPrompt = getSystemPrompt(template);
-  const userMessage = `Transform the following content into an interactive explainer:\n\n${content}`;
+  // Detect Mermaid import prefix
+  const isMermaid = content.startsWith(MERMAID_PREFIX);
+  const actualContent = isMermaid ? content.slice(MERMAID_PREFIX.length) : content;
+  const effectiveTemplate: TemplateChoice = isMermaid ? "flow-animator" : template;
+
+  let systemPrompt = getSystemPrompt(effectiveTemplate);
+  if (isMermaid) {
+    systemPrompt = systemPrompt + MERMAID_SYSTEM_ADDITION;
+  }
+  const userMessage = `Transform the following content into an interactive explainer:\n\n${actualContent}`;
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
