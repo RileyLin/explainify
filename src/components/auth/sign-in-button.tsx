@@ -1,14 +1,23 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { LogIn, LogOut, LayoutDashboard, ChevronDown, User } from "lucide-react";
+import { LogIn, LogOut, LayoutDashboard, ChevronDown, Zap } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 
 export function SignInButton() {
   const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [plan, setPlan] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((d) => setPlan(d.plan))
+      .catch(() => null);
+  }, [session?.user]);
 
   // Close menu on click outside
   useEffect(() => {
@@ -59,6 +68,11 @@ export function SignInButton() {
         <span className="text-sm font-medium text-foreground max-w-[120px] truncate hidden sm:block">
           {session.user.name || session.user.email}
         </span>
+        {plan === "pro" && (
+          <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+            <Zap size={9} />PRO
+          </span>
+        )}
         <ChevronDown size={14} className="text-muted-foreground" />
       </button>
 

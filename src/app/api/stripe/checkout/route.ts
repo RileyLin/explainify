@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
+      payment_method_types: ["card"],
       line_items: [
         {
           price: PRO_PRICE_ID,
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
       success_url: `${appUrl}/dashboard?upgraded=true`,
       cancel_url: `${appUrl}/pricing`,
       metadata: { userId },
+      allow_promotion_codes: false,
     });
 
     if (checkoutSession.url) {

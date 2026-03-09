@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Sparkles, Zap } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { UpgradeButton } from "@/components/layout/upgrade-button";
 
 export function Header() {
   return (
@@ -25,13 +26,7 @@ export function Header() {
             Pricing
           </Link>
           <ThemeToggle />
-          <Link
-            href="/pricing"
-            className="hidden sm:inline-flex items-center gap-1.5 ml-1 px-3 py-1.5 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition-colors"
-          >
-            <Zap size={13} />
-            Upgrade
-          </Link>
+          <UpgradeButton />
           <SignInButton />
         </div>
       </div>
