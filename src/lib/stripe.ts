@@ -10,10 +10,10 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 /** Monthly Pro subscription price in cents */
-export const PRO_PRICE_CENTS = 1500;
+export const PRO_PRICE_CENTS = 900;
 
-/** Stripe Price ID for Pro Monthly (test mode) */
-export const PRO_PRICE_ID = "price_1T8pkSD9sSLIohn64PXSaKIk";
+/** Stripe Price ID for Pro Monthly $9/mo (test mode) */
+export const PRO_PRICE_ID = "price_1T8swuD9sSLIohn6Pnv3m45k";
 
 /** Product name */
 export const PRO_PRODUCT_NAME = "Explainify Pro";
