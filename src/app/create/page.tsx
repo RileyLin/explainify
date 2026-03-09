@@ -21,6 +21,7 @@ import type { ExplainerData } from "@/lib/schemas/base";
 // Lazy-load renderers
 import {
   FlowAnimator,
+  MoleculeRenderer,
   CodeWalkthrough,
   ConceptBuilder,
   CompareContrast,
@@ -248,6 +249,8 @@ export default function CreatePage() {
     switch (result.template) {
       case "flow-animator":
         return <FlowAnimator data={result} />;
+      case "molecule":
+        return <MoleculeRenderer data={result as any} />;
       case "code-walkthrough":
         return <CodeWalkthrough data={result} />;
       case "concept-builder":
