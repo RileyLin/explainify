@@ -126,6 +126,9 @@ export async function POST(request: NextRequest) {
     const finalTemplate = templateChoice !== "auto" ? templateChoice : result.data.template;
     if (result.data.template !== finalTemplate) {
       (result.data as Record<string, unknown>).template = finalTemplate;
+      // Also patch meta.template — Zod discriminated union requires both to match
+      const meta = (result.data as Record<string, unknown>).meta as Record<string, unknown>;
+      if (meta) meta.template = finalTemplate;
     }
 
     // Save to DB as public

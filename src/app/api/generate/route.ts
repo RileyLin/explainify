@@ -139,6 +139,8 @@ export async function POST(request: NextRequest) {
     const finalTemplate = templateChoice !== "auto" ? templateChoice : result.data.template;
     if (result.data.template !== finalTemplate) {
       (result.data as Record<string, unknown>).template = finalTemplate;
+      const meta = (result.data as Record<string, unknown>).meta as Record<string, unknown>;
+      if (meta) meta.template = finalTemplate;
     }
 
     return NextResponse.json({

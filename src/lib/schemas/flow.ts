@@ -43,7 +43,7 @@ export const MoleculeDataSchema = z.object({
     title: z.string().min(1),
     summary: z.string().min(1),
     difficulty: z.enum(["beginner", "intermediate", "advanced"]),
-    template: z.literal("molecule"),
+    template: z.string(), // lenient — gets patched post-LLM
   }),
   nodes: z.array(FlowNodeSchema).min(1),
   connections: z.array(FlowConnectionSchema),
