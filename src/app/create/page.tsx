@@ -76,6 +76,8 @@ export default function CreatePage() {
 
   // Publishing state
   const [publishing, setPublishing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedToDashboard, setSavedToDashboard] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "embed" | null>(null);
@@ -91,6 +93,7 @@ export default function CreatePage() {
       setError(null);
       setPublishedUrl(null);
       setPublishedSlug(null);
+      setSavedToDashboard(false);
 
       try {
         const response = await fetch("/api/generate", {
@@ -118,25 +121,46 @@ export default function CreatePage() {
     [content, template],
   );
 
-  const handlePublish = async () => {
-    if (!result) return;
-    setPublishing(true);
-
+    const handleSave = async () => {
+    if (!result || savedToDashboard) return;
+    setSaving(true);
     try {
       const response = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: result, sourceContent: content || undefined }),
+        body: JSON.stringify({ data: result, sourceContent: content || undefined, isPublic: false }),
       });
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || `Save failed (${response.status})`);
+      }
+      const { slug } = await response.json();
+      setPublishedSlug(slug);
+      setSavedToDashboard(true);
+    } catch (err) {
+      setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
+  const handlePublish = async () => {
+    if (!result) return;
+    setPublishing(true);
+    try {
+      const response = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: result, sourceContent: content || undefined, isPublic: true }),
+      });
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
         throw new Error(errBody.error || `Publishing failed (${response.status})`);
       }
-
       const { slug, url } = await response.json();
       setPublishedSlug(slug);
       setPublishedUrl(url);
+      setSavedToDashboard(true);
     } catch (err) {
       setError(`Publishing failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -165,6 +189,7 @@ export default function CreatePage() {
     setGenerating(false);
     setPublishedUrl(null);
     setPublishedSlug(null);
+    setSavedToDashboard(false);
     setError(null);
   };
 
@@ -331,36 +356,42 @@ export default function CreatePage() {
                     {t.label}
                   </button>
                 ))}
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-2">
+                  {/* Save to dashboard (private) */}
+                  {session && !savedToDashboard && !publishedUrl && (
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 transition-all border border-border"
+                    >
+                      {saving ? <><Loader2 size={12} className="animate-spin" />Saving...</> : <>💾 Save</>}
+                    </button>
+                  )}
+                  {savedToDashboard && !publishedUrl && (
+                    <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-green-400 border border-green-500/30 bg-green-950/20">
+                      ✓ Saved
+                    </span>
+                  )}
+                  {/* Share publicly */}
                   {!publishedUrl && (
                     <button
                       onClick={handlePublish}
                       disabled={publishing}
-                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-all"
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 transition-all"
                     >
                       {publishing ? (
-                        <><Loader2 size={14} className="animate-spin" />Saving...</>
+                        <><Loader2 size={14} className="animate-spin" />Publishing...</>
                       ) : (
-                        <><Share2 size={14} />Save &amp; Share →</>
+                        <><Share2 size={14} />Share →</>
                       )}
                     </button>
                   )}
-                  {publishedUrl && (
-                    <button
-                      onClick={handleReset}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-all"
-                    >
-                      + New Explainer
-                    </button>
-                  )}
-                  {!publishedUrl && (
-                    <button
-                      onClick={handleReset}
-                      className="ml-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-all"
-                    >
-                      + New Explainer
-                    </button>
-                  )}
+                  <button
+                    onClick={handleReset}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground transition-all"
+                  >
+                    + New
+                  </button>
                 </div>
               </div>
 

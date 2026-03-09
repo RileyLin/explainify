@@ -16,9 +16,10 @@ function generateSlug(length = 8): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { data, sourceContent } = body as {
+    const { data, sourceContent, isPublic = true } = body as {
       data?: unknown;
       sourceContent?: string;
+      isPublic?: boolean;
     };
 
     if (!data) {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       template: validData.template,
       data: validData as unknown as Record<string, unknown>,
       source_content: sourceContent || null,
-      is_public: true,
+      is_public: isPublic,
       user_id: userId,
       show_watermark: !isProUser,
     };
