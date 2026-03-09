@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect, useId } from "react";
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   type Node,
@@ -97,99 +98,199 @@ function AnimatedPacketEdge({
   targetY,
   sourcePosition,
   targetPosition,
-  style,
-  markerEnd,
   data,
-  label,
-  labelStyle,
 }: EdgeProps) {
   const edgeData = data as { isActive?: boolean; color?: string } | undefined;
   const isActive = edgeData?.isActive ?? false;
   const color = edgeData?.color ?? "#3b82f6";
+  const hex = color.replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const markerId = `arrow-${hex}-${id}`;
 
   const [edgePath] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
+    sourceX, sourceY, sourcePosition,
+    targetX, targetY, targetPosition,
+    borderRadius: 12,
   });
 
   return (
     <>
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={style}
-        markerEnd={markerEnd}
-        label={label}
-        labelStyle={labelStyle}
+      <defs>
+        <marker id={markerId} markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+          <polygon
+            points="0 0, 7 2.5, 0 5"
+            fill={isActive ? color : `rgba(100,116,139,0.5)`}
+            opacity={isActive ? 0.85 : 0.5}
+          />
+        </marker>
+      </defs>
+
+      {/* Base edge path */}
+      <path
+        id={`${id}-path`}
+        d={edgePath}
+        fill="none"
+        stroke={isActive ? color : "rgba(100,116,139,0.3)"}
+        strokeWidth={isActive ? 2.5 : 1.8}
+        strokeDasharray={isActive ? "none" : "6 10"}
+        markerEnd={`url(#${markerId})`}
+        style={
+          isActive
+            ? { filter: `drop-shadow(0 0 3px ${color}) drop-shadow(0 0 8px rgba(${r},${g},${b},0.4))` }
+            : { animation: "edgeDrift 2.8s linear infinite" }
+        }
       />
+
+      {/* Traveling packet (active only) */}
       {isActive && (
-        <circle r="5" fill={color} style={{ filter: `drop-shadow(0 0 4px ${color})` }}>
-          <animateMotion dur="0.4s" fill="freeze" repeatCount="1">
-            <mpath href={`#${id}-path`} />
-          </animateMotion>
-        </circle>
-      )}
-      {/* Hidden path for animateMotion reference */}
-      {isActive && (
-        <path id={`${id}-path`} d={edgePath} fill="none" stroke="none" />
+        <>
+          {/* Comet tail */}
+          <circle r="3" fill={color} opacity="0.35"
+            style={{ filter: `drop-shadow(0 0 4px rgba(${r},${g},${b},0.6))` }}>
+            <animateMotion dur="0.55s" repeatCount="indefinite" rotate="auto">
+              <mpath href={`#${id}-path`} />
+            </animateMotion>
+          </circle>
+          {/* Main packet */}
+          <circle r="5.5" fill={color}
+            style={{ filter: `drop-shadow(0 0 6px ${color}) drop-shadow(0 0 14px rgba(${r},${g},${b},0.7))` }}>
+            <animateMotion dur="0.45s" repeatCount="indefinite" rotate="auto">
+              <mpath href={`#${id}-path`} />
+            </animateMotion>
+          </circle>
+        </>
       )}
     </>
   );
 }
 
-// ── Custom Node with pulse/glow animation ──────────────────────────
+// ── Layer badge label ──────────────────────────────────────────────
+function getLayerBadge(id: string): string {
+  const lower = id.toLowerCase();
+  if (/client|user|browser|app/.test(lower))                    return "CLIENT";
+  if (/gateway|proxy|load|edge|cdn/.test(lower))                return "GATEWAY";
+  if (/auth|iam|cognito|token|key/.test(lower))                 return "AUTH";
+  if (/lambda|function|worker|compute/.test(lower))             return "λ FUNC";
+  if (/service|api/.test(lower))                                return "SERVICE";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "DATABASE";
+  if (/queue|sns|sqs|event|stream/.test(lower))                 return "QUEUE";
+  return "SERVICE";
+}
+
+// ── Custom Node with glassmorphism + per-layer identity ────────────
 function CustomFlowNode({ data }: NodeProps) {
   const nodeData = data as FlowNodeType & {
     isActive: boolean;
     isPulsing: boolean;
     accentColor: string;
+    nodeIndex: number;
     onClick: () => void;
   };
   const accentColor = nodeData.accentColor ?? "#3b82f6";
+  const id = useId();
+  const badge = getLayerBadge(nodeData.id ?? "");
+
+  // hex → r,g,b for rgba usage
+  const hex = accentColor.replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
 
   return (
-    <div
+    <motion.div
       onClick={nodeData.onClick}
-      className="cursor-pointer rounded-xl border-2 px-4 py-3 min-w-[160px] max-w-[220px] transition-all duration-300 shadow-md relative bg-card"
+      initial={{ opacity: 0, y: 16, scale: 0.97 }}
+      animate={
+        nodeData.isActive
+          ? {
+              opacity: 1, y: 0, scale: 1,
+              boxShadow: [
+                `0 0 0 1px rgba(${r},${g},${b},0.4), 0 4px 28px rgba(${r},${g},${b},0.3)`,
+                `0 0 0 1px rgba(${r},${g},${b},0.7), 0 4px 40px rgba(${r},${g},${b},0.5), 0 0 80px rgba(${r},${g},${b},0.1)`,
+                `0 0 0 1px rgba(${r},${g},${b},0.4), 0 4px 28px rgba(${r},${g},${b},0.3)`,
+              ],
+            }
+          : {
+              opacity: 1, y: 0, scale: 1,
+              boxShadow: `0 2px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`,
+            }
+      }
+      transition={
+        nodeData.isActive
+          ? { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+              scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
+              boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0 } }
+          : { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+              scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
+              boxShadow: { duration: 0.35 } }
+      }
+      className="cursor-pointer relative overflow-hidden"
       style={{
-        borderColor: nodeData.isActive ? accentColor : undefined,
-        boxShadow: nodeData.isActive
-          ? `0 4px 24px ${accentColor}33, 0 1px 4px rgba(0,0,0,0.1)`
-          : undefined,
+        width: 220,
+        minHeight: 80,
+        borderRadius: 14,
+        padding: "14px 16px 14px 19px",
+        background: "rgba(255,255,255,0.04)",
+        border: `1px solid rgba(${r},${g},${b},${nodeData.isActive ? 0.4 : 0.15})`,
+        borderLeft: `3px solid ${accentColor}`,
+        backdropFilter: "blur(8px)",
       }}
     >
-      {/* Pulse glow ring */}
+      {/* Top gradient fade */}
+      <div
+        className="absolute top-0 left-0 right-0 pointer-events-none"
+        style={{
+          height: "45%",
+          borderRadius: "14px 14px 0 0",
+          background: `linear-gradient(135deg, rgba(${r},${g},${b},0.08) 0%, transparent 65%)`,
+        }}
+      />
+
+      {/* Layer badge */}
+      <div
+        className="absolute top-2.5 right-2.5 text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-full"
+        style={{
+          background: `rgba(${r},${g},${b},0.12)`,
+          color: accentColor,
+          letterSpacing: "0.08em",
+        }}
+      >
+        {badge}
+      </div>
+
+      {/* Hidden handles */}
+      <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 4, height: 4 }} />
+
+      {/* Content */}
+      <div className="relative z-10">
+        {/* Icon chip */}
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center mb-2"
+          style={{ background: `rgba(${r},${g},${b},0.12)` }}
+        >
+          <NodeIcon name={nodeData.icon} size={14} style={{ color: accentColor }} />
+        </div>
+        <p className="font-semibold text-sm text-foreground leading-tight mb-1">{nodeData.label}</p>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">{nodeData.description}</p>
+      </div>
+
+      {/* Entrance pulse ring on isPulsing */}
       {nodeData.isPulsing && (
         <motion.div
-          initial={{ opacity: 0.8, scale: 0.95 }}
-          animate={{ opacity: 0, scale: 1.15 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="absolute inset-0 rounded-xl border-2 pointer-events-none"
-          style={{ borderColor: accentColor, boxShadow: `0 0 20px ${accentColor}66` }}
+          initial={{ opacity: 0.7, scale: 0.95 }}
+          animate={{ opacity: 0, scale: 1.12 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
+          className="absolute inset-0 rounded-[14px] pointer-events-none"
+          style={{ border: `2px solid ${accentColor}`, boxShadow: `0 0 18px ${accentColor}88` }}
         />
       )}
-      <Handle type="target" position={Position.Top} style={{ background: accentColor }} className="!w-2 !h-2" />
-      <motion.div
-        animate={nodeData.isPulsing ? { scale: [1, 1.05, 1] } : { scale: 1 }}
-        transition={{ duration: 0.35, ease: "easeInOut" }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <NodeIcon
-            name={nodeData.icon}
-            style={{ color: nodeData.isActive ? accentColor : undefined }}
-            className={nodeData.isActive ? "" : "text-muted-foreground"}
-            size={18}
-          />
-          <span className="font-semibold text-sm text-foreground">{nodeData.label}</span>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed">{nodeData.description}</p>
-      </motion.div>
-      <Handle type="source" position={Position.Bottom} style={{ background: accentColor }} className="!w-2 !h-2" />
-    </div>
+
+      <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 4, height: 4 }} />
+    </motion.div>
   );
 }
 
@@ -266,8 +367,14 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
 
   // ── Build React Flow nodes ─────────────────────────────────────────
   const rfNodes: Node[] = useMemo(
-    () =>
-      data.nodes.map((n) => ({
+    () => {
+      // Sort by dagre x-position to assign stagger index left→right
+      const sorted = [...data.nodes].sort((a, b) => {
+        const ax = dagrePositions.get(a.id)?.x ?? 0;
+        const bx = dagrePositions.get(b.id)?.x ?? 0;
+        return ax - bx;
+      });
+      return data.nodes.map((n) => ({
         id: n.id,
         type: "custom",
         position: n.position ?? dagrePositions.get(n.id) ?? { x: 250, y: 100 },
@@ -276,9 +383,11 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           isActive: n.id === activeNodeId,
           isPulsing: n.id === pulsingNodeId,
           accentColor: getLayerColor(n.id),
+          nodeIndex: sorted.findIndex((s) => s.id === n.id),
           onClick: () => setSelectedNode(n),
         },
-      })),
+      }));
+    },
     [data.nodes, activeNodeId, pulsingNodeId, dagrePositions]
   );
 
@@ -481,7 +590,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           minZoom={0.3}
           maxZoom={2}
         >
-          <Background gap={20} size={1} />
+          <Background variant={BackgroundVariant.Lines} gap={40} color="rgba(148,163,184,0.06)" />
           <Controls
             showInteractive={false}
             style={{
@@ -509,6 +618,12 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
             pannable
           />
         </ReactFlow>
+
+        {/* Vignette overlay — fades the canvas edges */}
+        <div
+          className="pointer-events-none absolute inset-0 rounded-xl"
+          style={{ background: "radial-gradient(ellipse 88% 88% at 50% 50%, transparent 42%, var(--background) 100%)" }}
+        />
 
         <AnimatePresence>
           {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />}

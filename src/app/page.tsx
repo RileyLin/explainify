@@ -43,7 +43,7 @@ function AutoPlayingDemo() {
         pointerEvents: "none",
         border: "1px solid rgba(99,102,241,0.25)",
         boxShadow: "0 0 60px rgba(99,102,241,0.12), 0 0 120px rgba(59,130,246,0.08), inset 0 0 40px rgba(0,0,0,0.4)",
-        background: "rgba(10,10,20,0.8)",
+        background: "color-mix(in srgb, var(--background) 80%, transparent)",
       }}
     >
       {/* Glow edge top */}
@@ -57,7 +57,7 @@ function AutoPlayingDemo() {
       {/* Fade bottom */}
       <div
         className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
-        style={{ background: "linear-gradient(to top, rgba(10,10,20,0.95), transparent)" }}
+        style={{ background: "linear-gradient(to top, var(--background), transparent)" }}
       />
     </div>
   );
@@ -110,8 +110,7 @@ function ShimmerButton({ href, children }: { href: string; children: React.React
 function HeroSection() {
   return (
     <section
-      className="relative min-h-screen flex items-center overflow-hidden"
-      style={{ background: "#0a0a0f" }}
+      className="relative min-h-screen flex items-center overflow-hidden bg-background"
     >
       {/* Gradient mesh — blue-purple top-left */}
       <div
@@ -354,8 +353,8 @@ function HowItWorksSection() {
 
   return (
     <section
-      className="relative py-24 md:py-32 overflow-hidden"
-      style={{ background: "#0a0a0f", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+      className="relative py-24 md:py-32 overflow-hidden bg-background"
+      style={{ borderTop: "1px solid var(--border)" }}
     >
       <div
         className="absolute inset-x-0 top-0 h-px"
@@ -469,8 +468,8 @@ const TEMPLATES = [
 function TemplatesSection() {
   return (
     <section
-      className="relative py-24 md:py-32 overflow-hidden"
-      style={{ background: "#0a0a0f", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+      className="relative py-24 md:py-32 overflow-hidden bg-background"
+      style={{ borderTop: "1px solid var(--border)" }}
     >
       <div
         className="absolute inset-x-0 top-0 h-px"
@@ -564,8 +563,7 @@ function CTASection() {
         }}
       />
       <div
-        className="absolute inset-0"
-        style={{ background: "#0a0a0f" }}
+        className="absolute inset-0 bg-background"
       />
       <div
         className="absolute inset-0"
@@ -619,8 +617,8 @@ function CTASection() {
 function Footer() {
   return (
     <footer
-      className="py-8"
-      style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "#0a0a0f" }}
+      className="py-8 bg-background"
+      style={{ borderTop: "1px solid var(--border)" }}
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
         <span className="text-sm" style={{ color: "#334155" }}>
@@ -643,7 +641,7 @@ function Footer() {
 // ── Page ────────────────────────────────────────────────────────────
 export default function HomePage() {
   return (
-    <div style={{ background: "#0a0a0f", minHeight: "100vh" }}>
+    <div className="bg-background min-h-screen">
       <HeroSection />
       <HowItWorksSection />
       <TemplatesSection />

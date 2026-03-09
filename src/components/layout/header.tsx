@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { SignInButton } from "@/components/auth/sign-in-button";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 export function Header() {
   return (
@@ -10,13 +11,14 @@ export function Header() {
           <Sparkles size={20} className="text-blue-500" />
           <span className="font-bold text-lg">Explainify</span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Link
             href="/create"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block mr-1"
           >
             Create
           </Link>
+          <ThemeToggle />
           <SignInButton />
         </div>
       </div>

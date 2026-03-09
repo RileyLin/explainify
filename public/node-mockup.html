@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Node Design Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0f;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    padding: 40px;
+    color: white;
+  }
+
+  h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #4b5563;
+    margin-bottom: 32px;
+  }
+
+  .section {
+    margin-bottom: 56px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #374151;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2937;
+  }
+
+  .row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  /* ─── BEFORE: Current node ─────────────────────────── */
+  .node-before {
+    background: #1c1c1c;
+    border: 2px solid #374151;
+    border-radius: 12px;
+    padding: 12px 16px;
+    width: 200px;
+    min-height: 72px;
+  }
+
+  .node-before-active {
+    background: #1c1c1c;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 12px 16px;
+    width: 200px;
+    min-height: 72px;
+    box-shadow: 0 4px 24px rgba(59,130,246,0.2);
+  }
+
+  .node-before .label, .node-before-active .label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin-bottom: 4px;
+  }
+
+  .node-before .desc, .node-before-active .desc {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.4;
+  }
+
+  /* ─── AFTER: New node variants ─────────────────────── */
+
+  /* Shared base */
+  .node {
+    border-radius: 14px;
+    padding: 14px 16px;
+    width: 220px;
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .node:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Left accent stripe */
+  .node::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 14px 0 0 14px;
+  }
+
+  /* Glassmorphism base */
+  .node-glass {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+  }
+
+  /* ── Idle state (always-on ambient glow) ── */
+
+  /* Client / Browser — slate */
+  .node-client {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .node-client::before { background: #94a3b8; }
+  .node-client .icon-wrap { color: #94a3b8; }
+  .node-client .top-fade { background: linear-gradient(135deg, rgba(148,163,184,0.08) 0%, transparent 60%); }
+
+  /* Gateway / CDN — blue */
+  .node-gateway {
+    box-shadow: 0 2px 16px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: rgba(59,130,246,0.2) !important;
+  }
+  .node-gateway::before { background: #3b82f6; }
+  .node-gateway .icon-wrap { color: #3b82f6; }
+  .node-gateway .top-fade { background: linear-gradient(135deg, rgba(59,130,246,0.1) 0%, transparent 60%); }
+
+  /* Auth / IAM — amber */
+  .node-auth {
+    box-shadow: 0 2px 16px rgba(245,158,11,0.1), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: rgba(245,158,11,0.2) !important;
+  }
+  .node-auth::before { background: #f59e0b; }
+  .node-auth .icon-wrap { color: #f59e0b; }
+  .node-auth .top-fade { background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, transparent 60%); }
+
+  /* Service / Lambda — purple */
+  .node-service {
+    box-shadow: 0 2px 16px rgba(139,92,246,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: rgba(139,92,246,0.2) !important;
+  }
+  .node-service::before { background: #8b5cf6; }
+  .node-service .icon-wrap { color: #8b5cf6; }
+  .node-service .top-fade { background: linear-gradient(135deg, rgba(139,92,246,0.08) 0%, transparent 60%); }
+
+  /* DB / Storage — green */
+  .node-db {
+    box-shadow: 0 2px 16px rgba(16,185,129,0.1), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-color: rgba(16,185,129,0.2) !important;
+  }
+  .node-db::before { background: #10b981; }
+  .node-db .icon-wrap { color: #10b981; }
+  .node-db .top-fade { background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, transparent 60%); }
+
+  /* ── Active states ── */
+  .node-active-blue {
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.5), 0 4px 32px rgba(59,130,246,0.35), 0 0 80px rgba(59,130,246,0.08);
+    border-color: rgba(59,130,246,0.5) !important;
+    animation: pulseGlowBlue 2s ease-in-out infinite;
+  }
+  .node-active-purple {
+    box-shadow: 0 0 0 1px rgba(139,92,246,0.5), 0 4px 32px rgba(139,92,246,0.35), 0 0 80px rgba(139,92,246,0.08);
+    border-color: rgba(139,92,246,0.5) !important;
+    animation: pulseGlowPurple 2s ease-in-out infinite;
+  }
+  .node-active-amber {
+    box-shadow: 0 0 0 1px rgba(245,158,11,0.5), 0 4px 32px rgba(245,158,11,0.3), 0 0 80px rgba(245,158,11,0.06);
+    border-color: rgba(245,158,11,0.5) !important;
+    animation: pulseGlowAmber 2s ease-in-out infinite;
+  }
+  .node-active-green {
+    box-shadow: 0 0 0 1px rgba(16,185,129,0.5), 0 4px 32px rgba(16,185,129,0.3), 0 0 80px rgba(16,185,129,0.06);
+    border-color: rgba(16,185,129,0.5) !important;
+    animation: pulseGlowGreen 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseGlowBlue {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(59,130,246,0.4), 0 4px 32px rgba(59,130,246,0.3), 0 0 60px rgba(59,130,246,0.06); }
+    50%       { box-shadow: 0 0 0 1px rgba(59,130,246,0.6), 0 4px 40px rgba(59,130,246,0.45), 0 0 100px rgba(59,130,246,0.12); }
+  }
+  @keyframes pulseGlowPurple {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(139,92,246,0.4), 0 4px 32px rgba(139,92,246,0.28); }
+    50%       { box-shadow: 0 0 0 1px rgba(139,92,246,0.65), 0 4px 40px rgba(139,92,246,0.45), 0 0 80px rgba(139,92,246,0.1); }
+  }
+  @keyframes pulseGlowAmber {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(245,158,11,0.4), 0 4px 28px rgba(245,158,11,0.25); }
+    50%       { box-shadow: 0 0 0 1px rgba(245,158,11,0.6), 0 4px 36px rgba(245,158,11,0.4), 0 0 70px rgba(245,158,11,0.08); }
+  }
+  @keyframes pulseGlowGreen {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(16,185,129,0.4), 0 4px 28px rgba(16,185,129,0.25); }
+    50%       { box-shadow: 0 0 0 1px rgba(16,185,129,0.6), 0 4px 36px rgba(16,185,129,0.4), 0 0 70px rgba(16,185,129,0.08); }
+  }
+
+  /* Top gradient overlay */
+  .top-fade {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 50%;
+    border-radius: 14px 14px 0 0;
+    pointer-events: none;
+  }
+
+  .node-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .icon-wrap {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .node-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin-bottom: 3px;
+    letter-spacing: -0.01em;
+  }
+
+  .node-sub {
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.45;
+  }
+
+  .node-badge {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 100px;
+    opacity: 0.7;
+  }
+
+  .badge-blue   { background: rgba(59,130,246,0.15);  color: #60a5fa; }
+  .badge-amber  { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+  .badge-purple { background: rgba(139,92,246,0.15);  color: #a78bfa; }
+  .badge-green  { background: rgba(16,185,129,0.15);  color: #34d399; }
+  .badge-slate  { background: rgba(148,163,184,0.12); color: #94a3b8; }
+
+  /* ─── Edge mockup ──────────────────────────────────── */
+  .edge-demo {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    padding: 32px 40px;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .edge-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 28px;
+  }
+
+  .edge-node-small {
+    width: 100px;
+    height: 48px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .edge-line-wrap {
+    flex: 1;
+    height: 2px;
+    position: relative;
+    overflow: visible;
+    margin: 0 8px;
+  }
+
+  /* Idle edge: drifting dashes */
+  .edge-idle {
+    height: 2px;
+    width: 100%;
+    position: relative;
+  }
+  .edge-idle::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(90deg, rgba(71,85,105,0.5) 0px, rgba(71,85,105,0.5) 6px, transparent 6px, transparent 14px);
+    animation: dashDrift 2s linear infinite;
+  }
+  @keyframes dashDrift {
+    from { background-position: 0 0; }
+    to   { background-position: -20px 0; }
+  }
+
+  /* Active edge: glowing solid + packet */
+  .edge-active {
+    height: 2px;
+    width: 100%;
+    position: relative;
+    background: linear-gradient(90deg, rgba(59,130,246,0.2), rgba(59,130,246,0.9), rgba(59,130,246,0.2));
+    box-shadow: 0 0 8px rgba(59,130,246,0.5), 0 0 20px rgba(59,130,246,0.2);
+  }
+
+  .packet {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #60a5fa;
+    box-shadow: 0 0 8px #3b82f6, 0 0 20px rgba(59,130,246,0.8);
+    animation: packetTravel 1.2s ease-in-out infinite;
+  }
+  @keyframes packetTravel {
+    0%   { left: -10px; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { left: calc(100% + 10px); opacity: 0; }
+  }
+
+  /* Active edge: amber */
+  .edge-active-amber {
+    height: 2px;
+    width: 100%;
+    position: relative;
+    background: linear-gradient(90deg, rgba(245,158,11,0.2), rgba(245,158,11,0.9), rgba(245,158,11,0.2));
+    box-shadow: 0 0 8px rgba(245,158,11,0.5), 0 0 20px rgba(245,158,11,0.2);
+  }
+  .packet-amber {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #fbbf24;
+    box-shadow: 0 0 8px #f59e0b, 0 0 20px rgba(245,158,11,0.8);
+    animation: packetTravel 1s ease-in-out infinite;
+    animation-delay: 0.3s;
+  }
+
+  /* ─── Full diagram preview ─────────────────────────── */
+  .diagram-canvas {
+    background: #0a0a0f;
+    border: 1px solid #1a1a2e;
+    border-radius: 20px;
+    padding: 40px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .diagram-canvas::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* Radial vignette over the grid */
+  .diagram-canvas::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, #0a0a0f 100%);
+    pointer-events: none;
+  }
+
+  .diagram-flow {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .diagram-connector {
+    display: flex;
+    align-items: center;
+    width: 60px;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .connector-line {
+    width: 100%;
+    height: 2px;
+    position: relative;
+  }
+
+  .connector-idle::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(90deg, rgba(55,65,81,0.6) 0px, rgba(55,65,81,0.6) 5px, transparent 5px, transparent 12px);
+    animation: dashDrift 2.5s linear infinite;
+  }
+
+  .connector-active-blue {
+    background: #3b82f6;
+    box-shadow: 0 0 6px rgba(59,130,246,0.7), 0 0 16px rgba(59,130,246,0.3);
+  }
+
+  .arrow {
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid;
+    flex-shrink: 0;
+    margin-left: -1px;
+  }
+  .arrow-idle    { border-left-color: #374151; }
+  .arrow-blue    { border-left-color: #3b82f6; filter: drop-shadow(0 0 4px #3b82f6); }
+
+  .diag-packet {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #60a5fa;
+    box-shadow: 0 0 6px #3b82f6, 0 0 16px rgba(59,130,246,0.8);
+    animation: packetTravel 0.9s ease-in-out infinite;
+  }
+</style>
+</head>
+<body>
+
+<h1>Explainify — Flow Node Design Mockup</h1>
+
+<!-- ── SECTION 1: BEFORE / AFTER ── -->
+<div class="section">
+  <div class="section-label">Before vs After — Idle State</div>
+  <div class="row">
+
+    <!-- BEFORE -->
+    <div>
+      <div style="font-size:10px;color:#4b5563;margin-bottom:8px;letter-spacing:.05em;">BEFORE (current)</div>
+      <div class="node-before">
+        <div class="label">API Gateway</div>
+        <div class="desc">Routes incoming requests to backend services</div>
+      </div>
+    </div>
+
+    <!-- AFTER: Gateway node idle -->
+    <div>
+      <div style="font-size:10px;color:#3b82f6;margin-bottom:8px;letter-spacing:.05em;">AFTER — Gateway (idle)</div>
+      <div class="node node-glass node-gateway">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-blue">CDN Edge</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔀</div>
+          <div class="node-label">API Gateway</div>
+          <div class="node-sub">Routes & load-balances requests to backend services</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER: Auth node idle -->
+    <div>
+      <div style="font-size:10px;color:#f59e0b;margin-bottom:8px;letter-spacing:.05em;">AFTER — Auth (idle)</div>
+      <div class="node node-glass node-auth">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-amber">IAM</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔐</div>
+          <div class="node-label">Auth Service</div>
+          <div class="node-sub">Validates JWT tokens & checks IAM permissions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER: DB node idle -->
+    <div>
+      <div style="font-size:10px;color:#10b981;margin-bottom:8px;letter-spacing:.05em;">AFTER — Database (idle)</div>
+      <div class="node node-glass node-db">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-green">Postgres</div>
+        <div class="node-content">
+          <div class="icon-wrap">🗄️</div>
+          <div class="node-label">RDS Aurora</div>
+          <div class="node-sub">Stores user data with multi-AZ replication</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER: Service idle -->
+    <div>
+      <div style="font-size:10px;color:#8b5cf6;margin-bottom:8px;letter-spacing:.05em;">AFTER — Lambda (idle)</div>
+      <div class="node node-glass node-service">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-purple">Lambda</div>
+        <div class="node-content">
+          <div class="icon-wrap">⚡</div>
+          <div class="node-label">Process Handler</div>
+          <div class="node-sub">Executes business logic in serverless containers</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── SECTION 2: ACTIVE STATES ── -->
+<div class="section">
+  <div class="section-label">Active / Highlighted States (when step is playing)</div>
+  <div class="row">
+
+    <!-- BEFORE active -->
+    <div>
+      <div style="font-size:10px;color:#4b5563;margin-bottom:8px;letter-spacing:.05em;">BEFORE (active)</div>
+      <div class="node-before-active">
+        <div class="label">API Gateway</div>
+        <div class="desc">Routes incoming requests to backend services</div>
+      </div>
+    </div>
+
+    <!-- AFTER active blue -->
+    <div>
+      <div style="font-size:10px;color:#60a5fa;margin-bottom:8px;letter-spacing:.05em;">AFTER — Gateway (active) ✨</div>
+      <div class="node node-glass node-gateway node-active-blue">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-blue">CDN Edge</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔀</div>
+          <div class="node-label">API Gateway</div>
+          <div class="node-sub">Routes & load-balances requests to backend services</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER active amber -->
+    <div>
+      <div style="font-size:10px;color:#fbbf24;margin-bottom:8px;letter-spacing:.05em;">AFTER — Auth (active) ✨</div>
+      <div class="node node-glass node-auth node-active-amber">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-amber">IAM</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔐</div>
+          <div class="node-label">Auth Service</div>
+          <div class="node-sub">Validates JWT tokens & checks IAM permissions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER active purple -->
+    <div>
+      <div style="font-size:10px;color:#a78bfa;margin-bottom:8px;letter-spacing:.05em;">AFTER — Lambda (active) ✨</div>
+      <div class="node node-glass node-service node-active-purple">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-purple">Lambda</div>
+        <div class="node-content">
+          <div class="icon-wrap">⚡</div>
+          <div class="node-label">Process Handler</div>
+          <div class="node-sub">Executes business logic in serverless containers</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER active green -->
+    <div>
+      <div style="font-size:10px;color:#34d399;margin-bottom:8px;letter-spacing:.05em;">AFTER — Database (active) ✨</div>
+      <div class="node node-glass node-db node-active-green">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-green">Postgres</div>
+        <div class="node-content">
+          <div class="icon-wrap">🗄️</div>
+          <div class="node-label">RDS Aurora</div>
+          <div class="node-sub">Stores user data with multi-AZ replication</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── SECTION 3: EDGE / CONNECTION STYLES ── -->
+<div class="section">
+  <div class="section-label">Edge Styles — Idle drift animation vs Active packet</div>
+  <div class="edge-demo">
+    <div class="edge-row">
+      <div style="font-size:11px;color:#374151;width:120px;flex-shrink:0;">Idle (drifting dashes):</div>
+      <div class="edge-node-small">Browser</div>
+      <div class="edge-line-wrap">
+        <div class="edge-idle"></div>
+      </div>
+      <div class="edge-node-small">Gateway</div>
+    </div>
+
+    <div class="edge-row">
+      <div style="font-size:11px;color:#3b82f6;width:120px;flex-shrink:0;">Active (packet + glow):</div>
+      <div class="edge-node-small" style="border-color:rgba(59,130,246,0.3);color:#60a5fa">Browser</div>
+      <div class="edge-line-wrap">
+        <div class="edge-active">
+          <div class="packet"></div>
+        </div>
+      </div>
+      <div class="edge-node-small" style="border-color:rgba(59,130,246,0.4);color:#60a5fa">Gateway</div>
+    </div>
+
+    <div class="edge-row">
+      <div style="font-size:11px;color:#f59e0b;width:120px;flex-shrink:0;">Active (amber):</div>
+      <div class="edge-node-small" style="border-color:rgba(245,158,11,0.3);color:#fbbf24">Gateway</div>
+      <div class="edge-line-wrap">
+        <div class="edge-active-amber">
+          <div class="packet-amber"></div>
+        </div>
+      </div>
+      <div class="edge-node-small" style="border-color:rgba(245,158,11,0.3);color:#fbbf24">Auth</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 4: FULL MINI DIAGRAM ── -->
+<div class="section">
+  <div class="section-label">Full diagram preview (step 2 of 5 active — Gateway → Auth)</div>
+  <div class="diagram-canvas">
+    <div class="diagram-flow">
+
+      <!-- Node 1: Browser (idle) -->
+      <div class="node node-glass node-client" style="width:160px;min-height:72px;">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-slate">Client</div>
+        <div class="node-content">
+          <div class="icon-wrap">🌐</div>
+          <div class="node-label">Browser</div>
+          <div class="node-sub">User makes HTTP request</div>
+        </div>
+      </div>
+
+      <!-- Connector 1→2 (idle) -->
+      <div class="diagram-connector">
+        <div class="connector-line connector-idle"></div>
+        <div class="arrow arrow-idle"></div>
+      </div>
+
+      <!-- Node 2: Gateway (ACTIVE) -->
+      <div class="node node-glass node-gateway node-active-blue" style="width:170px;min-height:72px;">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-blue">Layer 7</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔀</div>
+          <div class="node-label">API Gateway</div>
+          <div class="node-sub">Routes to auth first</div>
+        </div>
+      </div>
+
+      <!-- Connector 2→3 (ACTIVE — packet traveling) -->
+      <div class="diagram-connector" style="width:80px;">
+        <div class="connector-line connector-active-blue" style="position:relative;overflow:visible;">
+          <div class="diag-packet"></div>
+        </div>
+        <div class="arrow arrow-blue"></div>
+      </div>
+
+      <!-- Node 3: Auth (idle, next up) -->
+      <div class="node node-glass node-auth" style="width:160px;min-height:72px;">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-amber">JWT</div>
+        <div class="node-content">
+          <div class="icon-wrap">🔐</div>
+          <div class="node-label">Auth Service</div>
+          <div class="node-sub">Validates token</div>
+        </div>
+      </div>
+
+      <!-- Connector 3→4 (idle) -->
+      <div class="diagram-connector">
+        <div class="connector-line connector-idle"></div>
+        <div class="arrow arrow-idle"></div>
+      </div>
+
+      <!-- Node 4: Lambda (idle) -->
+      <div class="node node-glass node-service" style="width:160px;min-height:72px;">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-purple">λ</div>
+        <div class="node-content">
+          <div class="icon-wrap">⚡</div>
+          <div class="node-label">Handler</div>
+          <div class="node-sub">Business logic</div>
+        </div>
+      </div>
+
+      <!-- Connector 4→5 (idle) -->
+      <div class="diagram-connector">
+        <div class="connector-line connector-idle"></div>
+        <div class="arrow arrow-idle"></div>
+      </div>
+
+      <!-- Node 5: DB (idle) -->
+      <div class="node node-glass node-db" style="width:150px;min-height:72px;">
+        <div class="top-fade"></div>
+        <div class="node-badge badge-green">RDS</div>
+        <div class="node-content">
+          <div class="icon-wrap">🗄️</div>
+          <div class="node-label">Aurora DB</div>
+          <div class="node-sub">Query & return</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Step indicator -->
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:32px;position:relative;z-index:1;">
+      <div style="width:6px;height:6px;border-radius:50%;background:#374151;"></div>
+      <div style="width:20px;height:6px;border-radius:3px;background:#3b82f6;box-shadow:0 0 8px rgba(59,130,246,0.6);"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#374151;"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#374151;"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#374151;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 5: NODE ENTRANCE ANIMATION ── -->
+<div class="section">
+  <div class="section-label">Node entrance animation (stagger on load) — click "Replay" to see</div>
+  <div style="display:flex;gap:16px;align-items:center;margin-bottom:20px;">
+    <button onclick="replayEntrance()" style="background:#1e3a5f;border:1px solid #3b82f6;color:#60a5fa;padding:8px 20px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600;">▶ Replay entrance</button>
+    <span style="font-size:11px;color:#374151;">Each node slides up + fades in 80ms apart — no new deps, pure CSS + motion</span>
+  </div>
+  <div id="entrance-demo" style="display:flex;gap:20px;flex-wrap:wrap;">
+    <div class="node node-glass node-client entrance-node" style="width:160px;">
+      <div class="top-fade"></div>
+      <div class="node-badge badge-slate">Client</div>
+      <div class="node-content">
+        <div class="icon-wrap">🌐</div>
+        <div class="node-label">Browser</div>
+        <div class="node-sub">Origin of request</div>
+      </div>
+    </div>
+    <div class="node node-glass node-gateway entrance-node" style="width:160px;">
+      <div class="top-fade"></div>
+      <div class="node-badge badge-blue">Edge</div>
+      <div class="node-content">
+        <div class="icon-wrap">🔀</div>
+        <div class="node-label">Gateway</div>
+        <div class="node-sub">Routes the request</div>
+      </div>
+    </div>
+    <div class="node node-glass node-auth entrance-node" style="width:160px;">
+      <div class="top-fade"></div>
+      <div class="node-badge badge-amber">IAM</div>
+      <div class="node-content">
+        <div class="icon-wrap">🔐</div>
+        <div class="node-label">Auth</div>
+        <div class="node-sub">Validates token</div>
+      </div>
+    </div>
+    <div class="node node-glass node-service entrance-node" style="width:160px;">
+      <div class="top-fade"></div>
+      <div class="node-badge badge-purple">λ</div>
+      <div class="node-content">
+        <div class="icon-wrap">⚡</div>
+        <div class="node-label">Handler</div>
+        <div class="node-sub">Processes logic</div>
+      </div>
+    </div>
+    <div class="node node-glass node-db entrance-node" style="width:160px;">
+      <div class="top-fade"></div>
+      <div class="node-badge badge-green">RDS</div>
+      <div class="node-content">
+        <div class="icon-wrap">🗄️</div>
+        <div class="node-label">Aurora DB</div>
+        <div class="node-sub">Reads & writes</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes nodeIn {
+    from { opacity: 0; transform: translateY(18px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .entrance-node {
+    animation: nodeIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  #entrance-demo .entrance-node:nth-child(1) { animation-delay: 0.05s; }
+  #entrance-demo .entrance-node:nth-child(2) { animation-delay: 0.13s; }
+  #entrance-demo .entrance-node:nth-child(3) { animation-delay: 0.21s; }
+  #entrance-demo .entrance-node:nth-child(4) { animation-delay: 0.29s; }
+  #entrance-demo .entrance-node:nth-child(5) { animation-delay: 0.37s; }
+</style>
+<script>
+  function replayEntrance() {
+    const nodes = document.querySelectorAll('.entrance-node');
+    nodes.forEach(n => {
+      n.style.animation = 'none';
+      n.offsetHeight; // reflow
+      n.style.animation = '';
+    });
+  }
+</script>
+
+</body>
+</html>
