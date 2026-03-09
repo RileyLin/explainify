@@ -35,3 +35,19 @@ export const FlowAnimatorDataSchema = z.object({
 });
 
 export type FlowAnimatorData = z.infer<typeof FlowAnimatorDataSchema>;
+
+// Molecule renderer reuses the same node/connection schema, different template literal
+export const MoleculeDataSchema = z.object({
+  template: z.literal("molecule"),
+  meta: z.object({
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    difficulty: z.enum(["beginner", "intermediate", "advanced"]),
+    template: z.literal("molecule"),
+  }),
+  nodes: z.array(FlowNodeSchema).min(1),
+  connections: z.array(FlowConnectionSchema),
+  stepOrder: z.array(z.string()).optional(),
+});
+
+export type MoleculeData = z.infer<typeof MoleculeDataSchema>;

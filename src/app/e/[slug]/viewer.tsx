@@ -2,8 +2,10 @@
 
 import React from "react";
 import type { ExplainerData } from "@/lib/schemas/base";
+import type { FlowAnimatorData } from "@/lib/schemas/flow";
 import {
   FlowAnimator,
+  MoleculeRenderer,
   CodeWalkthrough,
   ConceptBuilder,
   CompareContrast,
@@ -22,6 +24,10 @@ export function ExplainerViewer({ data, diagramRef }: ExplainerViewerProps) {
   switch (data.template) {
     case "flow-animator":
       content = <FlowAnimator data={data} />;
+      break;
+    case "molecule":
+      // MoleculeData has the same shape as FlowAnimatorData — safe cast
+      content = <MoleculeRenderer data={data as unknown as FlowAnimatorData} />;
       break;
     case "code-walkthrough":
       content = <CodeWalkthrough data={data} />;

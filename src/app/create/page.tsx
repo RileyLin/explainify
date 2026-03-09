@@ -35,6 +35,7 @@ import { AnimationSpeedProvider, SpeedToggle } from "@/components/editor/animati
 type TemplateChoice =
   | "auto"
   | "flow-animator"
+  | "molecule"
   | "code-walkthrough"
   | "concept-builder"
   | "compare-contrast"
@@ -58,6 +59,7 @@ const COLOR_TEMPLATES: TemplateChoice[] = [
 const templates: { value: TemplateChoice; label: string; desc: string }[] = [
   { value: "auto", label: "✨ Auto-detect", desc: "Let AI choose the best format" },
   { value: "flow-animator", label: "🔀 Flow Diagram", desc: "Animated node diagrams" },
+  { value: "molecule", label: "⚛️ Concept Map", desc: "Physics-style floating nodes" },
   { value: "code-walkthrough", label: "💻 Code Walkthrough", desc: "Step-through code annotations" },
   { value: "concept-builder", label: "🧠 Concept Explainer", desc: "Progressive layered concepts" },
   { value: "compare-contrast", label: "⚖️ Compare & Contrast", desc: "Side-by-side analysis" },

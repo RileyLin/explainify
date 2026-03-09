@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FlowAnimatorDataSchema } from "./flow";
+import { FlowAnimatorDataSchema, MoleculeDataSchema } from "./flow";
 import { CodeWalkthroughDataSchema } from "./code";
 import { ConceptBuilderDataSchema } from "./concept";
 import { CompareContrastDataSchema } from "./compare";
@@ -13,6 +13,7 @@ export const ExplainerMetaSchema = z.object({
   difficulty: z.enum(["beginner", "intermediate", "advanced"]),
   template: z.enum([
     "flow-animator",
+    "molecule",
     "code-walkthrough",
     "concept-builder",
     "compare-contrast",
@@ -26,6 +27,7 @@ export type ExplainerMeta = z.infer<typeof ExplainerMetaSchema>;
 
 export const ExplainerDataSchema = z.discriminatedUnion("template", [
   FlowAnimatorDataSchema,
+  MoleculeDataSchema,
   CodeWalkthroughDataSchema,
   ConceptBuilderDataSchema,
   CompareContrastDataSchema,
@@ -38,6 +40,7 @@ export type ExplainerData = z.infer<typeof ExplainerDataSchema>;
 
 // Re-export everything
 export { FlowAnimatorDataSchema, type FlowAnimatorData } from "./flow";
+export { MoleculeDataSchema, type MoleculeData } from "./flow";
 export { FlowNodeSchema, FlowConnectionSchema, type FlowNode, type FlowConnection } from "./flow";
 export { CodeWalkthroughDataSchema, type CodeWalkthroughData } from "./code";
 export { CodeBlockSchema, CodeAnnotationSchema, type CodeBlock, type CodeAnnotation } from "./code";

@@ -7,6 +7,7 @@ import type { ExplainerRow } from "@/lib/db";
 
 const templateLabels: Record<string, string> = {
   "flow-animator": "🔀 Flow Diagram",
+  "molecule": "⚛️ Concept Map",
   "code-walkthrough": "💻 Code Walkthrough",
   "concept-builder": "🧠 Concept",
   "compare-contrast": "⚖️ Compare",

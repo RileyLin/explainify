@@ -15,6 +15,11 @@ export const FlowAnimator = dynamic<{ data: FlowAnimatorData }>(
   { ssr: false, loading }
 );
 
+export const MoleculeRenderer = dynamic<{ data: FlowAnimatorData }>(
+  () => import("./molecule").then((m) => m.MoleculeRenderer),
+  { ssr: false, loading }
+);
+
 export const CodeWalkthrough = dynamic<{ data: CodeWalkthroughData }>(
   () => import("./code-walkthrough").then((m) => m.CodeWalkthrough),
   { ssr: false, loading }
@@ -47,6 +52,7 @@ export const ComponentExplorer = dynamic<{ data: ComponentExplorerData }>(
 
 export type TemplateType =
   | "flow-animator"
+  | "molecule"
   | "code-walkthrough"
   | "concept-builder"
   | "compare-contrast"
@@ -56,6 +62,7 @@ export type TemplateType =
 
 export const rendererMap: Record<TemplateType, ComponentType<{ data: any }>> = {
   "flow-animator": FlowAnimator as ComponentType<{ data: any }>,
+  "molecule": MoleculeRenderer as ComponentType<{ data: any }>,
   "code-walkthrough": CodeWalkthrough as ComponentType<{ data: any }>,
   "concept-builder": ConceptBuilder as ComponentType<{ data: any }>,
   "compare-contrast": CompareContrast as ComponentType<{ data: any }>,

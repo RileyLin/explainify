@@ -7,6 +7,7 @@ import type { TemplateChoice } from "@/lib/llm/prompts";
 const VALID_TEMPLATES = [
   "auto",
   "flow-animator",
+  "molecule",
   "code-walkthrough",
   "concept-builder",
   "compare-contrast",

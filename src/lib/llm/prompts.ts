@@ -431,6 +431,7 @@ Pick the template that best fits the content, then output ONLY the JSON.
 export type TemplateChoice =
   | "auto"
   | "flow-animator"
+  | "molecule"
   | "code-walkthrough"
   | "concept-builder"
   | "compare-contrast"
@@ -441,6 +442,9 @@ export type TemplateChoice =
 export function getSystemPrompt(template: TemplateChoice): string {
   switch (template) {
     case "flow-animator":
+      return FLOW_ANIMATOR_PROMPT;
+    case "molecule":
+      // Molecule uses the same JSON schema as flow-animator but renders as a concept map
       return FLOW_ANIMATOR_PROMPT;
     case "code-walkthrough":
       return CODE_WALKTHROUGH_PROMPT;
