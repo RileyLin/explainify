@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useId } from "react";
+import React, { useState, useMemo, useId, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X } from "lucide-react";
+import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { FlowAnimatorData, FlowNode } from "@/lib/schemas/flow";
 
@@ -339,11 +339,79 @@ function MoleculeNode({
 // ── Main MoleculeRenderer ──────────────────────────────────────────
 export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const positions = useMemo(
     () => computeLayout(data.nodes, data.connections),
     [data.nodes, data.connections]
   );
+
+  // Compute bounding box of all nodes with padding for labels/badges
+  const bounds = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    positions.forEach((pos) => {
+      minX = Math.min(minX, pos.x - 60);
+      minY = Math.min(minY, pos.y - 70); // extra for badge
+      maxX = Math.max(maxX, pos.x + 60);
+      maxY = Math.max(maxY, pos.y + 60); // extra for label
+    });
+    const pad = 40;
+    return {
+      x: minX - pad,
+      y: minY - pad,
+      width: (maxX - minX) + pad * 2,
+      height: (maxY - minY) + pad * 2,
+    };
+  }, [positions]);
+
+  // Pan + zoom state
+  const [viewBox, setViewBox] = useState(bounds);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, vbX: 0, vbY: 0 });
+
+  // Reset viewBox when bounds change (new data)
+  useEffect(() => { setViewBox(bounds); }, [bounds]);
+
+  const fitView = useCallback(() => { setViewBox(bounds); }, [bounds]);
+
+  const zoom = useCallback((factor: number) => {
+    setViewBox((vb) => {
+      const cx = vb.x + vb.width / 2;
+      const cy = vb.y + vb.height / 2;
+      const newW = vb.width * factor;
+      const newH = vb.height * factor;
+      return { x: cx - newW / 2, y: cy - newH / 2, width: newW, height: newH };
+    });
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+    zoom(factor);
+  }, [zoom]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only pan on left click on the SVG bg, not on nodes
+    if (e.button !== 0) return;
+    setIsPanning(true);
+    panStartRef.current = { x: e.clientX, y: e.clientY, vbX: viewBox.x, vbY: viewBox.y };
+  }, [viewBox]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const scaleX = viewBox.width / rect.width;
+    const scaleY = viewBox.height / rect.height;
+    const dx = (e.clientX - panStartRef.current.x) * scaleX;
+    const dy = (e.clientY - panStartRef.current.y) * scaleY;
+    setViewBox((vb) => ({
+      ...vb,
+      x: panStartRef.current.vbX - dx,
+      y: panStartRef.current.vbY - dy,
+    }));
+  }, [isPanning, viewBox.width, viewBox.height]);
+
+  const handleMouseUp = useCallback(() => { setIsPanning(false); }, []);
 
   // Build a set of active connection ids when a node is selected
   const activeConnectionIds = useMemo(() => {
@@ -365,14 +433,46 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
 
       {/* Canvas */}
       <div
+        ref={containerRef}
         className="relative w-full bg-background rounded-xl border border-border overflow-hidden"
-        style={{ height: 480 }}
+        style={{ height: 480, cursor: isPanning ? "grabbing" : "grab" }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
       >
+        {/* Zoom controls */}
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+          <button
+            onClick={() => zoom(0.8)}
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+            title="Zoom in"
+          >
+            <ZoomIn size={14} />
+          </button>
+          <button
+            onClick={() => zoom(1.25)}
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+            title="Zoom out"
+          >
+            <ZoomOut size={14} />
+          </button>
+          <button
+            onClick={fitView}
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+            title="Fit view"
+          >
+            <Maximize2 size={14} />
+          </button>
+        </div>
+
         <svg
-          viewBox="0 0 800 500"
+          viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
           width="100%"
           height="100%"
-          style={{ display: "block" }}
+          style={{ display: "block", userSelect: "none" }}
+          preserveAspectRatio="xMidYMid meet"
         >
           {/* Subtle radial bg glow */}
           <defs>
@@ -381,13 +481,13 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
               <stop offset="100%" stopColor="rgba(0,0,0,0)" />
             </radialGradient>
           </defs>
-          <rect width="800" height="500" fill="url(#mol-bg-glow)" />
+          <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-bg-glow)" />
 
           {/* Grid dots */}
           <pattern id="mol-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
             <circle cx="20" cy="20" r="0.8" fill="rgba(148,163,184,0.08)" />
           </pattern>
-          <rect width="800" height="500" fill="url(#mol-grid)" />
+          <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-grid)" />
 
           {/* Connection lines (drawn first, behind nodes) */}
           {data.connections.map((c, i) => {
