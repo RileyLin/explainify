@@ -138,7 +138,7 @@ function HeroSection() {
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.025]"
         style={{
-          backgroundImage: "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
+          backgroundImage: "linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
         }}
       />
@@ -183,16 +183,14 @@ function HeroSection() {
 
             {/* Subheadline */}
             <p
-              className="text-xl md:text-2xl font-medium leading-snug"
-              style={{ color: "#94a3b8" }}
+              className="text-xl md:text-2xl font-medium leading-snug text-muted-foreground"
             >
               From wall of text to interactive diagram — in seconds.
             </p>
 
             {/* Body copy */}
             <p
-              className="text-base md:text-lg leading-relaxed max-w-md"
-              style={{ color: "#64748b" }}
+              className="text-base md:text-lg leading-relaxed max-w-md text-muted-foreground"
             >
               Paste your architecture spec, API docs, or system design. AI generates a step-through interactive diagram in seconds.
             </p>
@@ -233,20 +231,20 @@ const HOW_IT_WORKS_STEPS = [
       </svg>
     ),
     preview: (
-      <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="rounded-xl overflow-hidden bg-muted/40 border border-border">
         <div className="px-4 pt-3 pb-1 flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
-          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
-          <div className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.12)" }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/20" />
+          <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/20" />
+          <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/20" />
         </div>
-        <div className="p-4 font-mono text-xs space-y-1.5" style={{ color: "#64748b" }}>
-          <p style={{ color: "#94a3b8" }}># API Gateway Design</p>
+        <div className="p-4 font-mono text-xs space-y-1.5 text-muted-foreground">
+          <p className="text-muted-foreground"># API Gateway Design</p>
           <p>Client → Auth → Rate Limiter → Router</p>
           <p>Router → ServiceA | ServiceB | ServiceC</p>
-          <p style={{ color: "#94a3b8" }}>## Authentication</p>
+          <p className="text-muted-foreground">## Authentication</p>
           <p>JWT tokens validated at gateway...</p>
           <div className="flex items-center gap-0.5 mt-1">
-            <span style={{ color: "#94a3b8" }}>Retry logic with backoff</span>
+            <span className="text-muted-foreground">Retry logic with backoff</span>
             <span className="w-0.5 h-4 ml-0.5 animate-pulse" style={{ background: "#6366f1" }} />
           </div>
         </div>
@@ -264,7 +262,7 @@ const HOW_IT_WORKS_STEPS = [
       </svg>
     ),
     preview: (
-      <div className="rounded-xl p-5 flex flex-col items-center gap-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="rounded-xl p-5 flex flex-col items-center gap-4 bg-muted/40 border border-border">
         {/* Pulsing dots loader */}
         <div className="flex items-center gap-2">
           {[0, 1, 2].map((i) => (
@@ -277,7 +275,7 @@ const HOW_IT_WORKS_STEPS = [
             />
           ))}
         </div>
-        <p className="text-xs" style={{ color: "#64748b" }}>Analyzing structure...</p>
+        <p className="text-xs text-muted-foreground">Analyzing structure...</p>
         {/* Mini node diagram */}
         <div className="w-full flex items-center justify-center gap-3 mt-1">
           {["Client", "Gateway", "DB"].map((label, i) => (
@@ -310,17 +308,17 @@ const HOW_IT_WORKS_STEPS = [
       </svg>
     ),
     preview: (
-      <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-        <p className="text-xs font-medium" style={{ color: "#94a3b8" }}>🎉 Your explainer is live!</p>
+      <div className="rounded-xl p-4 space-y-3 bg-muted/40 border border-border">
+        <p className="text-xs font-medium text-muted-foreground">🎉 Your explainer is live!</p>
         <div className="flex items-center gap-2">
-          <div className="flex-1 px-3 py-2 rounded-lg text-xs font-mono truncate" style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }}>
+          <div className="flex-1 px-3 py-2 rounded-lg text-xs font-mono truncate bg-muted text-muted-foreground border border-border">
             explainify.app/e/api-gateway-design-x7k
           </div>
           <div className="px-3 py-2 rounded-lg text-xs font-medium shrink-0" style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac" }}>
             Copy
           </div>
         </div>
-        <div className="text-xs" style={{ color: "#475569" }}>
+        <div className="text-xs text-muted-foreground">
           {'<iframe src="explainify.app/e/..." />'}
         </div>
       </div>
@@ -385,7 +383,7 @@ function HowItWorksSection() {
               onClick={() => handleStepClick(i)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
               style={{
-                background: activeStep === i ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
+                background: activeStep === i ? "rgba(99,102,241,0.15)" : "var(--muted)",
                 border: `1px solid ${activeStep === i ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.08)"}`,
                 color: activeStep === i ? "#a5b4fc" : "#475569",
               }}
@@ -420,7 +418,7 @@ function HowItWorksSection() {
                 <h3 className="text-xl md:text-2xl font-bold mb-2" style={{ color: "#f1f5f9" }}>
                   {step.title}
                 </h3>
-                <p className="text-base leading-relaxed" style={{ color: "#64748b" }}>
+                <p className="text-base leading-relaxed text-muted-foreground">
                   {step.description}
                 </p>
               </div>
@@ -489,7 +487,7 @@ function TemplatesSection() {
           <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "#f1f5f9" }}>
             The right format for every doc.
           </h2>
-          <p className="mt-3 text-base" style={{ color: "#64748b" }}>
+          <p className="mt-3 text-base text-muted-foreground">
             Choose manually or let AI pick the best template for your content.
           </p>
         </motion.div>
@@ -531,11 +529,11 @@ function TemplatesSection() {
                   <h3 className="font-semibold text-sm mb-0.5 transition-colors" style={{ color: "#e2e8f0" }}>
                     {t.name}
                   </h3>
-                  <p className="text-xs" style={{ color: "#64748b" }}>
+                  <p className="text-xs text-muted-foreground">
                     {t.desc}
                   </p>
                 </div>
-                <p className="text-xs mt-auto" style={{ color: "#475569" }}>
+                <p className="text-xs mt-auto text-muted-foreground">
                   <span style={{ color: t.accent, opacity: 0.8 }}>Best for:</span>{" "}
                   {t.bestFor}
                 </p>
@@ -601,7 +599,7 @@ function CTASection() {
               for free.
             </span>
           </h2>
-          <p className="text-lg" style={{ color: "#64748b" }}>
+          <p className="text-lg text-muted-foreground">
             No account required for your first explainer.
           </p>
           <ShimmerButton href="/create">
@@ -621,15 +619,14 @@ function Footer() {
       style={{ borderTop: "1px solid var(--border)" }}
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-        <span className="text-sm" style={{ color: "#334155" }}>
+        <span className="text-sm text-muted-foreground">
           Explainify · Built by Riley
         </span>
         <a
           href="https://github.com/RileyLin/explainify"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm transition-colors hover:text-slate-300"
-          style={{ color: "#334155" }}
+          className="text-sm transition-colors hover:text-slate-300 text-muted-foreground"
         >
           GitHub
         </a>
