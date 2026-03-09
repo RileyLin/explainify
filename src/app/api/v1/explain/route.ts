@@ -121,6 +121,13 @@ export async function POST(request: NextRequest) {
 
     const result = await analyzeContent(content, templateChoice);
 
+    // Force template field when user explicitly requested a specific template
+    // (LLM always outputs the base template name in JSON, e.g. "flow-animator" even for molecule)
+    const finalTemplate = templateChoice !== "auto" ? templateChoice : result.data.template;
+    if (result.data.template !== finalTemplate) {
+      (result.data as Record<string, unknown>).template = finalTemplate;
+    }
+
     // Save to DB as public
     const supabase = getServiceClient();
     const slug = generateSlug();
@@ -137,7 +144,7 @@ export async function POST(request: NextRequest) {
       slug,
       title: title || result.data.meta.title,
       summary: result.data.meta.summary,
-      template: result.data.template,
+      template: finalTemplate,
       data: result.data as unknown as Record<string, unknown>,
       source_content: content,
       is_public: true,

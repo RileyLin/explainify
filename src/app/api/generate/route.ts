@@ -135,6 +135,12 @@ export async function POST(request: NextRequest) {
 
     const result = await analyzeContent(content, templateChoice, model);
 
+    // Force template field when user explicitly requested a specific template
+    const finalTemplate = templateChoice !== "auto" ? templateChoice : result.data.template;
+    if (result.data.template !== finalTemplate) {
+      (result.data as Record<string, unknown>).template = finalTemplate;
+    }
+
     return NextResponse.json({
       data: result.data,
       usage: {
