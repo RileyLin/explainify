@@ -166,7 +166,7 @@ function HeroSection() {
             {/* Headline */}
             <h1
               className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]"
-              style={{ color: "#f1f5f9" }}
+              style={{ color: "var(--foreground)" }}
             >
               Complex ideas,{" "}
               <span
@@ -370,7 +370,7 @@ function HowItWorksSection() {
           <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "#6366f1" }}>
             How it works
           </p>
-          <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "#f1f5f9" }}>
+          <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "var(--foreground)" }}>
             Three steps from doc to diagram.
           </h2>
         </motion.div>
@@ -384,8 +384,8 @@ function HowItWorksSection() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
               style={{
                 background: activeStep === i ? "rgba(99,102,241,0.15)" : "var(--muted)",
-                border: `1px solid ${activeStep === i ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.08)"}`,
-                color: activeStep === i ? "#a5b4fc" : "#475569",
+                border: `1px solid ${activeStep === i ? "rgba(99,102,241,0.4)" : "var(--border)"}`,
+                color: activeStep === i ? "#a5b4fc" : "var(--muted-foreground)",
               }}
             >
               <span style={{ color: activeStep === i ? "#6366f1" : "rgba(99,102,241,0.3)", fontWeight: 700, fontSize: "0.7rem" }}>
@@ -415,7 +415,7 @@ function HowItWorksSection() {
                 {step.icon}
               </div>
               <div>
-                <h3 className="text-xl md:text-2xl font-bold mb-2" style={{ color: "#f1f5f9" }}>
+                <h3 className="text-xl md:text-2xl font-bold mb-2" style={{ color: "var(--foreground)" }}>
                   {step.title}
                 </h3>
                 <p className="text-base leading-relaxed text-muted-foreground">
@@ -439,7 +439,7 @@ function HowItWorksSection() {
               style={{
                 width: activeStep === i ? 24 : 8,
                 height: 8,
-                background: activeStep === i ? "#6366f1" : "rgba(255,255,255,0.1)",
+                background: activeStep === i ? "#6366f1" : "var(--border)",
                 transition: "width 0.3s ease, background 0.3s ease",
               }}
               animate={activeStep === i ? { scale: [1, 1.15, 1] } : { scale: 1 }}
@@ -484,7 +484,7 @@ function TemplatesSection() {
           <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "#06b6d4" }}>
             Templates
           </p>
-          <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "#f1f5f9" }}>
+          <h2 className="text-3xl md:text-4xl font-bold" style={{ color: "var(--foreground)" }}>
             The right format for every doc.
           </h2>
           <p className="mt-3 text-base text-muted-foreground">
@@ -504,8 +504,8 @@ function TemplatesSection() {
                 href="/create"
                 className="group flex flex-col gap-3 p-5 rounded-xl transition-all duration-200 hover:-translate-y-1"
                 style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: `1px solid rgba(255,255,255,0.08)`,
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
                   borderTop: `3px solid ${t.accent}40`,
                   ["--hover-border" as string]: `${t.accent}80`,
                 }}
@@ -515,7 +515,7 @@ function TemplatesSection() {
                   (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 32px ${t.accent}15`;
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.08)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
                   (e.currentTarget as HTMLElement).style.borderTopColor = `${t.accent}40`;
                   (e.currentTarget as HTMLElement).style.boxShadow = "none";
                 }}
@@ -526,7 +526,7 @@ function TemplatesSection() {
                   style={{ background: t.accent, boxShadow: `0 0 8px ${t.accent}` }}
                 />
                 <div>
-                  <h3 className="font-semibold text-sm mb-0.5 transition-colors" style={{ color: "#e2e8f0" }}>
+                  <h3 className="font-semibold text-sm mb-0.5 transition-colors" style={{ color: "var(--foreground)" }}>
                     {t.name}
                   </h3>
                   <p className="text-xs text-muted-foreground">
@@ -551,7 +551,7 @@ function CTASection() {
   return (
     <section
       className="relative py-24 md:py-32 overflow-hidden"
-      style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+      style={{ borderTop: "1px solid var(--border)" }}
     >
       {/* Gradient background */}
       <div
@@ -585,7 +585,7 @@ function CTASection() {
         >
           <h2
             className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight"
-            style={{ color: "#f1f5f9" }}
+            style={{ color: "var(--foreground)" }}
           >
             Start explaining,{" "}
             <span

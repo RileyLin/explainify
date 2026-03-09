@@ -69,23 +69,67 @@ function computeDagreLayout(
   return positions;
 }
 
+// ── Layer → fallback icon mapping ─────────────────────────────────
+function getLayerFallbackIcon(nodeId: string): string {
+  const lower = nodeId.toLowerCase();
+  if (/client|user|browser|app/.test(lower))                    return "Monitor";
+  if (/gateway|proxy|load|edge|cdn/.test(lower))                return "ArrowLeftRight";
+  if (/auth|iam|cognito|token|key/.test(lower))                 return "ShieldCheck";
+  if (/lambda|function|worker|compute/.test(lower))             return "Zap";
+  if (/service|api/.test(lower))                                return "Server";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "Database";
+  if (/queue|sns|sqs|event|stream/.test(lower))                 return "Layers";
+  return "Box";
+}
+
 // ── Icon resolver ──────────────────────────────────────────────────
-function getIcon(name?: string) {
-  if (!name) return null;
-  const pascalName = name
-    .split("-")
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join("") as keyof typeof LucideIcons;
-  const Icon = LucideIcons[pascalName];
-  if (typeof Icon === "function") return Icon as React.ComponentType<{ className?: string; size?: number; style?: React.CSSProperties }>;
-  return null;
+function getIcon(name?: string, fallbackId?: string): React.ComponentType<{ className?: string; size?: number; style?: React.CSSProperties }> | null {
+  const tryName = (n: string) => {
+    const pascalName = n
+      .split("-")
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join("") as keyof typeof LucideIcons;
+    const Icon = LucideIcons[pascalName];
+    // forwardRef components are objects with $$typeof, not plain functions
+    if (Icon && (typeof Icon === "function" || (typeof Icon === "object" && Icon !== null))) {
+      return Icon as React.ComponentType<{ className?: string; size?: number; style?: React.CSSProperties }>;
+    }
+    return null;
+  };
+
+  if (name) {
+    const found = tryName(name);
+    if (found) return found;
+    // Try with common suffixes (e.g. "key" → "KeyRound", "server" → "Server")
+    const aliases: Record<string, string> = {
+      key: "KeyRound", lock: "LockKeyhole", shield: "ShieldCheck",
+      server: "Server", database: "Database", monitor: "Monitor",
+      cloud: "Cloud", cpu: "Cpu", zap: "Zap", layers: "Layers",
+      box: "Box", network: "Network", terminal: "Terminal", code: "Code2",
+      "git-branch": "GitBranch", "refresh-cw": "RefreshCw", api: "Server",
+      queue: "MessageSquareMore", stream: "Workflow", user: "User",
+      browser: "Globe", auth: "ShieldCheck", gateway: "ArrowLeftRight",
+    };
+    const aliased = aliases[name.toLowerCase()];
+    if (aliased) {
+      const found2 = tryName(aliased);
+      if (found2) return found2;
+    }
+  }
+
+  // Layer-based fallback
+  if (fallbackId) {
+    const fallback = tryName(getLayerFallbackIcon(fallbackId));
+    if (fallback) return fallback;
+  }
+
+  return tryName("Box");
 }
 
 // ── Stable icon wrapper — uses React.createElement to avoid lint rule ──
-function NodeIcon({ name, className, size, style }: { name?: string; className?: string; size?: number; style?: React.CSSProperties }) {
-  const Icon = getIcon(name);
+function NodeIcon({ name, nodeId, className, size, style }: { name?: string; nodeId?: string; className?: string; size?: number; style?: React.CSSProperties }) {
+  const Icon = getIcon(name, nodeId);
   if (!Icon) return null;
-  // Use createElement to avoid JSX dynamic component lint error
   return React.createElement(Icon, { className, size, style });
 }
 
@@ -272,7 +316,7 @@ function CustomFlowNode({ data }: NodeProps) {
           className="w-7 h-7 rounded-lg flex items-center justify-center mb-2"
           style={{ background: `rgba(${r},${g},${b},0.12)` }}
         >
-          <NodeIcon name={nodeData.icon} size={14} style={{ color: accentColor }} />
+          <NodeIcon name={nodeData.icon} nodeId={nodeData.id} size={14} style={{ color: accentColor }} />
         </div>
         <p className="font-semibold text-sm text-foreground leading-tight mb-1">{nodeData.label}</p>
         <p className="text-[11px] text-muted-foreground leading-relaxed">{nodeData.description}</p>
@@ -310,7 +354,7 @@ function DetailPanel({ node, onClose }: { node: FlowNodeType; onClose: () => voi
         <X size={18} />
       </button>
       <div className="flex items-center gap-2 mb-3">
-        <NodeIcon name={node.icon} className="text-blue-500" size={22} />
+        <NodeIcon name={node.icon} nodeId={node.id} className="text-blue-500" size={22} />
         <h3 className="font-bold text-lg text-foreground">{node.label}</h3>
       </div>
       <p className="text-sm text-muted-foreground mb-4">{node.description}</p>
