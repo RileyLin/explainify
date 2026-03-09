@@ -681,7 +681,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.3 }}
+          fitViewOptions={{ padding: 0.15, minZoom: 0.6, maxZoom: 1.2 }}
           proOptions={{ hideAttribution: true }}
           minZoom={0.3}
           maxZoom={2}
