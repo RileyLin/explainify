@@ -144,20 +144,30 @@ function AnimatedPacketEdge({
   targetPosition,
   data,
 }: EdgeProps) {
-  const edgeData = data as { isActive?: boolean; color?: string } | undefined;
+  const edgeData = data as { isActive?: boolean; color?: string; isBursting?: boolean; packetDurationMultiplier?: number } | undefined;
   const isActive = edgeData?.isActive ?? false;
+  const isBursting = edgeData?.isBursting ?? false;
   const color = edgeData?.color ?? "#3b82f6";
+  const packetDurationMultiplier = edgeData?.packetDurationMultiplier ?? 1;
   const hex = color.replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   const markerId = `arrow-${hex}-${id}`;
 
+  // Packet durations: idle 1.4s, active 0.9s, burst 0.3s (one-shot)
+  const idleDur = `${(1.4 * packetDurationMultiplier).toFixed(2)}s`;
+  const activeDur = `${(0.9 * packetDurationMultiplier).toFixed(2)}s`;
+  const burstDur = "0.3s";
+
   const [edgePath] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
     borderRadius: 12,
   });
+
+  // Stagger offsets for 3 continuous packets
+  const staggerOffsets = ["0s", "0.4s", "0.8s"];
 
   return (
     <>
@@ -187,24 +197,50 @@ function AnimatedPacketEdge({
         }
       />
 
-      {/* Traveling packet (active only) */}
-      {isActive && (
-        <>
-          {/* Comet tail */}
-          <circle r="3" fill={color} opacity="0.35"
-            style={{ filter: `drop-shadow(0 0 4px rgba(${r},${g},${b},0.6))` }}>
-            <animateMotion dur="0.55s" repeatCount="indefinite" rotate="auto">
-              <mpath href={`#${id}-path`} />
-            </animateMotion>
-          </circle>
-          {/* Main packet */}
-          <circle r="5.5" fill={color}
-            style={{ filter: `drop-shadow(0 0 6px ${color}) drop-shadow(0 0 14px rgba(${r},${g},${b},0.7))` }}>
-            <animateMotion dur="0.45s" repeatCount="indefinite" rotate="auto">
-              <mpath href={`#${id}-path`} />
-            </animateMotion>
-          </circle>
-        </>
+      {/* 3 continuous staggered packets — always visible on every edge */}
+      {staggerOffsets.map((beginOffset, idx) => (
+        <circle
+          key={idx}
+          r={isActive ? 5 : 3}
+          fill={isActive ? color : "rgba(148,163,184,0.4)"}
+          style={{
+            opacity: isActive ? 0.85 : 0.25,
+            filter: isActive
+              ? `drop-shadow(0 0 5px ${color}) drop-shadow(0 0 10px rgba(${r},${g},${b},0.6))`
+              : "none",
+            transition: "opacity 0.4s ease, r 0.4s ease",
+          }}
+        >
+          <animateMotion
+            dur={isActive ? activeDur : idleDur}
+            repeatCount="indefinite"
+            rotate="auto"
+            begin={beginOffset}
+          >
+            <mpath href={`#${id}-path`} />
+          </animateMotion>
+        </circle>
+      ))}
+
+      {/* 4th burst packet — fires once on burst trigger */}
+      {(isActive || isBursting) && (
+        <circle
+          r="6"
+          fill={color}
+          style={{
+            filter: `drop-shadow(0 0 8px ${color}) drop-shadow(0 0 16px rgba(${r},${g},${b},0.8))`,
+            opacity: 0.9,
+          }}
+        >
+          <animateMotion
+            dur={burstDur}
+            repeatCount="1"
+            rotate="auto"
+            begin="0s"
+          >
+            <mpath href={`#${id}-path`} />
+          </animateMotion>
+        </circle>
       )}
     </>
   );
@@ -242,6 +278,9 @@ function CustomFlowNode({ data }: NodeProps) {
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
 
+  // Heartbeat delay: entrance (0.4s) + stagger (nodeIndex * 0.08s) + 0.4s post-entrance buffer
+  const heartbeatDelay = 0.4 + (nodeData.nodeIndex ?? 0) * 0.08 + 0.4;
+
   return (
     <motion.div
       onClick={nodeData.onClick}
@@ -249,7 +288,8 @@ function CustomFlowNode({ data }: NodeProps) {
       animate={
         nodeData.isActive
           ? {
-              opacity: 1, y: 0, scale: 1,
+              opacity: 1, y: 0,
+              scale: [1, 1.012, 1],
               boxShadow: [
                 `0 0 0 1px rgba(${r},${g},${b},0.4), 0 4px 28px rgba(${r},${g},${b},0.3)`,
                 `0 0 0 1px rgba(${r},${g},${b},0.7), 0 4px 40px rgba(${r},${g},${b},0.5), 0 0 80px rgba(${r},${g},${b},0.1)`,
@@ -258,19 +298,23 @@ function CustomFlowNode({ data }: NodeProps) {
             }
           : {
               opacity: 1, y: 0, scale: 1,
-              boxShadow: `0 2px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`,
+              boxShadow: [
+                `0 0 0 1px rgba(${r},${g},${b},0.08), 0 2px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                `0 0 0 1px rgba(${r},${g},${b},0.18), 0 2px 16px rgba(${r},${g},${b},0.12), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                `0 0 0 1px rgba(${r},${g},${b},0.08), 0 2px 12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`,
+              ],
             }
       }
       transition={
         nodeData.isActive
           ? { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
               y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
-              scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
-              boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0 } }
+              scale: { duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay },
+              boxShadow: { duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
           : { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
               y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
               scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
-              boxShadow: { duration: 0.35 } }
+              boxShadow: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
       }
       className="cursor-pointer relative overflow-hidden"
       style={{
@@ -392,6 +436,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   const [selectedNode, setSelectedNode] = useState<FlowNodeType | null>(null);
   const [pulsingNodeId, setPulsingNodeId] = useState<string | null>(null);
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
+  const [burstingEdgeId, setBurstingEdgeId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [layoutDirection, setLayoutDirection] = useState<"LR" | "TB">("LR");
 
@@ -441,8 +486,11 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
       data.connections.map((c, i) => {
         const edgeId = `e-${i}`;
         const isPacketActive = edgeId === activeEdgeId;
+        const isBursting = edgeId === burstingEdgeId;
         const isActive = c.from === activeNodeId || c.to === activeNodeId;
         const sourceColor = getLayerColor(c.from);
+        // During autoplay, speed up idle packets slightly
+        const packetDurationMultiplier = isPlaying ? 0.8 : 1;
         return {
           id: edgeId,
           source: c.from,
@@ -459,11 +507,13 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           labelStyle: { fontSize: 11, fill: "#94a3b8" },
           data: {
             isActive: isPacketActive,
+            isBursting,
             color: sourceColor,
+            packetDurationMultiplier,
           },
         };
       }),
-    [data.connections, activeNodeId, activeEdgeId]
+    [data.connections, activeNodeId, activeEdgeId, burstingEdgeId, isPlaying]
   );
 
   // ── goStep ─────────────────────────────────────────────────────────
@@ -505,7 +555,9 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         if (matchingIdx !== -1) {
           const newEdgeId = `e-${matchingIdx}`;
           setActiveEdgeId(newEdgeId);
+          setBurstingEdgeId(newEdgeId);
           setTimeout(() => setActiveEdgeId(null), 450);
+          setTimeout(() => setBurstingEdgeId(null), 500);
         }
 
         // Delay pulse animation slightly after edge glow starts

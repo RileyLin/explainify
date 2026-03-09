@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabase, getServiceClient } from "@/lib/db";
 import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
-import { ExplainerViewer } from "./viewer";
-import { ExplainerFooter } from "./footer";
+import { ExplainerClient } from "./explainer-client";
 import { auth } from "@/lib/auth";
 import type { Metadata } from "next";
 
@@ -97,21 +96,13 @@ export default async function ExplainerPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {isDraft && (
-        <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2 text-center">
-          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-            📝 Draft — only visible to you. <a href="/create" className="underline hover:no-underline">Go back to create</a> to publish.
-          </span>
-        </div>
-      )}
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <ExplainerViewer data={parseResult.data as ExplainerData} />
-        <ExplainerFooter
-          url={pageUrl}
-          title={explainer.title}
-          slug={slug}
-        />
-      </div>
+      <ExplainerClient
+        data={parseResult.data as ExplainerData}
+        url={pageUrl}
+        title={explainer.title}
+        slug={slug}
+        isDraft={isDraft}
+      />
     </div>
   );
 }

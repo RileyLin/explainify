@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { ExplainerData } from "@/lib/schemas/base";
 import {
   FlowAnimator,
@@ -13,29 +14,39 @@ import {
 
 interface ExplainerViewerProps {
   data: ExplainerData;
+  diagramRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-export function ExplainerViewer({ data }: ExplainerViewerProps) {
+export function ExplainerViewer({ data, diagramRef }: ExplainerViewerProps) {
+  let content: React.ReactNode;
   switch (data.template) {
     case "flow-animator":
-      return <FlowAnimator data={data} />;
+      content = <FlowAnimator data={data} />;
+      break;
     case "code-walkthrough":
-      return <CodeWalkthrough data={data} />;
+      content = <CodeWalkthrough data={data} />;
+      break;
     case "concept-builder":
-      return <ConceptBuilder data={data} />;
+      content = <ConceptBuilder data={data} />;
+      break;
     case "compare-contrast":
-      return <CompareContrast data={data} />;
+      content = <CompareContrast data={data} />;
+      break;
     case "decision-tree":
-      return <DecisionTree data={data} />;
+      content = <DecisionTree data={data} />;
+      break;
     case "timeline":
-      return <TimelineRenderer data={data} />;
+      content = <TimelineRenderer data={data} />;
+      break;
     case "component-explorer":
-      return <ComponentExplorer data={data} />;
+      content = <ComponentExplorer data={data} />;
+      break;
     default:
-      return (
+      content = (
         <div className="text-center py-12 text-muted-foreground">
           Unknown template type
         </div>
       );
   }
+  return <div ref={diagramRef}>{content}</div>;
 }

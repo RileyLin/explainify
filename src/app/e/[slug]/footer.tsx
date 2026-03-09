@@ -7,16 +7,20 @@ interface ExplainerFooterProps {
   url: string;
   title: string;
   slug: string;
+  onDownloadPng?: () => void;
 }
 
-export function ExplainerFooter({ url, title, slug }: ExplainerFooterProps) {
-  const pngUrl = `/api/export/${slug}/png`;
-
+export function ExplainerFooter({ url, title, slug, onDownloadPng }: ExplainerFooterProps) {
   const handleDownloadPng = () => {
-    const a = document.createElement("a");
-    a.href = pngUrl;
-    a.download = `${slug}.png`;
-    a.click();
+    if (onDownloadPng) {
+      onDownloadPng();
+    } else {
+      // Fallback to server-side export (may not work on Vercel)
+      const a = document.createElement("a");
+      a.href = `/api/export/${slug}/png`;
+      a.download = `${slug}.png`;
+      a.click();
+    }
   };
 
   return (
@@ -27,7 +31,7 @@ export function ExplainerFooter({ url, title, slug }: ExplainerFooterProps) {
         <button
           onClick={handleDownloadPng}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground border border-border hover:border-foreground/20 bg-card transition-all"
-          title="Download as PNG (1200×630)"
+          title="Download as PNG"
         >
           <Download size={12} />
           Download PNG
