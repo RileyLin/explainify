@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Loader2,
   Sparkles,
@@ -11,6 +11,7 @@ import {
   Code2,
   AlertCircle,
   LayoutDashboard,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -72,6 +73,8 @@ export default function CreatePage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<ExplainerData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  const [usage, setUsage] = useState<{ count: number; limit: number; plan: string } | null>(null);
   const [accentColor, setAccentColor] = useState("#3b82f6");
 
   // Publishing state
@@ -82,6 +85,15 @@ export default function CreatePage() {
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "embed" | null>(null);
 
+  // Fetch usage for signed-in users
+  useEffect(() => {
+    if (!session?.user) return;
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then(setUsage)
+      .catch(() => null);
+  }, [session?.user]);
+
   const handleGenerate = useCallback(
     async (overrideTemplate?: TemplateChoice) => {
       const chosenTemplate = overrideTemplate ?? template;
@@ -91,6 +103,7 @@ export default function CreatePage() {
       setGenerating(true);
       setResult(null);
       setError(null);
+      setIsRateLimited(false);
       setPublishedUrl(null);
       setPublishedSlug(null);
       setSavedToDashboard(false);
@@ -104,11 +117,22 @@ export default function CreatePage() {
 
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}));
-          throw new Error(errBody.error || `Generation failed (${response.status})`);
+          if (errBody.code === "RATE_LIMITED") {
+            setIsRateLimited(true);
+            setError(errBody.error || "You've reached the free tier limit.");
+          } else {
+            throw new Error(errBody.error || `Generation failed (${response.status})`);
+          }
+          setGenerating(false);
+          return;
         }
 
         const { data } = await response.json();
         setResult(data);
+        // Refresh usage counter
+        if (session?.user) {
+          fetch("/api/usage").then((r) => r.json()).then(setUsage).catch(() => null);
+        }
       } catch (err) {
         console.error("Generation error:", err);
         setError(`AI generation failed — ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -190,6 +214,7 @@ export default function CreatePage() {
     setPublishedUrl(null);
     setPublishedSlug(null);
     setSavedToDashboard(false);
+    setIsRateLimited(false);
     setError(null);
   };
 
@@ -232,8 +257,40 @@ export default function CreatePage() {
           </div>
         </div>
 
-        {/* Error banner (generation / publish errors) */}
-        {error && !result && (
+        {/* Rate limit paywall panel */}
+        {isRateLimited && !result && (
+          <div className="mb-6 p-5 rounded-xl border border-indigo-500/30 bg-indigo-50 dark:bg-indigo-950/20">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0">
+                <Zap size={20} className="text-indigo-500" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-indigo-900 dark:text-indigo-200 mb-0.5">You&apos;ve used all 5 free explainers this month</p>
+                <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">
+                  Upgrade to Pro for unlimited explainers, no watermark, and private links — $15/mo.
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Link
+                    href="/pricing"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition-colors"
+                  >
+                    <Zap size={14} />
+                    Upgrade to Pro →
+                  </Link>
+                  <button
+                    onClick={() => { setIsRateLimited(false); setError(null); }}
+                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error banner (generic generation errors) */}
+        {error && !result && !isRateLimited && (
           <div className="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-50 dark:bg-red-950/20 flex items-start gap-3">
             <AlertCircle size={18} className="text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
             <div className="flex-1">
@@ -303,23 +360,47 @@ export default function CreatePage() {
               </div>
             </div>
 
-            <button
-              onClick={() => handleGenerate()}
-              disabled={!content.trim() || generating}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/25"
-            >
-              {generating ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Analyzing your content...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} />
-                  Generate Explainer
-                </>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => handleGenerate()}
+                disabled={!content.trim() || generating}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/25"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Analyzing your content...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={18} />
+                    Generate Explainer
+                  </>
+                )}
+              </button>
+              {/* Usage counter for free tier */}
+              {usage && usage.plan !== "pro" && (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-0.5">
+                    {Array.from({ length: usage.limit }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-2 h-2 rounded-full transition-colors"
+                        style={{ background: i < usage.count ? "#6366f1" : "rgba(99,102,241,0.2)" }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {usage.count}/{usage.limit} used
+                  </span>
+                  {usage.count >= usage.limit - 1 && (
+                    <Link href="/pricing" className="text-xs font-medium text-indigo-500 hover:underline flex items-center gap-1">
+                      <Zap size={11} /> Upgrade
+                    </Link>
+                  )}
+                </div>
               )}
-            </button>
+            </div>
           </div>
         )}
 

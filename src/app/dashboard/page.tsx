@@ -17,16 +17,24 @@ export default async function DashboardPage() {
   }
 
   const supabase = getServiceClient();
-  const { data: explainers, error } = await supabase
-    .from("explainers")
-    .select("*")
-    .eq("user_id", session.user.id)
-    .order("created_at", { ascending: false });
+  const [{ data: explainers }, { data: user }] = await Promise.all([
+    supabase
+      .from("explainers")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("users")
+      .select("plan")
+      .eq("id", session.user.id)
+      .single(),
+  ]);
 
   return (
     <DashboardClient
       explainers={(explainers as ExplainerRow[]) || []}
       userId={session.user.id}
+      plan={user?.plan ?? "free"}
     />
   );
 }

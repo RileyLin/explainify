@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Eye, Trash2, ExternalLink, Sparkles } from "lucide-react";
+import { Plus, Eye, Trash2, ExternalLink, Sparkles, Zap } from "lucide-react";
 import type { ExplainerRow } from "@/lib/db";
 
 const templateLabels: Record<string, string> = {
@@ -18,9 +18,10 @@ const templateLabels: Record<string, string> = {
 interface DashboardClientProps {
   explainers: ExplainerRow[];
   userId: string;
+  plan?: string;
 }
 
-export function DashboardClient({ explainers: initial, userId }: DashboardClientProps) {
+export function DashboardClient({ explainers: initial, userId, plan = "free" }: DashboardClientProps) {
   const [explainers, setExplainers] = useState(initial);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -61,13 +62,24 @@ export function DashboardClient({ explainers: initial, userId }: DashboardClient
               {explainers.length} explainer{explainers.length !== 1 ? "s" : ""} created
             </p>
           </div>
-          <Link
-            href="/create"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
-          >
-            <Plus size={16} />
-            New Explainer
-          </Link>
+          <div className="flex items-center gap-2">
+            {plan !== "pro" && (
+              <Link
+                href="/pricing"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-indigo-500/30 text-indigo-500 text-xs font-semibold hover:bg-indigo-500/10 transition-colors"
+              >
+                <Zap size={12} />
+                Upgrade to Pro
+              </Link>
+            )}
+            <Link
+              href="/create"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors"
+            >
+              <Plus size={16} />
+              New Explainer
+            </Link>
+          </div>
         </div>
 
         {explainers.length === 0 ? (

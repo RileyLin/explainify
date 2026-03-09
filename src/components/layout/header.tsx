@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Zap } from "lucide-react";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
@@ -11,14 +11,27 @@ export function Header() {
           <Sparkles size={20} className="text-blue-500" />
           <span className="font-bold text-lg">Explainify</span>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Link
             href="/create"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block mr-1"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted hidden sm:block"
           >
             Create
           </Link>
+          <Link
+            href="/pricing"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted hidden sm:block"
+          >
+            Pricing
+          </Link>
           <ThemeToggle />
+          <Link
+            href="/pricing"
+            className="hidden sm:inline-flex items-center gap-1.5 ml-1 px-3 py-1.5 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition-colors"
+          >
+            <Zap size={13} />
+            Upgrade
+          </Link>
           <SignInButton />
         </div>
       </div>
