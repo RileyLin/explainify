@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (checkoutSession.url) {
-      return NextResponse.redirect(checkoutSession.url);
+      return NextResponse.json({ url: checkoutSession.url });
     }
 
     return NextResponse.json(

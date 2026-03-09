@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Check, X, ArrowLeft, Sparkles, Zap } from "lucide-react";
+import { CheckoutButton } from "@/components/stripe/checkout-button";
 
 const FREE_FEATURES = [
   { text: "5 explainers per month", included: true },
@@ -113,14 +114,7 @@ export default function PricingPage() {
               ))}
             </ul>
 
-            <form action="/api/stripe/checkout" method="POST">
-              <button
-                type="submit"
-                className="w-full px-6 py-3 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/25"
-              >
-                Upgrade to Pro
-              </button>
-            </form>
+            <CheckoutButton />
           </div>
         </div>
 
