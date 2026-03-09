@@ -46,7 +46,7 @@ function computeDagreLayout(
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, ranksep: direction === "LR" ? 140 : 120, nodesep: direction === "LR" ? 60 : 80 });
+  g.setGraph({ rankdir: direction, ranksep: direction === "LR" ? 100 : 100, nodesep: direction === "LR" ? 40 : 60 });
 
   nodes.forEach((n) => {
     g.setNode(n.id, { width: 220, height: 80 });
