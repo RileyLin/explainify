@@ -24,6 +24,8 @@ import { ChevronLeft, ChevronRight, X, Play, Pause } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { FlowAnimatorData, FlowNode as FlowNodeType } from "@/lib/schemas/flow";
 import { useAnimationSpeed } from "@/components/editor/animation-speed";
+import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
+import { SettingsBar } from "@/components/editor/settings-bar";
 import dagre from "dagre";
 
 // ── Layer color helper ─────────────────────────────────────────────
@@ -48,14 +50,25 @@ function getLayerColor(id: string): string {
 function computeDagreLayout(
   nodes: FlowNodeType[],
   connections: FlowAnimatorData["connections"],
-  direction: "LR" | "TB" = "LR"
+  direction: "LR" | "TB" = "LR",
+  ranksep?: number,
+  nodesep?: number,
+  nodeWidth = 220,
+  nodeHeight = 80
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, ranksep: direction === "LR" ? 100 : 100, nodesep: direction === "LR" ? 40 : 60 });
+
+  const nodeCount = nodes.length;
+  const baseSep = direction === "LR" ? 100 : 100;
+  const baseNode = direction === "LR" ? 40 : 60;
+  const rs = ranksep ?? Math.max(50, baseSep - nodeCount * 5);
+  const ns = nodesep ?? Math.max(25, baseNode - nodeCount * 3);
+
+  g.setGraph({ rankdir: direction, ranksep: rs, nodesep: ns });
 
   nodes.forEach((n) => {
-    g.setNode(n.id, { width: 220, height: 80 });
+    g.setNode(n.id, { width: nodeWidth, height: nodeHeight });
   });
 
   connections.forEach((c) => {
@@ -64,12 +77,14 @@ function computeDagreLayout(
 
   dagre.layout(g);
 
+  const halfW = nodeWidth / 2;
+  const halfH = nodeHeight / 2;
   const positions = new Map<string, { x: number; y: number }>();
   nodes.forEach((n) => {
     const node = g.node(n.id);
     if (node) {
       // dagre positions are center-based; ReactFlow expects top-left
-      positions.set(n.id, { x: node.x - 110, y: node.y - 40 });
+      positions.set(n.id, { x: node.x - halfW, y: node.y - halfH });
     }
   });
   return positions;
@@ -150,11 +165,12 @@ function AnimatedPacketEdge({
   targetPosition,
   data,
 }: EdgeProps) {
-  const edgeData = data as { isActive?: boolean; color?: string; isBursting?: boolean; packetDurationMultiplier?: number; label?: string } | undefined;
+  const edgeData = data as { isActive?: boolean; color?: string; isBursting?: boolean; packetDurationMultiplier?: number; label?: string; showEdgeLabels?: boolean } | undefined;
   const isActive = edgeData?.isActive ?? false;
   const isBursting = edgeData?.isBursting ?? false;
   const color = edgeData?.color ?? "#3b82f6";
   const label = edgeData?.label ?? "";
+  const showEdgeLabels = edgeData?.showEdgeLabels ?? true;
   const packetDurationMultiplier = edgeData?.packetDurationMultiplier ?? 1;
   const hex = color.replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16);
@@ -210,7 +226,7 @@ function AnimatedPacketEdge({
       />
 
       {/* Edge label at midpoint */}
-      {label && label.trim() && (
+      {showEdgeLabels && label && label.trim() && (
         <g>
           {/* Dark pill background */}
           <rect
