@@ -64,6 +64,13 @@ function TimelineInner({ data }: TimelineProps) {
         </div>
       </div>
 
+      {/* Settings bar */}
+      <div className="flex items-center justify-end">
+        <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5 shadow-sm">
+          <SettingsBar features={{ density: true }} />
+        </div>
+      </div>
+
       {/* Progress indicator */}
       <div className="flex items-center gap-1.5">
         {data.events.map((event, idx) => (
@@ -110,9 +117,7 @@ function TimelineInner({ data }: TimelineProps) {
 
               {/* Content */}
               <div
-                className={`flex-1 pb-6 rounded-xl transition-colors cursor-pointer ${
-                  expandedId === event.id ? "" : ""
-                }`}
+                className={`flex-1 ${isCompact ? "pb-2" : isSpread ? "pb-10" : "pb-6"} rounded-xl transition-colors cursor-pointer`}
                 onClick={() => toggleExpand(event.id)}
               >
                 {/* Date/Period badge */}
@@ -125,7 +130,7 @@ function TimelineInner({ data }: TimelineProps) {
 
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold text-foreground">{event.title}</h3>
-                  {event.details && (
+                  {event.details && !isCompact && (
                     <motion.div
                       animate={{ rotate: expandedId === event.id ? 180 : 0 }}
                       className="text-muted-foreground shrink-0 mt-1"
@@ -135,9 +140,12 @@ function TimelineInner({ data }: TimelineProps) {
                   )}
                 </div>
 
-                <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                {/* Description hidden in compact mode */}
+                {!isCompact && (
+                  <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                )}
 
-                {/* Tags */}
+                {/* Tags — always shown */}
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {event.tags.map((tag) => (
@@ -151,22 +159,24 @@ function TimelineInner({ data }: TimelineProps) {
                   </div>
                 )}
 
-                {/* Expanded details */}
-                <AnimatePresence>
-                  {expandedId === event.id && event.details && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-foreground/80 leading-relaxed">
-                        {event.details}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {/* Expanded details — only in non-compact mode */}
+                {!isCompact && (
+                  <AnimatePresence>
+                    {expandedId === event.id && event.details && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-foreground/80 leading-relaxed">
+                          {event.details}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                )}
               </div>
             </motion.div>
           ))}

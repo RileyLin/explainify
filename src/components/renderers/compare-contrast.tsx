@@ -4,14 +4,28 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
 import type { CompareContrastData } from "@/lib/schemas/compare";
+import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
+import { SettingsBar } from "@/components/editor/settings-bar";
 
 interface CompareContrastProps {
   data: CompareContrastData;
 }
 
 export function CompareContrast({ data }: CompareContrastProps) {
+  return (
+    <DiagramSettingsProvider initialDirection="LR">
+      <CompareContrastInner data={data} />
+    </DiagramSettingsProvider>
+  );
+}
+
+function CompareContrastInner({ data }: CompareContrastProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "dimensions">("overview");
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const { settings } = useDiagramSettings();
+
+  // LR = side-by-side (grid), TB = stacked (single column)
+  const gridCols = settings.direction === "TB" ? "1fr" : `repeat(${Math.min(data.items.length, 2)}, 1fr)`;
 
   const colors = [
     { bg: "bg-blue-500/10", border: "border-blue-500/30", text: "text-blue-400", accent: "bg-blue-500" },
@@ -29,6 +43,13 @@ export function CompareContrast({ data }: CompareContrastProps) {
         <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
           {data.meta.difficulty}
         </span>
+      </div>
+
+      {/* Settings bar */}
+      <div className="flex items-center justify-end">
+        <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5 shadow-sm">
+          <SettingsBar features={{ direction: true }} />
+        </div>
       </div>
 
       {/* Tab switcher */}
@@ -64,7 +85,7 @@ export function CompareContrast({ data }: CompareContrastProps) {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
             className="grid gap-4"
-            style={{ gridTemplateColumns: `repeat(${Math.min(data.items.length, 2)}, 1fr)` }}
+            style={{ gridTemplateColumns: gridCols }}
           >
             {data.items.map((item, idx) => {
               const color = colors[idx % colors.length];
