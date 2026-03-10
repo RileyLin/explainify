@@ -30,10 +30,10 @@ export function ExplainerFooter({ url, title, slug, onDownloadPng }: ExplainerFo
         <SocialShareButtons url={url} title={title} slug={slug} />
         <button
           onClick={handleDownloadPng}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground border border-border hover:border-foreground/20 bg-card transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground border border-border hover:border-foreground/20 bg-card transition-all active:scale-95 touch-manipulation"
           title="Download as PNG"
         >
-          <Download size={12} />
+          <Download size={16} />
           Download PNG
         </button>
       </div>

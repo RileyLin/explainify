@@ -677,7 +677,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
 
   return (
     <div className="flex flex-col gap-0">
-      <div className="relative w-full h-[420px] bg-background rounded-xl border border-border overflow-hidden">
+      <div className="relative w-full h-[500px] md:h-[520px] bg-background rounded-xl border border-border overflow-hidden">
         {/* Step controls + settings bar */}
         {!hideControls && (
           <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg flex-wrap">
@@ -719,7 +719,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: fitPadding, minZoom: 0.6, maxZoom: 1.2 }}
+          fitViewOptions={{ padding: fitPadding, minZoom: 0.5, maxZoom: 1.5 }}
           proOptions={{ hideAttribution: true }}
           minZoom={0.3}
           maxZoom={2}

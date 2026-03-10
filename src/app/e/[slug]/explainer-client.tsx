@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useState } from "react";
 import { toPng } from "html-to-image";
 import type { ExplainerData } from "@/lib/schemas/base";
 import { ExplainerViewer } from "./viewer";
@@ -16,9 +16,11 @@ interface ExplainerClientProps {
 
 export function ExplainerClient({ data, url, title, slug, isDraft }: ExplainerClientProps) {
   const diagramRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleDownloadPng = useCallback(async () => {
-    if (!diagramRef.current) return;
+    if (!diagramRef.current || isExporting) return;
+    setIsExporting(true);
     try {
       const dataUrl = await toPng(diagramRef.current, {
         cacheBust: true,
@@ -31,8 +33,10 @@ export function ExplainerClient({ data, url, title, slug, isDraft }: ExplainerCl
       a.click();
     } catch (err) {
       console.error("PNG export failed:", err);
+    } finally {
+      setIsExporting(false);
     }
-  }, [slug]);
+  }, [slug, isExporting]);
 
   return (
     <>
