@@ -4,6 +4,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, ChevronUp, Clock, Tag } from "lucide-react";
 import type { TimelineData, TimelineEvent } from "@/lib/schemas/timeline";
+import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
+import { SettingsBar } from "@/components/editor/settings-bar";
 
 interface TimelineProps {
   data: TimelineData;
@@ -27,8 +29,20 @@ function getTagColor(tag: string): string {
 }
 
 export function Timeline({ data }: TimelineProps) {
+  return (
+    <DiagramSettingsProvider>
+      <TimelineInner data={data} />
+    </DiagramSettingsProvider>
+  );
+}
+
+function TimelineInner({ data }: TimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(data.events.length);
+  const { settings } = useDiagramSettings();
+
+  const isCompact = settings.density === "compact";
+  const isSpread = settings.density === "spread";
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));

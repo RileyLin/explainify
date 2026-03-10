@@ -51,24 +51,29 @@ function computeDagreLayout(
   nodes: FlowNodeType[],
   connections: FlowAnimatorData["connections"],
   direction: "LR" | "TB" = "LR",
-  ranksep?: number,
-  nodesep?: number,
-  nodeWidth = 220,
-  nodeHeight = 80
+  density: "compact" | "normal" | "spread" = "normal"
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
 
   const nodeCount = nodes.length;
-  const baseSep = direction === "LR" ? 100 : 100;
-  const baseNode = direction === "LR" ? 40 : 60;
-  const rs = ranksep ?? Math.max(50, baseSep - nodeCount * 5);
-  const ns = nodesep ?? Math.max(25, baseNode - nodeCount * 3);
+  // More nodes = tighter but never overlapping (Phase 2: adaptive spacing)
+  const ranksepBase = direction === "LR"
+    ? Math.max(60, 140 - nodeCount * 8)
+    : Math.max(50, 120 - nodeCount * 8);
+  const nodesepBase = direction === "LR"
+    ? Math.max(30, 60 - nodeCount * 3)
+    : Math.max(40, 80 - nodeCount * 4);
 
-  g.setGraph({ rankdir: direction, ranksep: rs, nodesep: ns });
+  // Apply density multiplier (Phase 1: settings bar)
+  const densityMultiplier = density === "compact" ? 0.6 : density === "spread" ? 1.5 : 1.0;
+  const ranksep = Math.round(ranksepBase * densityMultiplier);
+  const nodesep = Math.round(nodesepBase * densityMultiplier);
+
+  g.setGraph({ rankdir: direction, ranksep, nodesep });
 
   nodes.forEach((n) => {
-    g.setNode(n.id, { width: nodeWidth, height: nodeHeight });
+    g.setNode(n.id, { width: 220, height: 80 });
   });
 
   connections.forEach((c) => {
@@ -77,14 +82,11 @@ function computeDagreLayout(
 
   dagre.layout(g);
 
-  const halfW = nodeWidth / 2;
-  const halfH = nodeHeight / 2;
   const positions = new Map<string, { x: number; y: number }>();
   nodes.forEach((n) => {
     const node = g.node(n.id);
     if (node) {
-      // dagre positions are center-based; ReactFlow expects top-left
-      positions.set(n.id, { x: node.x - halfW, y: node.y - halfH });
+      positions.set(n.id, { x: node.x - 110, y: node.y - 40 });
     }
   });
   return positions;
@@ -111,7 +113,6 @@ function getIcon(name?: string, fallbackId?: string): React.ComponentType<{ clas
       .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
       .join("") as keyof typeof LucideIcons;
     const Icon = LucideIcons[pascalName];
-    // forwardRef components are objects with $$typeof, not plain functions
     if (Icon && (typeof Icon === "function" || (typeof Icon === "object" && Icon !== null))) {
       return Icon as React.ComponentType<{ className?: string; size?: number; style?: React.CSSProperties }>;
     }
@@ -121,7 +122,6 @@ function getIcon(name?: string, fallbackId?: string): React.ComponentType<{ clas
   if (name) {
     const found = tryName(name);
     if (found) return found;
-    // Try with common suffixes (e.g. "key" → "KeyRound", "server" → "Server")
     const aliases: Record<string, string> = {
       key: "KeyRound", lock: "LockKeyhole", shield: "ShieldCheck",
       server: "Server", database: "Database", monitor: "Monitor",
@@ -138,7 +138,6 @@ function getIcon(name?: string, fallbackId?: string): React.ComponentType<{ clas
     }
   }
 
-  // Layer-based fallback
   if (fallbackId) {
     const fallback = tryName(getLayerFallbackIcon(fallbackId));
     if (fallback) return fallback;
@@ -147,7 +146,7 @@ function getIcon(name?: string, fallbackId?: string): React.ComponentType<{ clas
   return tryName("Box");
 }
 
-// ── Stable icon wrapper — uses React.createElement to avoid lint rule ──
+// ── Stable icon wrapper ────────────────────────────────────────────
 function NodeIcon({ name, nodeId, className, size, style }: { name?: string; nodeId?: string; className?: string; size?: number; style?: React.CSSProperties }) {
   const Icon = getIcon(name, nodeId);
   if (!Icon) return null;
@@ -178,7 +177,6 @@ function AnimatedPacketEdge({
   const b = parseInt(hex.slice(4, 6), 16);
   const markerId = `arrow-${hex}-${id}`;
 
-  // Packet durations: idle 1.4s, active 0.9s, burst 0.3s (one-shot)
   const idleDur = `${(1.4 * packetDurationMultiplier).toFixed(2)}s`;
   const activeDur = `${(0.9 * packetDurationMultiplier).toFixed(2)}s`;
   const burstDur = "0.3s";
@@ -189,17 +187,14 @@ function AnimatedPacketEdge({
     borderRadius: 12,
   });
 
-  // Midpoint for label positioning
   const midX = (sourceX + targetX) / 2;
   const midY = (sourceY + targetY) / 2;
 
-  // Stagger offsets for 3 continuous packets
   const staggerOffsets = ["0s", "0.4s", "0.8s"];
 
   return (
     <>
       <defs>
-        {/* Larger, more visible arrowhead */}
         <marker id={markerId} markerWidth="9" markerHeight="6" refX="9" refY="3" orient="auto">
           <polygon
             points="0 0, 9 3, 0 6"
@@ -209,7 +204,6 @@ function AnimatedPacketEdge({
         </marker>
       </defs>
 
-      {/* Base edge path */}
       <path
         id={`${id}-path`}
         d={edgePath}
@@ -225,10 +219,9 @@ function AnimatedPacketEdge({
         }
       />
 
-      {/* Edge label at midpoint */}
+      {/* Edge label at midpoint — only when showEdgeLabels is true */}
       {showEdgeLabels && label && label.trim() && (
         <g>
-          {/* Dark pill background */}
           <rect
             x={midX - label.length * 3.2}
             y={midY - 9}
@@ -254,7 +247,6 @@ function AnimatedPacketEdge({
         </g>
       )}
 
-      {/* 3 continuous staggered packets — always visible on every edge */}
       {staggerOffsets.map((beginOffset, idx) => (
         <circle
           key={idx}
@@ -279,7 +271,6 @@ function AnimatedPacketEdge({
         </circle>
       ))}
 
-      {/* 4th burst packet — fires once on burst trigger */}
       {(isActive || isBursting) && (
         <circle
           r="6"
@@ -322,27 +313,34 @@ function getLayerBadge(id: string): string {
   return "SERVICE";
 }
 
-// ── Custom Node with glassmorphism + per-layer identity ────────────
+// ── Custom Node ────────────────────────────────────────────────────
 function CustomFlowNode({ data }: NodeProps) {
   const nodeData = data as FlowNodeType & {
     isActive: boolean;
     isPulsing: boolean;
     accentColor: string;
     nodeIndex: number;
+    showDescriptions: boolean;
+    nodeStyle: "card" | "minimal";
     onClick: () => void;
   };
   const accentColor = nodeData.accentColor ?? "#3b82f6";
   const id = useId();
   const badge = getLayerBadge(nodeData.id ?? "");
+  const showDescriptions = nodeData.showDescriptions ?? true;
+  const nodeStyle = nodeData.nodeStyle ?? "card";
+  const isMinimal = nodeStyle === "minimal";
 
-  // hex → r,g,b for rgba usage
   const hex = accentColor.replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
 
-  // Heartbeat delay: entrance (0.4s) + stagger (nodeIndex * 0.08s) + 0.4s post-entrance buffer
   const heartbeatDelay = 0.4 + (nodeData.nodeIndex ?? 0) * 0.08 + 0.4;
+
+  // Minimal style: 120x48, no description
+  const nodeWidth = isMinimal ? 120 : 220;
+  const nodeHeight = isMinimal ? 48 : (showDescriptions ? 80 : 56);
 
   return (
     <motion.div
@@ -381,55 +379,57 @@ function CustomFlowNode({ data }: NodeProps) {
       }
       className="cursor-pointer relative overflow-hidden"
       style={{
-        width: 220,
-        minHeight: 80,
+        width: nodeWidth,
+        minHeight: nodeHeight,
         borderRadius: 14,
-        padding: "14px 16px 14px 19px",
+        padding: isMinimal ? "8px 12px" : "14px 16px 14px 19px",
         background: "rgba(255,255,255,0.04)",
         border: `1px solid rgba(${r},${g},${b},${nodeData.isActive ? 0.4 : 0.15})`,
         borderLeft: `3px solid ${accentColor}`,
         backdropFilter: "blur(8px)",
       }}
     >
-      {/* Top gradient fade */}
-      <div
-        className="absolute top-0 left-0 right-0 pointer-events-none"
-        style={{
-          height: "45%",
-          borderRadius: "14px 14px 0 0",
-          background: `linear-gradient(135deg, rgba(${r},${g},${b},0.08) 0%, transparent 65%)`,
-        }}
-      />
+      {!isMinimal && (
+        <div
+          className="absolute top-0 left-0 right-0 pointer-events-none"
+          style={{
+            height: "45%",
+            borderRadius: "14px 14px 0 0",
+            background: `linear-gradient(135deg, rgba(${r},${g},${b},0.08) 0%, transparent 65%)`,
+          }}
+        />
+      )}
 
-      {/* Layer badge */}
-      <div
-        className="absolute top-2.5 right-2.5 text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-full"
-        style={{
-          background: `rgba(${r},${g},${b},0.12)`,
-          color: accentColor,
-          letterSpacing: "0.08em",
-        }}
-      >
-        {badge}
-      </div>
+      {!isMinimal && (
+        <div
+          className="absolute top-2.5 right-2.5 text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-full"
+          style={{
+            background: `rgba(${r},${g},${b},0.12)`,
+            color: accentColor,
+            letterSpacing: "0.08em",
+          }}
+        >
+          {badge}
+        </div>
+      )}
 
-      {/* Hidden handles */}
       <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 4, height: 4 }} />
 
-      {/* Content */}
-      <div className="relative z-10">
-        {/* Icon chip */}
+      <div className={`relative z-10 ${isMinimal ? "flex items-center gap-2" : ""}`}>
         <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center mb-2"
+          className={`${isMinimal ? "w-5 h-5 shrink-0" : "w-7 h-7 mb-2"} rounded-lg flex items-center justify-center`}
           style={{ background: `rgba(${r},${g},${b},0.12)` }}
         >
-          <NodeIcon name={nodeData.icon} nodeId={nodeData.id} size={14} style={{ color: accentColor }} />
+          <NodeIcon name={nodeData.icon} nodeId={nodeData.id} size={isMinimal ? 12 : 14} style={{ color: accentColor }} />
         </div>
-        <p className="font-semibold text-sm text-foreground leading-tight mb-1">{nodeData.label}</p>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">{nodeData.description}</p>
+        <p className={`font-semibold ${isMinimal ? "text-xs" : "text-sm"} text-foreground leading-tight ${isMinimal ? "" : "mb-1"}`}>
+          {nodeData.label}
+        </p>
+        {!isMinimal && showDescriptions && (
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{nodeData.description}</p>
+        )}
       </div>
 
-      {/* Entrance pulse ring on isPulsing */}
       {nodeData.isPulsing && (
         <motion.div
           initial={{ opacity: 0.7, scale: 0.95 }}
@@ -494,6 +494,7 @@ const SPEED_INTERVALS: Record<string, number> = {
 function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideControls?: boolean }) {
   const { setCenter } = useReactFlow();
   const { speed } = useAnimationSpeed();
+  const { settings } = useDiagramSettings();
 
   const [activeStep, setActiveStep] = useState(0);
   const [selectedNode, setSelectedNode] = useState<FlowNodeType | null>(null);
@@ -501,7 +502,6 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
   const [burstingEdgeId, setBurstingEdgeId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(autoPlay);
-  const [layoutDirection, setLayoutDirection] = useState<"LR" | "TB">("LR");
 
   const prevStepRef = useRef(0);
 
@@ -511,16 +511,18 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   );
   const activeNodeId = stepOrder[activeStep] ?? null;
 
-  // ── Dagre layout (memoized per data + direction) ──────────────────
+  // ── Dagre layout (memoized per data + settings) ────────────────
   const dagrePositions = useMemo(
-    () => computeDagreLayout(data.nodes, data.connections, layoutDirection),
-    [data.nodes, data.connections, layoutDirection]
+    () => computeDagreLayout(data.nodes, data.connections, settings.direction, settings.density),
+    [data.nodes, data.connections, settings.direction, settings.density]
   );
 
-  // ── Build React Flow nodes ─────────────────────────────────────────
+  // ── Adaptive fitPadding (Phase 2) ──────────────────────────────
+  const fitPadding = data.nodes.length > 6 ? 0.08 : 0.15;
+
+  // ── Build React Flow nodes ────────────────────────────────────────
   const rfNodes: Node[] = useMemo(
     () => {
-      // Sort by dagre x-position to assign stagger index left→right
       const sorted = [...data.nodes].sort((a, b) => {
         const ax = dagrePositions.get(a.id)?.x ?? 0;
         const bx = dagrePositions.get(b.id)?.x ?? 0;
@@ -536,14 +538,16 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           isPulsing: n.id === pulsingNodeId,
           accentColor: getLayerColor(n.id),
           nodeIndex: sorted.findIndex((s) => s.id === n.id),
+          showDescriptions: settings.showDescriptions,
+          nodeStyle: settings.nodeStyle,
           onClick: () => setSelectedNode(n),
         },
       }));
     },
-    [data.nodes, activeNodeId, pulsingNodeId, dagrePositions]
+    [data.nodes, activeNodeId, pulsingNodeId, dagrePositions, settings.showDescriptions, settings.nodeStyle]
   );
 
-  // ── Build edges with traveling packet ─────────────────────────────
+  // ── Build edges ───────────────────────────────────────────────────
   const rfEdges: Edge[] = useMemo(
     () =>
       data.connections.map((c, i) => {
@@ -552,7 +556,6 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         const isBursting = edgeId === burstingEdgeId;
         const isActive = c.from === activeNodeId || c.to === activeNodeId;
         const sourceColor = getLayerColor(c.from);
-        // During autoplay, speed up idle packets slightly
         const packetDurationMultiplier = isPlaying ? 0.8 : 1;
         return {
           id: edgeId,
@@ -573,16 +576,17 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
             isBursting,
             color: sourceColor,
             packetDurationMultiplier,
+            label: c.label,
+            showEdgeLabels: settings.showEdgeLabels,
           },
         };
       }),
-    [data.connections, activeNodeId, activeEdgeId, burstingEdgeId, isPlaying]
+    [data.connections, activeNodeId, activeEdgeId, burstingEdgeId, isPlaying, settings.showEdgeLabels]
   );
 
-  // ── goStep ─────────────────────────────────────────────────────────
+  // ── goStep ──────────────────────────────────────────────────────
   const goStep = useCallback(
     (dir: 1 | -1, fromAutoplay = false) => {
-      // Pause autoplay if manually triggered
       if (!fromAutoplay) {
         setIsPlaying(false);
       }
@@ -590,10 +594,8 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
       setActiveStep((prev) => {
         const next = Math.max(0, Math.min(stepOrder.length - 1, prev + dir));
         if (next === prev) {
-          // Reached the boundary — loop back to start if autoPlay mode, else stop
           if (fromAutoplay && dir === 1) {
             if (autoPlay) {
-              // Loop: reset to step 0 after a brief pause
               setTimeout(() => setActiveStep(0), 800);
             } else {
               setIsPlaying(false);
@@ -605,7 +607,6 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         const prevNodeId = stepOrder[prev];
         const nextNodeId = stepOrder[next];
 
-        // Find edge between prev→next (or next→prev for backwards)
         const forwardKey = `${prevNodeId}->${nextNodeId}`;
         const reverseKey = `${nextNodeId}->${prevNodeId}`;
 
@@ -623,13 +624,11 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           setTimeout(() => setBurstingEdgeId(null), 500);
         }
 
-        // Delay pulse animation slightly after edge glow starts
         setTimeout(() => {
           setPulsingNodeId(nextNodeId);
           setTimeout(() => setPulsingNodeId(null), 600);
         }, 150);
 
-        // Center on the active node
         const node = data.nodes.find((n) => n.id === nextNodeId);
         if (node) {
           const pos = node.position ?? dagrePositions.get(nextNodeId) ?? { x: 250, y: 100 };
@@ -643,7 +642,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
     [stepOrder, data.nodes, data.connections, dagrePositions, setCenter]
   );
 
-  // ── Autoplay ───────────────────────────────────────────────────────
+  // ── Autoplay ────────────────────────────────────────────────────
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -655,7 +654,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
     return () => clearInterval(id);
   }, [isPlaying, speed, goStep]);
 
-  // ── Transition callout data ────────────────────────────────────────
+  // ── Transition callout data ─────────────────────────────────────
   const transitionCallout = useMemo(() => {
     if (activeStep === 0) return null;
     const fromId = stepOrder[activeStep - 1];
@@ -679,64 +678,40 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   return (
     <div className="flex flex-col gap-0">
       <div className="relative w-full h-[420px] bg-background rounded-xl border border-border overflow-hidden">
-        {/* Step controls */}
-        {!hideControls && <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg">
-          <button
-            onClick={() => goStep(-1)}
-            disabled={activeStep === 0}
-            className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <span className="text-xs font-medium text-muted-foreground min-w-[60px] text-center">
-            {activeStep + 1} / {stepOrder.length}
-          </span>
-          <button
-            onClick={() => goStep(1)}
-            disabled={activeStep === stepOrder.length - 1}
-            className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
-          >
-            <ChevronRight size={18} />
-          </button>
-          {/* Play / Pause */}
-          <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={() => setIsPlaying((p) => !p)}
-            disabled={activeStep === stepOrder.length - 1 && !isPlaying}
-            className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
-            aria-label={isPlaying ? "Pause autoplay" : "Start autoplay"}
-          >
-            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-          </button>
-          {/* Layout toggle */}
-          <div className="w-px h-4 bg-border mx-1" />
-          <div className="flex items-center gap-1">
+        {/* Step controls + settings bar */}
+        {!hideControls && (
+          <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-card/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 shadow-lg flex-wrap">
             <button
-              onClick={() => setLayoutDirection("LR")}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                layoutDirection === "LR"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              title="Left-to-right layout"
-              aria-pressed={layoutDirection === "LR"}
+              onClick={() => goStep(-1)}
+              disabled={activeStep === 0}
+              className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
             >
-              ↔ LR
+              <ChevronLeft size={18} />
             </button>
+            <span className="text-xs font-medium text-muted-foreground min-w-[60px] text-center">
+              {activeStep + 1} / {stepOrder.length}
+            </span>
             <button
-              onClick={() => setLayoutDirection("TB")}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                layoutDirection === "TB"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              title="Top-to-bottom layout"
-              aria-pressed={layoutDirection === "TB"}
+              onClick={() => goStep(1)}
+              disabled={activeStep === stepOrder.length - 1}
+              className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
             >
-              ↕ TB
+              <ChevronRight size={18} />
             </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              onClick={() => setIsPlaying((p) => !p)}
+              disabled={activeStep === stepOrder.length - 1 && !isPlaying}
+              className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
+              aria-label={isPlaying ? "Pause autoplay" : "Start autoplay"}
+            >
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+            <div className="w-px h-4 bg-border mx-1" />
+            {/* Settings bar replaces old LR/TB toggle */}
+            <SettingsBar features={{ direction: true, density: true, edgeLabels: true, descriptions: true, nodeStyle: true }} />
           </div>
-        </div>}
+        )}
 
         <ReactFlow
           nodes={rfNodes}
@@ -744,7 +719,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.15, minZoom: 0.6, maxZoom: 1.2 }}
+          fitViewOptions={{ padding: fitPadding, minZoom: 0.6, maxZoom: 1.2 }}
           proOptions={{ hideAttribution: true }}
           minZoom={0.3}
           maxZoom={2}
@@ -778,7 +753,6 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           />
         </ReactFlow>
 
-        {/* Vignette overlay — fades the canvas edges */}
         <div
           className="pointer-events-none absolute inset-0 rounded-xl"
           style={{ background: "radial-gradient(ellipse 88% 88% at 50% 50%, transparent 42%, var(--background) 100%)" }}
@@ -789,39 +763,49 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         </AnimatePresence>
       </div>
 
-      {/* Transition Callout Card */}
-      {!hideControls && <AnimatePresence mode="wait">
-        {transitionCallout && (
-          <motion.div
-            key={activeStep}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="mt-2 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-md"
-          >
-            <div className="flex items-start gap-3">
-              {transitionCallout.edgeLabel && (
-                <span
-                  className="mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold text-white"
-                  style={{ backgroundColor: getLayerColor(stepOrder[activeStep - 1] ?? "") }}
-                >
-                  {transitionCallout.edgeLabel}
-                </span>
-              )}
-              <div className="flex flex-col gap-0.5">
-                {transitionCallout.destLabel && (
-                  <p className="text-xs font-semibold text-foreground">{transitionCallout.destLabel}</p>
+      {!hideControls && (
+        <AnimatePresence mode="wait">
+          {transitionCallout && (
+            <motion.div
+              key={activeStep}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="mt-2 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-md"
+            >
+              <div className="flex items-start gap-3">
+                {transitionCallout.edgeLabel && (
+                  <span
+                    className="mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold text-white"
+                    style={{ backgroundColor: getLayerColor(stepOrder[activeStep - 1] ?? "") }}
+                  >
+                    {transitionCallout.edgeLabel}
+                  </span>
                 )}
-                {transitionCallout.details && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">{transitionCallout.details}</p>
-                )}
+                <div className="flex flex-col gap-0.5">
+                  {transitionCallout.destLabel && (
+                    <p className="text-xs font-semibold text-foreground">{transitionCallout.destLabel}</p>
+                  )}
+                  {transitionCallout.details && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">{transitionCallout.details}</p>
+                  )}
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
+  );
+}
+
+// ── FlowAnimatorWithSettings wraps inner with context ─────────────
+function FlowAnimatorWithSettings({ data, autoPlay = false, hideControls = false }: { data: FlowAnimatorData; autoPlay?: boolean; hideControls?: boolean }) {
+  return (
+    <DiagramSettingsProvider initialDirection="LR">
+      <FlowAnimatorInner data={data} autoPlay={autoPlay} hideControls={hideControls} />
+    </DiagramSettingsProvider>
   );
 }
 
@@ -836,7 +820,7 @@ export function FlowAnimator({ data, autoPlay = false, hideHeader = false, hideC
         </div>
       )}
       <ReactFlowProvider>
-        <FlowAnimatorInner data={data} autoPlay={autoPlay} hideControls={hideControls} />
+        <FlowAnimatorWithSettings data={data} autoPlay={autoPlay} hideControls={hideControls} />
       </ReactFlowProvider>
     </div>
   );

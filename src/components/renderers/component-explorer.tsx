@@ -15,6 +15,8 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { X } from "lucide-react";
 import type { ComponentExplorerData, ExplorerComponent } from "@/lib/schemas/explorer";
+import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
+import { SettingsBar } from "@/components/editor/settings-bar";
 
 import "@xyflow/react/dist/style.css";
 
@@ -98,16 +100,27 @@ const EDGE_TYPE_STYLES: Record<string, { stroke: string; strokeDasharray?: strin
 };
 
 // ── Layout helpers ──────────────────────────────────────────────
-function autoLayout(components: ExplorerComponent[]): Map<string, { x: number; y: number }> {
+function autoLayout(
+  components: ExplorerComponent[],
+  direction: "LR" | "TB" = "LR",
+  density: "compact" | "normal" | "spread" = "normal"
+): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
-  const cols = Math.ceil(Math.sqrt(components.length));
+  const densityMultiplier = density === "compact" ? 0.65 : density === "spread" ? 1.5 : 1.0;
+  const colSpacing = Math.round(260 * densityMultiplier);
+  const rowSpacing = Math.round(160 * densityMultiplier);
+
+  const cols = direction === "LR"
+    ? Math.ceil(Math.sqrt(components.length))
+    : Math.max(1, Math.ceil(components.length / Math.ceil(Math.sqrt(components.length))));
+
   components.forEach((comp, idx) => {
     if (comp.position) {
       positions.set(comp.id, comp.position);
     } else {
       const col = idx % cols;
       const row = Math.floor(idx / cols);
-      positions.set(comp.id, { x: col * 260, y: row * 160 });
+      positions.set(comp.id, { x: col * colSpacing, y: row * rowSpacing });
     }
   });
   return positions;
@@ -121,6 +134,7 @@ interface ComponentExplorerProps {
 function ComponentExplorerInner({ data }: ComponentExplorerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { settings } = useDiagramSettings();
 
   // Connected node ids for highlighting
   const connectedIds = useMemo(() => {
@@ -134,7 +148,10 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
     return ids;
   }, [hoveredId, selectedId, data.connections]);
 
-  const positions = useMemo(() => autoLayout(data.components), [data.components]);
+  const positions = useMemo(
+    () => autoLayout(data.components, settings.direction, settings.density),
+    [data.components, settings.direction, settings.density]
+  );
 
   const nodes: Node[] = useMemo(
     () =>
@@ -148,7 +165,7 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
           position: pos,
           data: {
             label: comp.name,
-            description: comp.description,
+            description: settings.showDescriptions ? comp.description : "",
             color,
             categoryName: cat?.name,
             selected: selectedId === comp.id,
@@ -156,7 +173,7 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
           },
         };
       }),
-    [data.components, data.categories, positions, selectedId, connectedIds],
+    [data.components, data.categories, positions, selectedId, connectedIds, settings.showDescriptions],
   );
 
   const edges: Edge[] = useMemo(
@@ -172,7 +189,7 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
           id: `e-${idx}`,
           source: conn.from,
           target: conn.to,
-          label: conn.label,
+          label: settings.showEdgeLabels ? conn.label : undefined,
           animated: isHighlighted,
           style: {
             ...style,
@@ -181,7 +198,7 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
           },
         };
       }),
-    [data.connections, hoveredId, selectedId],
+    [data.connections, hoveredId, selectedId, settings.showEdgeLabels],
   );
 
   const selectedComponent = data.components.find((c) => c.id === selectedId);
@@ -226,7 +243,11 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
       {/* Canvas + Detail panel */}
       <div className="relative flex gap-4">
         {/* React Flow canvas */}
-        <div className="flex-1 h-[500px] rounded-xl border border-border overflow-hidden bg-card">
+        <div className="flex-1 h-[500px] rounded-xl border border-border overflow-hidden bg-card relative">
+          {/* Settings bar overlay — top right inside canvas */}
+          <div className="absolute top-3 right-3 z-10 bg-card/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5 shadow-lg">
+            <SettingsBar features={{ direction: true, density: true, edgeLabels: true, descriptions: true }} />
+          </div>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -331,8 +352,10 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
 
 export function ComponentExplorer({ data }: ComponentExplorerProps) {
   return (
-    <ReactFlowProvider>
-      <ComponentExplorerInner data={data} />
-    </ReactFlowProvider>
+    <DiagramSettingsProvider initialDirection="LR">
+      <ReactFlowProvider>
+        <ComponentExplorerInner data={data} />
+      </ReactFlowProvider>
+    </DiagramSettingsProvider>
   );
 }

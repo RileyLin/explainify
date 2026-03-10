@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { FlowAnimatorData, FlowNode } from "@/lib/schemas/flow";
+import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
+import { SettingsBar } from "@/components/editor/settings-bar";
 
 // ── Layer color helper ─────────────────────────────────────────────
 function getLayerColor(id: string): string {
@@ -96,7 +98,11 @@ function hexToRgb(hex: string): [number, number, number] {
 // ── Layout computation ────────────────────────────────────────────
 interface NodePosition { x: number; y: number }
 
-function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connections"]): Map<string, NodePosition> {
+function computeLayout(
+  nodes: FlowNode[],
+  connections: FlowAnimatorData["connections"],
+  densityMultiplier = 1.0
+): Map<string, NodePosition> {
   const positions = new Map<string, NodePosition>();
   if (nodes.length === 0) return positions;
 
@@ -104,7 +110,6 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
   const centerNode = nodes[0];
   positions.set(centerNode.id, { x: CX, y: CY });
 
-  // Find nodes directly connected to center
   const centerConnected = new Set<string>();
   connections.forEach((c) => {
     if (c.from === centerNode.id) centerConnected.add(c.to);
@@ -114,13 +119,17 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
   const ring1Nodes = nodes.slice(1).filter((n) => centerConnected.has(n.id));
   const ring2Nodes = nodes.slice(1).filter((n) => !centerConnected.has(n.id));
 
-  const r1Base = 160;
-  const r1 = ring1Nodes.length > 8 ? r1Base * (ring1Nodes.length / 8) : r1Base;
+  // Phase 2: dynamic ring radius based on node count
+  const ring1Count = ring1Nodes.length;
+  const minArcLength = 80;
+  const circumference = ring1Count * minArcLength;
+  const r1Base = Math.max(160, circumference / (2 * Math.PI));
+  const r1 = r1Base * densityMultiplier;
 
   // Build initial equal-angle positions for ring-1
   const ring1Angles = ring1Nodes.map((_, i) => (i / ring1Nodes.length) * 2 * Math.PI - Math.PI / 2);
 
-  // Force-aware nudge: pairs of ring-1 nodes that share a connection get nudged closer
+  // Force-aware nudge: connected pairs get nudged closer
   for (let iter = 0; iter < 3; iter++) {
     for (let a = 0; a < ring1Nodes.length; a++) {
       for (let b = a + 1; b < ring1Nodes.length; b++) {
@@ -130,7 +139,6 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
             (c.from === ring1Nodes[b].id && c.to === ring1Nodes[a].id)
         );
         if (connected) {
-          // Nudge both angles 10% toward each other
           const mid = (ring1Angles[a] + ring1Angles[b]) / 2;
           ring1Angles[a] = ring1Angles[a] + (mid - ring1Angles[a]) * 0.2;
           ring1Angles[b] = ring1Angles[b] + (mid - ring1Angles[b]) * 0.2;
@@ -143,9 +151,8 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
     positions.set(n.id, { x: CX + r1 * Math.cos(ring1Angles[i]), y: CY + r1 * Math.sin(ring1Angles[i]) });
   });
 
-  // Ring-2: place OUTSIDE their ring-1 parent (away from center)
+  // Ring-2: place outside their ring-1 parent
   ring2Nodes.forEach((n, i) => {
-    // Find a ring-1 parent this node is connected to
     let parentPos: NodePosition | undefined;
     for (const c of connections) {
       if (c.from === n.id && positions.has(c.to) && ring1Nodes.some((r) => r.id === c.to)) {
@@ -156,29 +163,57 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
       }
     }
     if (parentPos) {
-      // Direction from center → parent, then extend further outward
       const dirX = parentPos.x - CX;
       const dirY = parentPos.y - CY;
       const len = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
       const unitX = dirX / len;
       const unitY = dirY / len;
-      // Offset from parent outward; siblings of same parent fan out ±30°
-      const siblingOffset = (i % 3 - 1) * 0.35; // angle nudge
+      const siblingOffset = (i % 3 - 1) * 0.35;
       const cosO = Math.cos(siblingOffset);
       const sinO = Math.sin(siblingOffset);
       const rotX = unitX * cosO - unitY * sinO;
       const rotY = unitX * sinO + unitY * cosO;
-      const dist = 120;
+      const dist = 120 * densityMultiplier;
       positions.set(n.id, {
         x: parentPos.x + rotX * dist,
         y: parentPos.y + rotY * dist,
       });
     } else {
       const angle = (i / Math.max(ring2Nodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
-      const r2 = r1 + 130;
+      const r2 = r1 + 130 * densityMultiplier;
       positions.set(n.id, { x: CX + r2 * Math.cos(angle), y: CY + r2 * Math.sin(angle) });
     }
   });
+
+  // Phase 2: collision detection — push apart any two nodes closer than 90px
+  const allNodeIds = Array.from(positions.keys());
+  const MIN_DIST = 90;
+  for (let iter = 0; iter < 5; iter++) {
+    let moved = false;
+    for (let a = 0; a < allNodeIds.length; a++) {
+      for (let b = a + 1; b < allNodeIds.length; b++) {
+        const posA = positions.get(allNodeIds[a])!;
+        const posB = positions.get(allNodeIds[b])!;
+        const dx = posB.x - posA.x;
+        const dy = posB.y - posA.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < MIN_DIST && dist > 0) {
+          const overlap = (MIN_DIST - dist) / 2;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          // Don't move the center node
+          if (allNodeIds[a] !== centerNode.id) {
+            positions.set(allNodeIds[a], { x: posA.x - nx * overlap, y: posA.y - ny * overlap });
+          }
+          if (allNodeIds[b] !== centerNode.id) {
+            positions.set(allNodeIds[b], { x: posB.x + nx * overlap, y: posB.y + ny * overlap });
+          }
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
 
   return positions;
 }
@@ -220,28 +255,25 @@ function DetailPanel({ node, onClose }: { node: FlowNode; onClose: () => void })
 
 // ── Connection line with arrowhead + label ─────────────────────────
 function ConnectionLine({
-  fromPos, toPos, color, id, isActive, label, pulsing,
+  fromPos, toPos, color, id, isActive, label, pulsing, showEdgeLabels,
 }: {
-  fromPos: NodePosition; toPos: NodePosition; color: string; id: string; isActive: boolean; label?: string; pulsing?: boolean;
+  fromPos: NodePosition; toPos: NodePosition; color: string; id: string; isActive: boolean; label?: string; pulsing?: boolean; showEdgeLabels?: boolean;
 }) {
   const [r, g, b] = hexToRgb(color);
   const pathD = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
   const pathId = `mol-path-${id}`;
   const markerId = `mol-arrow-${id}`;
 
-  // Midpoint and angle for label
   const mx = (fromPos.x + toPos.x) / 2;
   const my = (fromPos.y + toPos.y) / 2;
   const dx = toPos.x - fromPos.x;
   const dy = toPos.y - fromPos.y;
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-  // Flip label if it would be upside-down
   const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
 
   return (
     <>
       <defs>
-        {/* Subtle chevron arrowhead — thin, not filled triangle */}
         <marker
           id={markerId}
           markerWidth="8"
@@ -276,7 +308,6 @@ function ConnectionLine({
         }
       />
 
-      {/* 2 staggered glowing packets */}
       {[0, 1].map((i) => (
         <circle
           key={i}
@@ -293,10 +324,9 @@ function ConnectionLine({
         </circle>
       ))}
 
-      {/* Connection label at midpoint */}
-      {label && label.trim() && (
+      {/* Connection label — only when showEdgeLabels is true */}
+      {showEdgeLabels !== false && label && label.trim() && (
         <g transform={`translate(${mx}, ${my}) rotate(${labelAngle})`}>
-          {/* Dark pill background */}
           <rect
             x={-label.length * 3}
             y={-8}
@@ -320,7 +350,6 @@ function ConnectionLine({
         </g>
       )}
 
-      {/* Pulse animation for connected nodes on select — driven by parent */}
       {pulsing && (
         <circle
           cx={toPos.x}
@@ -367,7 +396,6 @@ function MoleculeNode({
           : { duration: 0.5, delay: index * 0.06, ease: [0.34, 1.56, 0.64, 1] }
       }
     >
-      {/* Breathing pulse — idle scale animation */}
       <motion.g
         animate={{ scale: isSelected ? [1, 1.08, 1] : [1, 1.05, 1] }}
         transition={{
@@ -378,7 +406,6 @@ function MoleculeNode({
         }}
         style={{ transformOrigin: `${pos.x}px ${pos.y}px` }}
       >
-        {/* Outer glow ring when selected */}
         {isSelected && (
           <circle
             cx={pos.x} cy={pos.y}
@@ -391,7 +418,6 @@ function MoleculeNode({
           />
         )}
 
-        {/* Main circle — background fill */}
         <circle
           cx={pos.x} cy={pos.y}
           r={radius}
@@ -406,7 +432,6 @@ function MoleculeNode({
           }
         />
 
-        {/* Subtle radial gradient overlay */}
         <circle
           cx={pos.x - radius * 0.25}
           cy={pos.y - radius * 0.25}
@@ -414,7 +439,6 @@ function MoleculeNode({
           fill={`rgba(${r},${g},${b},0.06)`}
         />
 
-        {/* Icon via foreignObject */}
         <foreignObject
           x={pos.x - 9} y={pos.y - 9}
           width={18} height={18}
@@ -424,7 +448,6 @@ function MoleculeNode({
         </foreignObject>
       </motion.g>
 
-      {/* Layer badge pill — above the circle */}
       <foreignObject
         x={pos.x - 28} y={pos.y - radius - 20}
         width={56} height={16}
@@ -449,7 +472,6 @@ function MoleculeNode({
         </div>
       </foreignObject>
 
-      {/* Label below the circle */}
       <text
         x={pos.x}
         y={pos.y + radius + 16}
@@ -465,25 +487,28 @@ function MoleculeNode({
   );
 }
 
-// ── Main MoleculeRenderer ──────────────────────────────────────────
-export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
+// ── Inner Molecule (reads DiagramSettings context) ─────────────────
+function MoleculeRendererInner({ data }: { data: FlowAnimatorData }) {
+  const { settings } = useDiagramSettings();
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [pulsingNodes, setPulsingNodes] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Map density to multiplier
+  const densityMultiplier = settings.density === "compact" ? 0.7 : settings.density === "spread" ? 1.4 : 1.0;
+
   const positions = useMemo(
-    () => computeLayout(data.nodes, data.connections),
-    [data.nodes, data.connections]
+    () => computeLayout(data.nodes, data.connections, densityMultiplier),
+    [data.nodes, data.connections, densityMultiplier]
   );
 
-  // Compute bounding box of all nodes with padding for labels/badges
   const bounds = useMemo(() => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     positions.forEach((pos) => {
       minX = Math.min(minX, pos.x - 60);
-      minY = Math.min(minY, pos.y - 70); // extra for badge
+      minY = Math.min(minY, pos.y - 70);
       maxX = Math.max(maxX, pos.x + 60);
-      maxY = Math.max(maxY, pos.y + 60); // extra for label
+      maxY = Math.max(maxY, pos.y + 60);
     });
     const pad = 40;
     return {
@@ -494,15 +519,11 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
     };
   }, [positions]);
 
-  // Pan + zoom state
   const [viewBox, setViewBox] = useState(bounds);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, vbX: 0, vbY: 0 });
-
-  // Animated viewBox for smooth re-center
   const animFrameRef = useRef<number | null>(null);
 
-  // Reset viewBox when bounds change (new data)
   useEffect(() => { setViewBox(bounds); }, [bounds]);
 
   const fitView = useCallback(() => {
@@ -510,7 +531,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
     animateViewBox(bounds);
   }, [bounds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Smooth viewBox animation via requestAnimationFrame
   const animateViewBox = useCallback((target: typeof bounds) => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     const start = performance.now();
@@ -521,7 +541,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
 
       const step = (now: number) => {
         const t = Math.min((now - start) / duration, 1);
-        // ease-in-out cubic
         const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         setViewBox({
           x: from.x + (target.x - from.x) * ease,
@@ -533,7 +552,7 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
       };
 
       animFrameRef.current = requestAnimationFrame(step);
-      return from; // keep current until RAF kicks in
+      return from;
     });
   }, []);
 
@@ -577,7 +596,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
 
   const handleMouseUp = useCallback(() => { setIsPanning(false); }, []);
 
-  // Build a set of active connection ids and connected node ids when a node is selected
   const { activeConnectionIds, connectedNodeIds } = useMemo(() => {
     if (!selectedNode) return { activeConnectionIds: new Set<string>(), connectedNodeIds: new Set<string>() };
     const connIds = new Set<string>();
@@ -592,10 +610,8 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
     return { activeConnectionIds: connIds, connectedNodeIds: nodeIds };
   }, [selectedNode, data.connections]);
 
-  // Handle node click: re-center + pulse connected nodes
   const handleNodeClick = useCallback((node: FlowNode) => {
     if (selectedNode?.id === node.id) {
-      // Deselect — fit view back
       setSelectedNode(null);
       animateViewBox(bounds);
       return;
@@ -603,7 +619,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
 
     setSelectedNode(node);
 
-    // Re-center viewBox on clicked node
     const pos = positions.get(node.id);
     if (pos) {
       const w = viewBox.width;
@@ -611,7 +626,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
       animateViewBox({ x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h });
     }
 
-    // Pulse connected nodes
     const connected = new Set<string>();
     data.connections.forEach((c) => {
       if (c.from === node.id) connected.add(c.to);
@@ -624,6 +638,124 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
   const viewBoxStr = `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
 
   return (
+    <div
+      ref={containerRef}
+      className="relative w-full bg-background rounded-xl border border-border overflow-hidden"
+      style={{ height: 480, cursor: isPanning ? "grabbing" : "grab" }}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      {/* Zoom controls */}
+      <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+        <button
+          onClick={() => zoom(0.8)}
+          className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+          title="Zoom in"
+        >
+          <ZoomIn size={14} />
+        </button>
+        <button
+          onClick={() => zoom(1.25)}
+          className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+          title="Zoom out"
+        >
+          <ZoomOut size={14} />
+        </button>
+        <button
+          onClick={fitView}
+          className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
+          title="Fit view"
+        >
+          <Maximize2 size={14} />
+        </button>
+      </div>
+
+      {/* Settings bar — top right, overlaying the canvas */}
+      <div className="absolute top-3 right-3 z-10 bg-card/80 backdrop-blur-sm border border-border rounded-lg px-2 py-1.5 shadow-lg">
+        <SettingsBar features={{ density: true, edgeLabels: true, descriptions: true }} />
+      </div>
+
+      <svg
+        viewBox={viewBoxStr}
+        width="100%"
+        height="100%"
+        style={{ display: "block", userSelect: "none" }}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <defs>
+          <radialGradient id="mol-bg-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(59,130,246,0.04)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          </radialGradient>
+        </defs>
+        <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-bg-glow)" />
+
+        <pattern id="mol-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+          <circle cx="20" cy="20" r="0.8" fill="rgba(148,163,184,0.08)" />
+        </pattern>
+        <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-grid)" />
+
+        {data.connections.map((c, i) => {
+          const fromPos = positions.get(c.from);
+          const toPos = positions.get(c.to);
+          if (!fromPos || !toPos) return null;
+          const color = getLayerColor(c.from);
+          const isActive = activeConnectionIds.has(`${i}`);
+          return (
+            <ConnectionLine
+              key={i}
+              id={`${i}`}
+              fromPos={fromPos}
+              toPos={toPos}
+              color={color}
+              isActive={isActive}
+              label={c.label}
+              showEdgeLabels={settings.showEdgeLabels}
+            />
+          );
+        })}
+
+        {data.nodes.map((node, i) => {
+          const pos = positions.get(node.id);
+          if (!pos) return null;
+          const isCenter = i === 0;
+          const isSelected = selectedNode?.id === node.id;
+          const isPulsing = pulsingNodes.has(node.id);
+          return (
+            <MoleculeNode
+              key={node.id}
+              node={node}
+              pos={pos}
+              isCenter={isCenter}
+              isSelected={isSelected}
+              isPulsing={isPulsing}
+              index={i}
+              onClick={() => handleNodeClick(node)}
+            />
+          );
+        })}
+      </svg>
+
+      <div
+        className="pointer-events-none absolute inset-0 rounded-xl"
+        style={{ background: "radial-gradient(ellipse 88% 88% at 50% 50%, transparent 50%, var(--background) 100%)" }}
+      />
+
+      <AnimatePresence>
+        {selectedNode && settings.showDescriptions && (
+          <DetailPanel node={selectedNode} onClose={() => { setSelectedNode(null); animateViewBox(bounds); }} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Main MoleculeRenderer ──────────────────────────────────────────
+export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
+  return (
     <div>
       {/* Header */}
       <div className="mb-4">
@@ -631,121 +763,10 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
         <p className="text-muted-foreground mt-1">{data.meta.summary}</p>
       </div>
 
-      {/* Canvas */}
-      <div
-        ref={containerRef}
-        className="relative w-full bg-background rounded-xl border border-border overflow-hidden"
-        style={{ height: 480, cursor: isPanning ? "grabbing" : "grab" }}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        {/* Zoom controls */}
-        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
-          <button
-            onClick={() => zoom(0.8)}
-            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
-            title="Zoom in"
-          >
-            <ZoomIn size={14} />
-          </button>
-          <button
-            onClick={() => zoom(1.25)}
-            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
-            title="Zoom out"
-          >
-            <ZoomOut size={14} />
-          </button>
-          <button
-            onClick={fitView}
-            className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 border border-border hover:bg-muted text-foreground"
-            title="Fit view"
-          >
-            <Maximize2 size={14} />
-          </button>
-        </div>
+      <DiagramSettingsProvider>
+        <MoleculeRendererInner data={data} />
+      </DiagramSettingsProvider>
 
-        <svg
-          viewBox={viewBoxStr}
-          width="100%"
-          height="100%"
-          style={{ display: "block", userSelect: "none" }}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {/* Subtle radial bg glow */}
-          <defs>
-            <radialGradient id="mol-bg-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="rgba(59,130,246,0.04)" />
-              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
-            </radialGradient>
-          </defs>
-          <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-bg-glow)" />
-
-          {/* Grid dots */}
-          <pattern id="mol-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-            <circle cx="20" cy="20" r="0.8" fill="rgba(148,163,184,0.08)" />
-          </pattern>
-          <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#mol-grid)" />
-
-          {/* Connection lines (drawn first, behind nodes) */}
-          {data.connections.map((c, i) => {
-            const fromPos = positions.get(c.from);
-            const toPos = positions.get(c.to);
-            if (!fromPos || !toPos) return null;
-            const color = getLayerColor(c.from);
-            const isActive = activeConnectionIds.has(`${i}`);
-            return (
-              <ConnectionLine
-                key={i}
-                id={`${i}`}
-                fromPos={fromPos}
-                toPos={toPos}
-                color={color}
-                isActive={isActive}
-                label={c.label}
-              />
-            );
-          })}
-
-          {/* Nodes */}
-          {data.nodes.map((node, i) => {
-            const pos = positions.get(node.id);
-            if (!pos) return null;
-            const isCenter = i === 0;
-            const isSelected = selectedNode?.id === node.id;
-            const isPulsing = pulsingNodes.has(node.id);
-            return (
-              <MoleculeNode
-                key={node.id}
-                node={node}
-                pos={pos}
-                isCenter={isCenter}
-                isSelected={isSelected}
-                isPulsing={isPulsing}
-                index={i}
-                onClick={() => handleNodeClick(node)}
-              />
-            );
-          })}
-        </svg>
-
-        {/* Vignette */}
-        <div
-          className="pointer-events-none absolute inset-0 rounded-xl"
-          style={{ background: "radial-gradient(ellipse 88% 88% at 50% 50%, transparent 50%, var(--background) 100%)" }}
-        />
-
-        {/* Detail panel */}
-        <AnimatePresence>
-          {selectedNode && (
-            <DetailPanel node={selectedNode} onClose={() => { setSelectedNode(null); animateViewBox(bounds); }} />
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Click hint */}
       <p className="text-xs text-muted-foreground text-center mt-2">
         Click any node to explore it · Click again to deselect
       </p>
