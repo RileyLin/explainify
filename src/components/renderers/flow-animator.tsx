@@ -46,6 +46,72 @@ function getLayerColor(id: string): string {
   return "#3b82f6";
 }
 
+// ── Dedup bidirectional connections ───────────────────────────────
+// Collapses A→B + B→A pairs into a single forward edge (keeps the first one,
+// merges labels). Prevents spaghetti layout from round-trip edges.
+function deduplicateConnections(
+  connections: FlowAnimatorData["connections"]
+): FlowAnimatorData["connections"] {
+  const seen = new Map<string, number>(); // canonical key → index in result
+  const result: FlowAnimatorData["connections"] = [];
+
+  for (const c of connections) {
+    const canonical = [c.from, c.to].sort().join("||");
+    if (seen.has(canonical)) {
+      // Merge this label into the existing edge
+      const existingIdx = seen.get(canonical)!;
+      const existing = result[existingIdx];
+      if (c.label && existing.label && c.label !== existing.label) {
+        result[existingIdx] = {
+          ...existing,
+          label: `${existing.label} / ${c.label}`,
+        };
+      }
+    } else {
+      seen.set(canonical, result.length);
+      result.push(c);
+    }
+  }
+
+  return result;
+}
+
+// ── Sequential layout (for renderHint: "sequential") ──────────────
+// Places nodes in a clean left-to-right row using the stepOrder.
+// No back-arrows possible — every node gets an explicit X position.
+function computeSequentialLayout(
+  nodes: FlowNodeType[],
+  stepOrder: string[],
+  nodeStyle: "card" | "minimal" = "card",
+  showDescriptions: boolean = true
+): Map<string, { x: number; y: number }> {
+  const nodeWidth = nodeStyle === "minimal" ? 120 : 220;
+  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 80 : 56);
+  const gapX = 100; // horizontal gap between nodes
+  const positions = new Map<string, { x: number; y: number }>();
+
+  // Use stepOrder as the canonical left-to-right sequence
+  const orderedIds = stepOrder.length > 0 ? stepOrder : nodes.map((n) => n.id);
+
+  orderedIds.forEach((id, i) => {
+    positions.set(id, {
+      x: i * (nodeWidth + gapX),
+      y: 0,
+    });
+  });
+
+  // Any nodes not in stepOrder get placed to the right
+  let extra = orderedIds.length;
+  nodes.forEach((n) => {
+    if (!positions.has(n.id)) {
+      positions.set(n.id, { x: extra * (nodeWidth + gapX), y: nodeHeight + 40 });
+      extra++;
+    }
+  });
+
+  return positions;
+}
+
 // ── Dagre auto-layout ──────────────────────────────────────────────
 function computeDagreLayout(
   nodes: FlowNodeType[],
@@ -517,10 +583,19 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   );
   const activeNodeId = stepOrder[activeStep] ?? null;
 
-  // ── Dagre layout (memoized per data + settings) ────────────────
+  // ── Deduplicate bidirectional connections ──────────────────────
+  const dedupedConnections = useMemo(
+    () => deduplicateConnections(data.connections),
+    [data.connections]
+  );
+
+  // ── Layout: sequential vs graph vs hierarchy ───────────────────
+  const isSequential = data.renderHint === "sequential";
   const dagrePositions = useMemo(
-    () => computeDagreLayout(data.nodes, data.connections, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions),
-    [data.nodes, data.connections, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions]
+    () => isSequential
+      ? computeSequentialLayout(data.nodes, stepOrder, settings.nodeStyle, settings.showDescriptions)
+      : computeDagreLayout(data.nodes, dedupedConnections, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions),
+    [isSequential, data.nodes, dedupedConnections, stepOrder, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions]
   );
 
   // ── Adaptive fitPadding (Phase 2) ──────────────────────────────
@@ -556,7 +631,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   // ── Build edges ───────────────────────────────────────────────────
   const rfEdges: Edge[] = useMemo(
     () =>
-      data.connections.map((c, i) => {
+      dedupedConnections.map((c, i) => {
         const edgeId = `e-${i}`;
         const isPacketActive = edgeId === activeEdgeId;
         const isBursting = edgeId === burstingEdgeId;
@@ -587,7 +662,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           },
         };
       }),
-    [data.connections, activeNodeId, activeEdgeId, burstingEdgeId, isPlaying, settings.showEdgeLabels]
+    [dedupedConnections, activeNodeId, activeEdgeId, burstingEdgeId, isPlaying, settings.showEdgeLabels]
   );
 
   // ── goStep ──────────────────────────────────────────────────────
@@ -616,7 +691,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         const forwardKey = `${prevNodeId}->${nextNodeId}`;
         const reverseKey = `${nextNodeId}->${prevNodeId}`;
 
-        const matchingIdx = data.connections.findIndex(
+        const matchingIdx = dedupedConnections.findIndex(
           (c) =>
             `${c.from}->${c.to}` === forwardKey ||
             `${c.from}->${c.to}` === reverseKey
@@ -645,7 +720,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         return next;
       });
     },
-    [stepOrder, data.nodes, data.connections, dagrePositions, setCenter]
+    [stepOrder, data.nodes, dedupedConnections, dagrePositions, setCenter]
   );
 
   // ── Autoplay ────────────────────────────────────────────────────
@@ -665,7 +740,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
     if (activeStep === 0) return null;
     const fromId = stepOrder[activeStep - 1];
     const toId = stepOrder[activeStep];
-    const edge = data.connections.find(
+    const edge = dedupedConnections.find(
       (c) => c.from === fromId && c.to === toId
     );
     const destNode = data.nodes.find((n) => n.id === toId);
@@ -679,7 +754,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
       details: destNode?.details ?? null,
       destLabel: destNode?.label ?? null,
     };
-  }, [activeStep, stepOrder, data.connections, data.nodes]);
+  }, [activeStep, stepOrder, dedupedConnections, data.nodes]);
 
   return (
     <div className="flex flex-col gap-0">

@@ -27,6 +27,7 @@ Output this exact JSON shape:
     "difficulty": "beginner" | "intermediate" | "advanced",
     "template": "flow-animator"
   },
+  "renderHint": "sequential" | "graph" | "hierarchy",
   "nodes": [
     {
       "id": "string (unique identifier)",
@@ -49,6 +50,18 @@ Output this exact JSON shape:
 }
 
 ${DIFFICULTY_INSTRUCTION}
+
+## renderHint — REQUIRED, choose one:
+- "sequential" — use when the content is a FLOW (request/response sequences, auth flows, data pipelines, step-by-step processes). Nodes render as a clean left-to-right numbered path.
+- "graph" — use when the content is an ARCHITECTURE or COMPONENT diagram (microservices map, system topology, hub-and-spoke). Nodes render as a free-form network.
+- "hierarchy" — use when the content is a TREE structure (org chart, inheritance, folder structure, decision tree). Nodes render top-down.
+
+When in doubt: if the content has a clear start-to-end story (user does X, then Y happens, then Z responds), use "sequential". If it's a map of components that talk to each other without a clear sequence, use "graph".
+
+## CRITICAL connection rules:
+- NEVER create two connections between the same pair of nodes in opposite directions. If a relationship is bidirectional (request + response), model it as ONE connection with a combined label (e.g. "Sign Up / Return User ID", "Auth + User Context returned").
+- Round trips must be a single labeled edge, not two edges. "A → B" and "B → A" in the same diagram = spaghetti layout.
+- For "sequential" renderHint: ALL connections must flow in one direction (left to right). No back-arrows, ever.
 
 Rules:
 - Create 4-8 nodes that capture the key components/steps

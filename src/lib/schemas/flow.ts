@@ -21,6 +21,15 @@ export const FlowConnectionSchema = z.object({
 
 export type FlowConnection = z.infer<typeof FlowConnectionSchema>;
 
+/**
+ * renderHint tells the renderer which layout engine to use:
+ * - "sequential" → clean numbered path, forced LR, no back-arrows (best for request flows, auth sequences, step-by-step processes)
+ * - "graph"      → free-form Dagre network (best for architecture/component diagrams)
+ * - "hierarchy"  → top-down tree (best for org charts, inheritance, folder structure)
+ */
+export const RenderHintSchema = z.enum(["sequential", "graph", "hierarchy"]);
+export type RenderHint = z.infer<typeof RenderHintSchema>;
+
 export const FlowAnimatorDataSchema = z.object({
   template: z.literal("flow-animator"),
   meta: z.object({
@@ -32,6 +41,7 @@ export const FlowAnimatorDataSchema = z.object({
   nodes: z.array(FlowNodeSchema).min(1),
   connections: z.array(FlowConnectionSchema),
   stepOrder: z.array(z.string()).optional(),
+  renderHint: RenderHintSchema.optional(),
 });
 
 export type FlowAnimatorData = z.infer<typeof FlowAnimatorDataSchema>;
