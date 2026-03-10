@@ -51,7 +51,9 @@ function computeDagreLayout(
   nodes: FlowNodeType[],
   connections: FlowAnimatorData["connections"],
   direction: "LR" | "TB" = "LR",
-  density: "compact" | "normal" | "spread" = "normal"
+  density: "compact" | "normal" | "spread" = "normal",
+  nodeStyle: "card" | "minimal" = "card",
+  showDescriptions: boolean = true
 ): Map<string, { x: number; y: number }> {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
@@ -72,8 +74,12 @@ function computeDagreLayout(
 
   g.setGraph({ rankdir: direction, ranksep, nodesep });
 
+  // Use actual node dimensions matching the render
+  const nodeWidth = nodeStyle === "minimal" ? 120 : 220;
+  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 80 : 56);
+
   nodes.forEach((n) => {
-    g.setNode(n.id, { width: 220, height: 80 });
+    g.setNode(n.id, { width: nodeWidth, height: nodeHeight });
   });
 
   connections.forEach((c) => {
@@ -513,8 +519,8 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
 
   // ── Dagre layout (memoized per data + settings) ────────────────
   const dagrePositions = useMemo(
-    () => computeDagreLayout(data.nodes, data.connections, settings.direction, settings.density),
-    [data.nodes, data.connections, settings.direction, settings.density]
+    () => computeDagreLayout(data.nodes, data.connections, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions),
+    [data.nodes, data.connections, settings.direction, settings.density, settings.nodeStyle, settings.showDescriptions]
   );
 
   // ── Adaptive fitPadding (Phase 2) ──────────────────────────────
@@ -685,6 +691,8 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
               onClick={() => goStep(-1)}
               disabled={activeStep === 0}
               className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
+              aria-label="Previous step"
+              title="Previous step"
             >
               <ChevronLeft size={18} />
             </button>
@@ -695,6 +703,8 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
               onClick={() => goStep(1)}
               disabled={activeStep === stepOrder.length - 1}
               className="p-1 rounded hover:bg-muted disabled:opacity-30 text-foreground"
+              aria-label="Next step"
+              title="Next step"
             >
               <ChevronRight size={18} />
             </button>

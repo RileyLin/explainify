@@ -23,7 +23,22 @@ function getLayerColor(id: string): string {
   if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower))    return "#10b981";
   if (/cache|cdn|edge/.test(lower))                                   return "#6366f1";
   if (/lambda|function|worker|compute|service|api/.test(lower))      return "#8b5cf6";
-  return "#3b82f6";
+  // Concept/educational content — varied colors so they don't all look the same
+  if (/supervised|classification|regression/.test(lower))             return "#3b82f6";
+  if (/unsupervised|cluster|dimensionality/.test(lower))              return "#8b5cf6";
+  if (/reinforcement|reward|agent|policy/.test(lower))                return "#f59e0b";
+  if (/deep|neural|network|layer/.test(lower))                        return "#ec4899";
+  if (/transfer|pretrain|fine[-_]?tun/.test(lower))                   return "#06b6d4";
+  if (/learn|training|model|ml|ai/.test(lower))                       return "#10b981";
+  if (/theorem|principle|law|cap/.test(lower))                        return "#ef4444";
+  if (/data|dataset|feature|input|output/.test(lower))                return "#f97316";
+  if (/algorithm|process|pipeline|workflow/.test(lower))              return "#6366f1";
+  if (/system|platform|framework|architecture/.test(lower))           return "#94a3b8";
+  // Hash-based fallback for unique colors per node
+  let hash = 0;
+  for (let i = 0; i < lower.length; i++) hash = lower.charCodeAt(i) + ((hash << 5) - hash);
+  const palette = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#06b6d4", "#ec4899", "#f97316", "#ef4444", "#6366f1"];
+  return palette[Math.abs(hash) % palette.length];
 }
 
 function getLayerBadge(id: string): string {
@@ -41,7 +56,16 @@ function getLayerBadge(id: string): string {
   if (/cache|cdn|edge/.test(lower))                                  return "CACHE";
   if (/lambda|function|worker|compute/.test(lower))                  return "λ FUNC";
   if (/service|api/.test(lower))                                     return "SERVICE";
-  return "SERVICE";
+  // Concept/educational content patterns
+  if (/learn|training|model|neural|network|deep|ml|ai/.test(lower)) return "CONCEPT";
+  if (/supervised|unsupervised|reinforcement|classification|regression/.test(lower)) return "METHOD";
+  if (/transfer|pretrain|fine[-_]?tun|embed/.test(lower))           return "TECHNIQUE";
+  if (/theorem|principle|law|rule|axiom|cap/.test(lower))           return "THEORY";
+  if (/data|dataset|feature|input|output|signal/.test(lower))       return "DATA";
+  if (/pattern|algorithm|process|pipeline|workflow/.test(lower))    return "PROCESS";
+  if (/component|module|layer|block|unit/.test(lower))              return "COMPONENT";
+  if (/system|platform|framework|architecture/.test(lower))         return "SYSTEM";
+  return "CONCEPT";
 }
 
 function getLayerFallbackIcon(nodeId: string): string {
@@ -268,8 +292,20 @@ function ConnectionLine({
   const my = (fromPos.y + toPos.y) / 2;
   const dx = toPos.x - fromPos.x;
   const dy = toPos.y - fromPos.y;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+  // Offset label to 35% along the line (toward source) and perpendicular by 12px
+  // This prevents labels from all stacking at the center node
+  const labelT = 0.35;
+  const lx = fromPos.x + dx * labelT;
+  const ly = fromPos.y + dy * labelT;
+  // Perpendicular offset (alternate direction based on id hash)
+  const perpSign = parseInt(id, 10) % 2 === 0 ? 1 : -1;
+  const perpX = (-dy / len) * 12 * perpSign;
+  const perpY = (dx / len) * 12 * perpSign;
+  const labelX = lx + perpX;
+  const labelY = ly + perpY;
 
   return (
     <>
@@ -326,7 +362,7 @@ function ConnectionLine({
 
       {/* Connection label — only when showEdgeLabels is true */}
       {showEdgeLabels !== false && label && label.trim() && (
-        <g transform={`translate(${mx}, ${my}) rotate(${labelAngle})`}>
+        <g transform={`translate(${labelX}, ${labelY}) rotate(${labelAngle})`}>
           <rect
             x={-label.length * 3}
             y={-8}

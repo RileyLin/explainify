@@ -117,7 +117,10 @@ export default function CreatePage() {
       const inputContent = inputMode === "mermaid"
         ? `[MERMAID_IMPORT]\n${baseContent.trim()}`
         : baseContent.trim();
-      if (!inputContent || (inputMode === "mermaid" && !mermaidContent.trim())) return;
+      if (!inputContent || (inputMode === "mermaid" && !mermaidContent.trim())) {
+        setError("Please paste some content first — a doc, code snippet, architecture description, or anything you want explained.");
+        return;
+      }
 
       setGenerating(true);
       setResult(null);

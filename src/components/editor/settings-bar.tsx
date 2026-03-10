@@ -39,8 +39,8 @@ function Btn({
       title={title}
       className={`h-7 px-2 flex items-center gap-1 rounded-md text-xs font-medium transition-colors ${
         active
-          ? "bg-foreground/10 text-foreground border border-border"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          ? "bg-foreground/20 text-foreground border border-foreground/30 shadow-sm"
+          : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"
       }`}
     >
       {children}

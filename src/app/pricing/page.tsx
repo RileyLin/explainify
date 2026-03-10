@@ -4,7 +4,7 @@ import { CheckoutButton } from "@/components/stripe/checkout-button";
 
 const FREE_FEATURES = [
   { text: "5 explainers per month", included: true },
-  { text: "All 7 template types", included: true },
+  { text: "All 8 template types", included: true },
   { text: "Public sharing", included: true },
   { text: "Embed code", included: true },
   { text: '"Made with Explainify" watermark', included: true },
@@ -15,7 +15,7 @@ const FREE_FEATURES = [
 
 const PRO_FEATURES = [
   { text: "Unlimited explainers", included: true },
-  { text: "All 7 template types", included: true },
+  { text: "All 8 template types", included: true },
   { text: "Public & private sharing", included: true },
   { text: "Embed code", included: true },
   { text: "No watermark", included: true },
