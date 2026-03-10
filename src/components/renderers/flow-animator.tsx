@@ -29,12 +29,18 @@ import dagre from "dagre";
 // ── Layer color helper ─────────────────────────────────────────────
 function getLayerColor(id: string): string {
   const lower = id.toLowerCase();
-  if (/client|user|browser|app/.test(lower))                    return "#94a3b8";
-  if (/gateway|proxy|load|edge|cdn/.test(lower))                return "#3b82f6";
-  if (/auth|iam|cognito|token|key/.test(lower))                 return "#f59e0b";
-  if (/lambda|function|worker|compute|service|api/.test(lower)) return "#8b5cf6";
-  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "#10b981";
-  if (/queue|sns|sqs|event|stream/.test(lower))                 return "#f97316";
+  if (/client|user|browser|app/.test(lower))                           return "#94a3b8";
+  if (/gateway|api[-_]?gw|ingress|proxy|load/.test(lower))            return "#3b82f6";
+  if (/auth|iam|cognito|token|key|security/.test(lower))              return "#f59e0b";
+  if (/user|profile|account|identity/.test(lower))                    return "#8b5cf6";
+  if (/order|cart|checkout|purchase/.test(lower))                     return "#10b981";
+  if (/pay|billing|stripe|invoice/.test(lower))                       return "#ef4444";
+  if (/inventory|stock|warehouse|catalog/.test(lower))                return "#f97316";
+  if (/notif|email|sms|push|alert|message/.test(lower))              return "#06b6d4";
+  if (/queue|broker|kafka|rabbit|event|stream|sns|sqs/.test(lower))  return "#ec4899";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower))    return "#10b981";
+  if (/cache|cdn|edge/.test(lower))                                   return "#6366f1";
+  if (/lambda|function|worker|compute|service|api/.test(lower))      return "#8b5cf6";
   return "#3b82f6";
 }
 
@@ -144,10 +150,11 @@ function AnimatedPacketEdge({
   targetPosition,
   data,
 }: EdgeProps) {
-  const edgeData = data as { isActive?: boolean; color?: string; isBursting?: boolean; packetDurationMultiplier?: number } | undefined;
+  const edgeData = data as { isActive?: boolean; color?: string; isBursting?: boolean; packetDurationMultiplier?: number; label?: string } | undefined;
   const isActive = edgeData?.isActive ?? false;
   const isBursting = edgeData?.isBursting ?? false;
   const color = edgeData?.color ?? "#3b82f6";
+  const label = edgeData?.label ?? "";
   const packetDurationMultiplier = edgeData?.packetDurationMultiplier ?? 1;
   const hex = color.replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16);
@@ -166,17 +173,22 @@ function AnimatedPacketEdge({
     borderRadius: 12,
   });
 
+  // Midpoint for label positioning
+  const midX = (sourceX + targetX) / 2;
+  const midY = (sourceY + targetY) / 2;
+
   // Stagger offsets for 3 continuous packets
   const staggerOffsets = ["0s", "0.4s", "0.8s"];
 
   return (
     <>
       <defs>
-        <marker id={markerId} markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+        {/* Larger, more visible arrowhead */}
+        <marker id={markerId} markerWidth="9" markerHeight="6" refX="9" refY="3" orient="auto">
           <polygon
-            points="0 0, 7 2.5, 0 5"
-            fill={isActive ? color : `rgba(100,116,139,0.5)`}
-            opacity={isActive ? 0.85 : 0.5}
+            points="0 0, 9 3, 0 6"
+            fill={isActive ? color : `rgba(100,116,139,0.65)`}
+            opacity={isActive ? 0.9 : 0.65}
           />
         </marker>
       </defs>
@@ -186,7 +198,7 @@ function AnimatedPacketEdge({
         id={`${id}-path`}
         d={edgePath}
         fill="none"
-        stroke={isActive ? color : "rgba(100,116,139,0.3)"}
+        stroke={isActive ? color : "rgba(100,116,139,0.35)"}
         strokeWidth={isActive ? 2.5 : 1.8}
         strokeDasharray={isActive ? "none" : "6 10"}
         markerEnd={`url(#${markerId})`}
@@ -196,6 +208,35 @@ function AnimatedPacketEdge({
             : { animation: "edgeDrift 2.8s linear infinite" }
         }
       />
+
+      {/* Edge label at midpoint */}
+      {label && label.trim() && (
+        <g>
+          {/* Dark pill background */}
+          <rect
+            x={midX - label.length * 3.2}
+            y={midY - 9}
+            width={label.length * 6.4}
+            height={14}
+            rx={5}
+            fill="rgba(10,10,20,0.7)"
+            stroke={isActive ? `rgba(${r},${g},${b},0.4)` : "rgba(100,116,139,0.2)"}
+            strokeWidth={0.8}
+          />
+          <text
+            x={midX}
+            y={midY + 2}
+            textAnchor="middle"
+            fontSize={10}
+            fontFamily="inherit"
+            fontWeight={500}
+            fill={isActive ? "white" : "rgba(148,163,184,0.75)"}
+            style={{ pointerEvents: "none", userSelect: "none", transition: "fill 0.3s ease" }}
+          >
+            {label}
+          </text>
+        </g>
+      )}
 
       {/* 3 continuous staggered packets — always visible on every edge */}
       {staggerOffsets.map((beginOffset, idx) => (
@@ -249,13 +290,19 @@ function AnimatedPacketEdge({
 // ── Layer badge label ──────────────────────────────────────────────
 function getLayerBadge(id: string): string {
   const lower = id.toLowerCase();
-  if (/client|user|browser|app/.test(lower))                    return "CLIENT";
-  if (/gateway|proxy|load|edge|cdn/.test(lower))                return "GATEWAY";
-  if (/auth|iam|cognito|token|key/.test(lower))                 return "AUTH";
-  if (/lambda|function|worker|compute/.test(lower))             return "λ FUNC";
-  if (/service|api/.test(lower))                                return "SERVICE";
-  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "DATABASE";
-  if (/queue|sns|sqs|event|stream/.test(lower))                 return "QUEUE";
+  if (/client|browser|app/.test(lower))                               return "CLIENT";
+  if (/gateway|api[-_]?gw|ingress|proxy|load/.test(lower))           return "GATEWAY";
+  if (/auth|iam|cognito|token|key|security/.test(lower))             return "AUTH";
+  if (/user|profile|account|identity/.test(lower))                   return "USER";
+  if (/order|cart|checkout|purchase/.test(lower))                    return "ORDERS";
+  if (/pay|billing|stripe|invoice/.test(lower))                      return "PAYMENT";
+  if (/inventory|stock|warehouse|catalog/.test(lower))               return "INVENTORY";
+  if (/notif|email|sms|push|alert|message/.test(lower))             return "NOTIFY";
+  if (/queue|broker|kafka|rabbit|event|stream|sns|sqs/.test(lower)) return "QUEUE";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower))   return "DATABASE";
+  if (/cache|cdn|edge/.test(lower))                                  return "CACHE";
+  if (/lambda|function|worker|compute/.test(lower))                  return "λ FUNC";
+  if (/service|api/.test(lower))                                     return "SERVICE";
   return "SERVICE";
 }
 

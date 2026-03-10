@@ -6,27 +6,39 @@ import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { FlowAnimatorData, FlowNode } from "@/lib/schemas/flow";
 
-// ── Layer color helper (copied from flow-animator) ─────────────────
+// ── Layer color helper ─────────────────────────────────────────────
 function getLayerColor(id: string): string {
   const lower = id.toLowerCase();
-  if (/client|user|browser|app/.test(lower))                      return "#94a3b8";
-  if (/gateway|proxy|load|edge|cdn/.test(lower))                  return "#3b82f6";
-  if (/auth|iam|cognito|token|key/.test(lower))                   return "#f59e0b";
-  if (/lambda|function|worker|compute|service|api/.test(lower))   return "#8b5cf6";
-  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "#10b981";
-  if (/queue|sns|sqs|event|stream/.test(lower))                   return "#f97316";
+  if (/client|user|browser|app/.test(lower))                           return "#94a3b8";
+  if (/gateway|api[-_]?gw|ingress|proxy|load/.test(lower))            return "#3b82f6";
+  if (/auth|iam|cognito|token|key|security/.test(lower))              return "#f59e0b";
+  if (/user|profile|account|identity/.test(lower))                    return "#8b5cf6";
+  if (/order|cart|checkout|purchase/.test(lower))                     return "#10b981";
+  if (/pay|billing|stripe|invoice/.test(lower))                       return "#ef4444";
+  if (/inventory|stock|warehouse|catalog/.test(lower))                return "#f97316";
+  if (/notif|email|sms|push|alert|message/.test(lower))              return "#06b6d4";
+  if (/queue|broker|kafka|rabbit|event|stream|sns|sqs/.test(lower))  return "#ec4899";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower))    return "#10b981";
+  if (/cache|cdn|edge/.test(lower))                                   return "#6366f1";
+  if (/lambda|function|worker|compute|service|api/.test(lower))      return "#8b5cf6";
   return "#3b82f6";
 }
 
 function getLayerBadge(id: string): string {
   const lower = id.toLowerCase();
-  if (/client|user|browser|app/.test(lower))                      return "CLIENT";
-  if (/gateway|proxy|load|edge|cdn/.test(lower))                  return "GATEWAY";
-  if (/auth|iam|cognito|token|key/.test(lower))                   return "AUTH";
-  if (/lambda|function|worker|compute/.test(lower))               return "λ FUNC";
-  if (/service|api/.test(lower))                                  return "SERVICE";
-  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower)) return "DATABASE";
-  if (/queue|sns|sqs|event|stream/.test(lower))                   return "QUEUE";
+  if (/client|browser|app/.test(lower))                               return "CLIENT";
+  if (/gateway|api[-_]?gw|ingress|proxy|load/.test(lower))           return "GATEWAY";
+  if (/auth|iam|cognito|token|key|security/.test(lower))             return "AUTH";
+  if (/user|profile|account|identity/.test(lower))                   return "USER";
+  if (/order|cart|checkout|purchase/.test(lower))                    return "ORDERS";
+  if (/pay|billing|stripe|invoice/.test(lower))                      return "PAYMENT";
+  if (/inventory|stock|warehouse|catalog/.test(lower))               return "INVENTORY";
+  if (/notif|email|sms|push|alert|message/.test(lower))             return "NOTIFY";
+  if (/queue|broker|kafka|rabbit|event|stream|sns|sqs/.test(lower)) return "QUEUE";
+  if (/db|database|dynamo|redis|postgres|storage|s3/.test(lower))   return "DATABASE";
+  if (/cache|cdn|edge/.test(lower))                                  return "CACHE";
+  if (/lambda|function|worker|compute/.test(lower))                  return "λ FUNC";
+  if (/service|api/.test(lower))                                     return "SERVICE";
   return "SERVICE";
 }
 
@@ -105,33 +117,65 @@ function computeLayout(nodes: FlowNode[], connections: FlowAnimatorData["connect
   const r1Base = 160;
   const r1 = ring1Nodes.length > 8 ? r1Base * (ring1Nodes.length / 8) : r1Base;
 
+  // Build initial equal-angle positions for ring-1
+  const ring1Angles = ring1Nodes.map((_, i) => (i / ring1Nodes.length) * 2 * Math.PI - Math.PI / 2);
+
+  // Force-aware nudge: pairs of ring-1 nodes that share a connection get nudged closer
+  for (let iter = 0; iter < 3; iter++) {
+    for (let a = 0; a < ring1Nodes.length; a++) {
+      for (let b = a + 1; b < ring1Nodes.length; b++) {
+        const connected = connections.some(
+          (c) =>
+            (c.from === ring1Nodes[a].id && c.to === ring1Nodes[b].id) ||
+            (c.from === ring1Nodes[b].id && c.to === ring1Nodes[a].id)
+        );
+        if (connected) {
+          // Nudge both angles 10% toward each other
+          const mid = (ring1Angles[a] + ring1Angles[b]) / 2;
+          ring1Angles[a] = ring1Angles[a] + (mid - ring1Angles[a]) * 0.2;
+          ring1Angles[b] = ring1Angles[b] + (mid - ring1Angles[b]) * 0.2;
+        }
+      }
+    }
+  }
+
   ring1Nodes.forEach((n, i) => {
-    const angle = (i / ring1Nodes.length) * 2 * Math.PI - Math.PI / 2;
-    positions.set(n.id, { x: CX + r1 * Math.cos(angle), y: CY + r1 * Math.sin(angle) });
+    positions.set(n.id, { x: CX + r1 * Math.cos(ring1Angles[i]), y: CY + r1 * Math.sin(ring1Angles[i]) });
   });
 
-  // Second-ring: orbit around their closest ring-1 parent, or spread at r=280
-  const r2 = 280;
+  // Ring-2: place OUTSIDE their ring-1 parent (away from center)
   ring2Nodes.forEach((n, i) => {
     // Find a ring-1 parent this node is connected to
     let parentPos: NodePosition | undefined;
     for (const c of connections) {
-      if (c.from === n.id && positions.has(c.to)) { parentPos = positions.get(c.to); break; }
-      if (c.to === n.id && positions.has(c.from)) { parentPos = positions.get(c.from); break; }
+      if (c.from === n.id && positions.has(c.to) && ring1Nodes.some((r) => r.id === c.to)) {
+        parentPos = positions.get(c.to); break;
+      }
+      if (c.to === n.id && positions.has(c.from) && ring1Nodes.some((r) => r.id === c.from)) {
+        parentPos = positions.get(c.from); break;
+      }
     }
-    if (parentPos && parentPos.x !== CX) {
-      // orbit around parent at a smaller radius
-      const baseAngle = Math.atan2(parentPos.y - CY, parentPos.x - CX);
-      const spread = 0.45;
-      const offset = (i % 3 - 1) * spread;
-      const angle = baseAngle + offset;
-      const dist = r2 - r1Base + 80;
+    if (parentPos) {
+      // Direction from center → parent, then extend further outward
+      const dirX = parentPos.x - CX;
+      const dirY = parentPos.y - CY;
+      const len = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+      const unitX = dirX / len;
+      const unitY = dirY / len;
+      // Offset from parent outward; siblings of same parent fan out ±30°
+      const siblingOffset = (i % 3 - 1) * 0.35; // angle nudge
+      const cosO = Math.cos(siblingOffset);
+      const sinO = Math.sin(siblingOffset);
+      const rotX = unitX * cosO - unitY * sinO;
+      const rotY = unitX * sinO + unitY * cosO;
+      const dist = 120;
       positions.set(n.id, {
-        x: parentPos.x + dist * Math.cos(angle),
-        y: parentPos.y + dist * Math.sin(angle),
+        x: parentPos.x + rotX * dist,
+        y: parentPos.y + rotY * dist,
       });
     } else {
       const angle = (i / Math.max(ring2Nodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
+      const r2 = r1 + 130;
       positions.set(n.id, { x: CX + r2 * Math.cos(angle), y: CY + r2 * Math.sin(angle) });
     }
   });
@@ -174,30 +218,64 @@ function DetailPanel({ node, onClose }: { node: FlowNode; onClose: () => void })
   );
 }
 
-// ── Connection line with animateMotion packets ─────────────────────
+// ── Connection line with arrowhead + label ─────────────────────────
 function ConnectionLine({
-  fromPos, toPos, color, id, isActive,
+  fromPos, toPos, color, id, isActive, label, pulsing,
 }: {
-  fromPos: NodePosition; toPos: NodePosition; color: string; id: string; isActive: boolean;
+  fromPos: NodePosition; toPos: NodePosition; color: string; id: string; isActive: boolean; label?: string; pulsing?: boolean;
 }) {
   const [r, g, b] = hexToRgb(color);
   const pathD = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
   const pathId = `mol-path-${id}`;
+  const markerId = `mol-arrow-${id}`;
+
+  // Midpoint and angle for label
+  const mx = (fromPos.x + toPos.x) / 2;
+  const my = (fromPos.y + toPos.y) / 2;
+  const dx = toPos.x - fromPos.x;
+  const dy = toPos.y - fromPos.y;
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  // Flip label if it would be upside-down
+  const labelAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
 
   return (
     <>
+      <defs>
+        {/* Subtle chevron arrowhead — thin, not filled triangle */}
+        <marker
+          id={markerId}
+          markerWidth="8"
+          markerHeight="8"
+          refX="6"
+          refY="4"
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <polyline
+            points="1,1 6,4 1,7"
+            fill="none"
+            stroke={isActive ? color : `rgba(${r},${g},${b},0.4)`}
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </marker>
+      </defs>
+
       <path
         id={pathId}
         d={pathD}
         fill="none"
         stroke={isActive ? color : `rgba(${r},${g},${b},0.25)`}
         strokeWidth={isActive ? 2 : 1.2}
+        markerEnd={`url(#${markerId})`}
         style={
           isActive
             ? { filter: `drop-shadow(0 0 4px rgba(${r},${g},${b},0.6))` }
             : undefined
         }
       />
+
       {/* 2 staggered glowing packets */}
       {[0, 1].map((i) => (
         <circle
@@ -214,15 +292,58 @@ function ConnectionLine({
           </animateMotion>
         </circle>
       ))}
+
+      {/* Connection label at midpoint */}
+      {label && label.trim() && (
+        <g transform={`translate(${mx}, ${my}) rotate(${labelAngle})`}>
+          {/* Dark pill background */}
+          <rect
+            x={-label.length * 3}
+            y={-8}
+            width={label.length * 6}
+            height={13}
+            rx={4}
+            fill="rgba(0,0,0,0.55)"
+            style={{ backdropFilter: "blur(4px)" }}
+          />
+          <text
+            x={0}
+            y={3}
+            textAnchor="middle"
+            fontSize={9}
+            fill="white"
+            opacity={isActive ? 0.95 : 0.65}
+            style={{ pointerEvents: "none", userSelect: "none", fontWeight: 500 }}
+          >
+            {label}
+          </text>
+        </g>
+      )}
+
+      {/* Pulse animation for connected nodes on select — driven by parent */}
+      {pulsing && (
+        <circle
+          cx={toPos.x}
+          cy={toPos.y}
+          r={48}
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          opacity={0}
+        >
+          <animate attributeName="r" from="38" to="60" dur="0.3s" fill="freeze" />
+          <animate attributeName="opacity" values="0.5;0" dur="0.3s" fill="freeze" />
+        </circle>
+      )}
     </>
   );
 }
 
 // ── Single molecule node ───────────────────────────────────────────
 function MoleculeNode({
-  node, pos, isCenter, isSelected, index, onClick,
+  node, pos, isCenter, isSelected, isPulsing, index, onClick,
 }: {
-  node: FlowNode; pos: NodePosition; isCenter: boolean; isSelected: boolean; index: number; onClick: () => void;
+  node: FlowNode; pos: NodePosition; isCenter: boolean; isSelected: boolean; isPulsing: boolean; index: number; onClick: () => void;
 }) {
   const color = getLayerColor(node.id);
   const [r, g, b] = hexToRgb(color);
@@ -235,8 +356,16 @@ function MoleculeNode({
       onClick={onClick}
       style={{ cursor: "pointer" }}
       initial={{ opacity: 0, scale: 0 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.5, delay: index * 0.06, ease: [0.34, 1.56, 0.64, 1] }}
+      animate={
+        isPulsing
+          ? { opacity: 1, scale: [1, 1.1, 1] }
+          : { opacity: 1, scale: 1 }
+      }
+      transition={
+        isPulsing
+          ? { duration: 0.3, ease: "easeOut" }
+          : { duration: 0.5, delay: index * 0.06, ease: [0.34, 1.56, 0.64, 1] }
+      }
     >
       {/* Breathing pulse — idle scale animation */}
       <motion.g
@@ -339,6 +468,7 @@ function MoleculeNode({
 // ── Main MoleculeRenderer ──────────────────────────────────────────
 export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
+  const [pulsingNodes, setPulsingNodes] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
 
   const positions = useMemo(
@@ -369,10 +499,45 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, vbX: 0, vbY: 0 });
 
+  // Animated viewBox for smooth re-center
+  const animFrameRef = useRef<number | null>(null);
+
   // Reset viewBox when bounds change (new data)
   useEffect(() => { setViewBox(bounds); }, [bounds]);
 
-  const fitView = useCallback(() => { setViewBox(bounds); }, [bounds]);
+  const fitView = useCallback(() => {
+    setSelectedNode(null);
+    animateViewBox(bounds);
+  }, [bounds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Smooth viewBox animation via requestAnimationFrame
+  const animateViewBox = useCallback((target: typeof bounds) => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    const start = performance.now();
+    const duration = 350;
+
+    setViewBox((current) => {
+      const from = { ...current };
+
+      const step = (now: number) => {
+        const t = Math.min((now - start) / duration, 1);
+        // ease-in-out cubic
+        const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        setViewBox({
+          x: from.x + (target.x - from.x) * ease,
+          y: from.y + (target.y - from.y) * ease,
+          width: from.width + (target.width - from.width) * ease,
+          height: from.height + (target.height - from.height) * ease,
+        });
+        if (t < 1) animFrameRef.current = requestAnimationFrame(step);
+      };
+
+      animFrameRef.current = requestAnimationFrame(step);
+      return from; // keep current until RAF kicks in
+    });
+  }, []);
+
+  useEffect(() => () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); }, []);
 
   const zoom = useCallback((factor: number) => {
     setViewBox((vb) => {
@@ -391,7 +556,6 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
   }, [zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only pan on left click on the SVG bg, not on nodes
     if (e.button !== 0) return;
     setIsPanning(true);
     panStartRef.current = { x: e.clientX, y: e.clientY, vbX: viewBox.x, vbY: viewBox.y };
@@ -413,15 +577,51 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
 
   const handleMouseUp = useCallback(() => { setIsPanning(false); }, []);
 
-  // Build a set of active connection ids when a node is selected
-  const activeConnectionIds = useMemo(() => {
-    if (!selectedNode) return new Set<string>();
-    const ids = new Set<string>();
+  // Build a set of active connection ids and connected node ids when a node is selected
+  const { activeConnectionIds, connectedNodeIds } = useMemo(() => {
+    if (!selectedNode) return { activeConnectionIds: new Set<string>(), connectedNodeIds: new Set<string>() };
+    const connIds = new Set<string>();
+    const nodeIds = new Set<string>();
     data.connections.forEach((c, i) => {
-      if (c.from === selectedNode.id || c.to === selectedNode.id) ids.add(`${i}`);
+      if (c.from === selectedNode.id || c.to === selectedNode.id) {
+        connIds.add(`${i}`);
+        nodeIds.add(c.from);
+        nodeIds.add(c.to);
+      }
     });
-    return ids;
+    return { activeConnectionIds: connIds, connectedNodeIds: nodeIds };
   }, [selectedNode, data.connections]);
+
+  // Handle node click: re-center + pulse connected nodes
+  const handleNodeClick = useCallback((node: FlowNode) => {
+    if (selectedNode?.id === node.id) {
+      // Deselect — fit view back
+      setSelectedNode(null);
+      animateViewBox(bounds);
+      return;
+    }
+
+    setSelectedNode(node);
+
+    // Re-center viewBox on clicked node
+    const pos = positions.get(node.id);
+    if (pos) {
+      const w = viewBox.width;
+      const h = viewBox.height;
+      animateViewBox({ x: pos.x - w / 2, y: pos.y - h / 2, width: w, height: h });
+    }
+
+    // Pulse connected nodes
+    const connected = new Set<string>();
+    data.connections.forEach((c) => {
+      if (c.from === node.id) connected.add(c.to);
+      if (c.to === node.id) connected.add(c.from);
+    });
+    setPulsingNodes(connected);
+    setTimeout(() => setPulsingNodes(new Set()), 350);
+  }, [selectedNode, positions, viewBox.width, viewBox.height, data.connections, bounds, animateViewBox]);
+
+  const viewBoxStr = `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
 
   return (
     <div>
@@ -468,7 +668,7 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
         </div>
 
         <svg
-          viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+          viewBox={viewBoxStr}
           width="100%"
           height="100%"
           style={{ display: "block", userSelect: "none" }}
@@ -504,6 +704,7 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
                 toPos={toPos}
                 color={color}
                 isActive={isActive}
+                label={c.label}
               />
             );
           })}
@@ -514,6 +715,7 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
             if (!pos) return null;
             const isCenter = i === 0;
             const isSelected = selectedNode?.id === node.id;
+            const isPulsing = pulsingNodes.has(node.id);
             return (
               <MoleculeNode
                 key={node.id}
@@ -521,8 +723,9 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
                 pos={pos}
                 isCenter={isCenter}
                 isSelected={isSelected}
+                isPulsing={isPulsing}
                 index={i}
-                onClick={() => setSelectedNode(isSelected ? null : node)}
+                onClick={() => handleNodeClick(node)}
               />
             );
           })}
@@ -537,14 +740,14 @@ export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
         {/* Detail panel */}
         <AnimatePresence>
           {selectedNode && (
-            <DetailPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+            <DetailPanel node={selectedNode} onClose={() => { setSelectedNode(null); animateViewBox(bounds); }} />
           )}
         </AnimatePresence>
       </div>
 
       {/* Click hint */}
       <p className="text-xs text-muted-foreground text-center mt-2">
-        Click any node to explore it
+        Click any node to explore it · Click again to deselect
       </p>
     </div>
   );

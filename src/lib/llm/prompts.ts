@@ -59,6 +59,10 @@ Rules:
 - "details" is REQUIRED on every node — write 2-3 sentences explaining the component's role, how it works, and why it matters in this architecture
 - Include "codeSnippet" where code examples would be illuminating
 - "icon" must be a valid lucide-react icon name (lowercase, kebab-case)
+- IMPORTANT: Every connection MUST have a descriptive "label" that explains what flows between the nodes (e.g. "HTTP Request", "JWT Token", "Process Payment", "Query Results"). Never leave connection labels empty.
+- Order nodes logically: the first node should be the entry point (client, user, request source). stepOrder should follow the natural data flow path.
+- Use "animated": true on the PRIMARY flow path (the main happy-path sequence). Secondary/branching connections can have animated: false.
+- When the content describes a hub-and-spoke pattern (one central node connecting to many), put the hub node FIRST in the nodes array.
 `;
 
 export const CODE_WALKTHROUGH_PROMPT = `${SHARED_INSTRUCTIONS}
