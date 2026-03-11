@@ -24,7 +24,7 @@ export function SocialShareButtons({ url, title, slug }: SocialShareProps) {
 
   const handleRemix = () => {
     // Store the slug in sessionStorage so the create page can load it
-    sessionStorage.setItem("explainify_remix_slug", slug);
+    sessionStorage.setItem("vizbrief_remix_slug", slug);
     window.location.href = "/create?remix=" + slug;
   };
 

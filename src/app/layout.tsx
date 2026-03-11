@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Explainify — Paste complexity. Get clarity.",
-  description: "AI transforms your technical docs into interactive, shareable explainers in seconds.",
+  title: "VizBrief — Paste complexity. Get clarity.",
+  description: "AI transforms your technical docs into beautiful, interactive visual briefs in seconds.",
 };
 
 export default function RootLayout({

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1200, height: 630 });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://explainify.driftworks.dev";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
     await page.goto(`${appUrl}/e/${slug}`, {
       waitUntil: "networkidle",
       timeout: 30000,

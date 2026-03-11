@@ -16,4 +16,4 @@ export const PRO_PRICE_CENTS = 900;
 export const PRO_PRICE_ID = "price_1T8swuD9sSLIohn6Pnv3m45k";
 
 /** Product name */
-export const PRO_PRODUCT_NAME = "Explainify Pro";
+export const PRO_PRODUCT_NAME = "VizBrief Pro";

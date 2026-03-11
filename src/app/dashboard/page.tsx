@@ -5,7 +5,7 @@ import type { ExplainerRow } from "@/lib/db";
 import { DashboardClient } from "./dashboard-client";
 
 export const metadata = {
-  title: "Dashboard — Explainify",
+  title: "Dashboard — VizBrief",
   description: "Manage your explainers",
 };
 

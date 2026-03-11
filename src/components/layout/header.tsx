@@ -10,7 +10,7 @@ export function Header() {
       <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity">
           <Sparkles size={20} className="text-blue-500" />
-          <span className="font-bold text-lg">Explainify</span>
+          <span className="font-bold text-lg">VizBrief</span>
         </Link>
         <div className="flex items-center gap-1">
           <Link

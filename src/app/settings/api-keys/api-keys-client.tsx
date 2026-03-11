@@ -114,7 +114,7 @@ export function ApiKeysClient() {
             <h1 className="text-2xl font-bold text-foreground">API Keys</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Use API keys to call the Explainify REST API from your own applications.
+            Use API keys to call the VizBrief REST API from your own applications.
           </p>
         </div>
 
@@ -147,7 +147,7 @@ export function ApiKeysClient() {
             <Key size={32} className="text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm font-medium text-foreground mb-1">No API keys yet</p>
             <p className="text-xs text-muted-foreground mb-4">
-              Create a key to start using the Explainify API
+              Create a key to start using the VizBrief API
             </p>
             <button
               onClick={() => setShowCreateModal(true)}
@@ -210,7 +210,7 @@ export function ApiKeysClient() {
         <div className="mt-8 p-5 rounded-xl border border-border bg-card">
           <h3 className="text-sm font-semibold text-foreground mb-3">Quick start</h3>
           <pre className="text-xs text-muted-foreground bg-muted rounded-lg p-3 overflow-x-auto">
-{`curl -X POST https://explainify.driftworks.dev/api/v1/explain \\
+{`curl -X POST https://vizbrief.driftworks.dev/api/v1/explain \\
   -H "Authorization: Bearer expl_your_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{"content": "Your content here", "template": "flow-animator"}'`}

@@ -6,7 +6,7 @@ import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
 const MERMAID_PREFIX = "[MERMAID_IMPORT]\n";
 
 const MERMAID_SYSTEM_ADDITION = `
-The user has provided a Mermaid diagram. Convert it to the Explainify flow-animator format, preserving the nodes, edges, and labels. Map node types to appropriate layer categories. Use "flow-animator" as the template.`;
+The user has provided a Mermaid diagram. Convert it to the VizBrief flow-animator format, preserving the nodes, edges, and labels. Map node types to appropriate layer categories. Use "flow-animator" as the template.`;
 
 export interface AnalyzerResult {
   data: ExplainerData;

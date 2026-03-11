@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { LogIn, LogOut, LayoutDashboard, ChevronDown, Zap } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 export function SignInButton() {
@@ -10,6 +11,8 @@ export function SignInButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const isSignInPage = pathname?.startsWith("/auth/");
 
   useEffect(() => {
     if (!session?.user) return;
@@ -37,6 +40,7 @@ export function SignInButton() {
   }
 
   if (!session?.user) {
+    if (isSignInPage) return null;
     return (
       <button
         onClick={() => signIn()}

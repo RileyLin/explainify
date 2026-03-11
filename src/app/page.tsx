@@ -51,6 +51,11 @@ function AutoPlayingDemo() {
         className="absolute top-0 left-0 right-0 h-px"
         style={{ background: "linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent)" }}
       />
+      {/* Live demo badge */}
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 border border-white/10 backdrop-blur-sm">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        <span className="text-[10px] font-medium text-white/70 tracking-wide">LIVE DEMO</span>
+      </div>
       <div className="h-[420px]">
         <FlowAnimator data={HERO_DEMO_DATA} autoPlay hideHeader hideControls />
       </div>
@@ -312,14 +317,14 @@ const HOW_IT_WORKS_STEPS = [
         <p className="text-xs font-medium text-muted-foreground">🎉 Your explainer is live!</p>
         <div className="flex items-center gap-2">
           <div className="flex-1 px-3 py-2 rounded-lg text-xs font-mono truncate bg-muted text-muted-foreground border border-border">
-            explainify.app/e/api-gateway-design-x7k
+            vizbrief.com/e/api-gateway-design-x7k
           </div>
           <div className="px-3 py-2 rounded-lg text-xs font-medium shrink-0" style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac" }}>
             Copy
           </div>
         </div>
         <div className="text-xs text-muted-foreground">
-          {'<iframe src="explainify.app/e/..." />'}
+          {'<iframe src="vizbrief.com/e/..." />'}
         </div>
       </div>
     ),
@@ -620,7 +625,7 @@ function Footer() {
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">
-          Explainify · Driftworks, Inc
+          VizBrief · Driftworks, Inc
         </span>
         <a
           href="https://github.com/RileyLin/explainify"

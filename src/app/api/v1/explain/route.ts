@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
       if (insertError.code === "23505") {
         const retrySlug = generateSlug(10);
         await supabase.from("explainers").insert({ ...insertData, slug: retrySlug });
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://explainify.driftworks.dev";
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
         return NextResponse.json({
           url: `${appUrl}/e/${retrySlug}`,
           slug: retrySlug,
@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to save explainer");
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://explainify.driftworks.dev";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
     return NextResponse.json({
       url: `${appUrl}/e/${slug}`,
       slug,

@@ -16,9 +16,9 @@ function SignInContent() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-3">
             <Sparkles className="text-blue-500" size={28} />
-            <span className="font-bold text-2xl text-foreground">Explainify</span>
+            <span className="font-bold text-2xl text-foreground">VizBrief</span>
           </div>
-          <p className="text-muted-foreground text-sm">Sign in to save and publish your explainers</p>
+          <p className="text-muted-foreground text-sm">Sign in to save and publish your visual briefs</p>
         </div>
 
         {/* Sign in card */}
@@ -45,15 +45,15 @@ function SignInContent() {
 
           <p className="text-center text-xs text-muted-foreground mt-6">
             By signing in, you agree to our{" "}
-            <a href="#" className="underline hover:text-foreground">Terms</a>
+            <a href="/terms" className="underline hover:text-foreground">Terms</a>
             {" "}and{" "}
-            <a href="#" className="underline hover:text-foreground">Privacy Policy</a>.
+            <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>.
           </p>
         </div>
 
         {/* Back link */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          <a href="/" className="hover:text-foreground transition-colors">← Back to Explainify</a>
+          <a href="/" className="hover:text-foreground transition-colors">← Back to VizBrief</a>
         </p>
       </div>
     </div>

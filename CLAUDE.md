@@ -1,6 +1,6 @@
-# CLAUDE.md — Explainify Codebase Context
+# CLAUDE.md — VizBrief Codebase Context
 
-## What is Explainify?
+## What is VizBrief?
 AI-powered tool that transforms complex technical content into beautiful, interactive web explainers. Paste a dense doc → get a shareable, animated, clickable micro-webpage that makes the concept click instantly.
 
 **Think:** Brilliant.org quality meets Napkin.ai speed. Gamma-style "paste → polished output" but interactive, not slides.
@@ -35,7 +35,7 @@ explainify/
 │   │   ├── e/[slug]/
 │   │   │   ├── page.tsx         # Published explainer viewer (with OG metadata)
 │   │   │   ├── viewer.tsx       # Client-side renderer wrapper
-│   │   │   └── footer.tsx       # Share buttons + Made with Explainify CTA
+│   │   │   └── footer.tsx       # Share buttons + Made with VizBrief CTA
 │   │   ├── dashboard/
 │   │   │   └── page.tsx         # User's explainers list
 │   │   └── api/

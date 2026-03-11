@@ -7,7 +7,7 @@ const FREE_FEATURES = [
   { text: "All 8 template types", included: true },
   { text: "Public sharing", included: true },
   { text: "Embed code", included: true },
-  { text: '"Made with Explainify" watermark', included: true },
+  { text: '"Made with VizBrief" watermark', included: true },
   { text: "Private links", included: false },
   { text: "Custom branding", included: false },
   { text: "Analytics dashboard", included: false },
@@ -70,7 +70,7 @@ export default function PricingPage() {
                 <span className="text-muted-foreground">/month</span>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                Perfect for trying out Explainify
+                Perfect for trying out VizBrief
               </p>
             </div>
 
@@ -124,7 +124,7 @@ export default function PricingPage() {
         {/* FAQ note */}
         <div className="text-center mt-12 text-sm text-muted-foreground">
           <p>Cancel anytime. No long-term contracts.</p>
-          <p className="mt-1">Questions? Reach out at support@explainify.dev</p>
+          <p className="mt-1">Questions? Reach out at support@vizbrief.com</p>
         </div>
       </div>
     </div>

@@ -38,14 +38,14 @@ export function ExplainerFooter({ url, title, slug, onDownloadPng }: ExplainerFo
         </button>
       </div>
 
-      {/* Made with Explainify - clickable CTA with UTM params */}
+      {/* Made with VizBrief - clickable CTA with UTM params */}
       <div className="text-center">
         <a
           href={`/create?utm_source=explainer&utm_medium=watermark&utm_campaign=${slug}`}
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
         >
           <span>✦</span>
-          <span>Made with Explainify</span>
+          <span>Made with VizBrief</span>
         </a>
       </div>
     </div>

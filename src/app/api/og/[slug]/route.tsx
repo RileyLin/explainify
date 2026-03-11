@@ -125,7 +125,7 @@ export async function GET(
           }}
         >
           <span style={{ display: "flex" }}>✦</span>
-          <span style={{ display: "flex" }}>Made with Explainify</span>
+          <span style={{ display: "flex" }}>Made with VizBrief</span>
         </div>
       </div>
     ),
