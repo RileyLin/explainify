@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Zap,
   GitMerge,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -164,7 +165,7 @@ export default function CreatePage() {
 
       setGenerating(false);
     },
-    [content, template],
+    [content, template, inputMode, mermaidContent],
   );
 
     const handleSave = async () => {
@@ -213,6 +214,37 @@ export default function CreatePage() {
       setError(`Publishing failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const [downloadingPng, setDownloadingPng] = useState(false);
+
+  const handleDownloadPng = async () => {
+    if (!result || downloadingPng) return;
+    setDownloadingPng(true);
+    try {
+      // If we already have a slug, download directly
+      const slug = publishedSlug || await (async () => {
+        const sourceContent = inputMode === "mermaid" ? mermaidContent : content;
+        const response = await fetch("/api/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: result, sourceContent: sourceContent || undefined, isPublic: false }),
+        });
+        if (!response.ok) throw new Error("Failed to save for export");
+        const body = await response.json();
+        setPublishedSlug(body.slug);
+        setSavedToDashboard(true);
+        return body.slug as string;
+      })();
+      const a = document.createElement("a");
+      a.href = `/api/export/${slug}/png`;
+      a.download = `${slug}.png`;
+      a.click();
+    } catch (err) {
+      setError(`PNG export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setDownloadingPng(false);
     }
   };
 
@@ -510,6 +542,16 @@ export default function CreatePage() {
                   </button>
                 ))}
                 <div className="ml-auto flex items-center gap-2">
+                  {/* Download PNG — always available after generation */}
+                  <button
+                    onClick={handleDownloadPng}
+                    disabled={downloadingPng || publishing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-muted-foreground hover:text-foreground disabled:opacity-50 transition-all border border-border"
+                    title="Download as PNG"
+                  >
+                    {downloadingPng ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    PNG
+                  </button>
                   {/* Save to dashboard (private) */}
                   {session && !savedToDashboard && !publishedUrl && (
                     <button

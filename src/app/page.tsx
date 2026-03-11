@@ -620,7 +620,7 @@ function Footer() {
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">
-          Explainify · Built by Riley
+          Explainify · Driftworks, Inc
         </span>
         <a
           href="https://github.com/RileyLin/explainify"
