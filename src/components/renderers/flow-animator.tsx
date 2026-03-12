@@ -77,8 +77,8 @@ function deduplicateConnections(
 }
 
 // ── Sequential layout (for renderHint: "sequential") ──────────────
-// Places nodes in a clean left-to-right row using the stepOrder.
-// No back-arrows possible — every node gets an explicit X position.
+// Places nodes in a snake/grid pattern wrapping into rows.
+// ≤4 nodes: single row. 5-8: 2 rows. 9+: 3+ rows (max 4 per row).
 function computeSequentialLayout(
   nodes: FlowNodeType[],
   stepOrder: string[],
@@ -86,25 +86,38 @@ function computeSequentialLayout(
   showDescriptions: boolean = true
 ): Map<string, { x: number; y: number }> {
   const nodeWidth = nodeStyle === "minimal" ? 120 : 220;
-  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 80 : 56);
-  const gapX = 100; // horizontal gap between nodes
+  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 100 : 72);
+  const gapX = 120; // horizontal gap between nodes
+  const gapY = 100; // vertical gap between rows
   const positions = new Map<string, { x: number; y: number }>();
 
-  // Use stepOrder as the canonical left-to-right sequence
   const orderedIds = stepOrder.length > 0 ? stepOrder : nodes.map((n) => n.id);
+  const total = orderedIds.length;
+
+  // Determine columns per row: max 4, but try to keep rows balanced
+  const COLS = total <= 4 ? total : total <= 8 ? Math.ceil(total / 2) : 4;
 
   orderedIds.forEach((id, i) => {
+    const row = Math.floor(i / COLS);
+    const col = i % COLS;
+    // Snake pattern: even rows go L→R, odd rows go R→L for visual flow
+    const nodesInRow = Math.min(COLS, total - row * COLS);
+    const effectiveCol = row % 2 === 0 ? col : nodesInRow - 1 - col;
     positions.set(id, {
-      x: i * (nodeWidth + gapX),
-      y: 0,
+      x: effectiveCol * (nodeWidth + gapX),
+      y: row * (nodeHeight + gapY),
     });
   });
 
-  // Any nodes not in stepOrder get placed to the right
-  let extra = orderedIds.length;
+  // Any nodes not in stepOrder get placed below
+  const extraRows = Math.ceil(total / COLS);
+  let extra = 0;
   nodes.forEach((n) => {
     if (!positions.has(n.id)) {
-      positions.set(n.id, { x: extra * (nodeWidth + gapX), y: nodeHeight + 40 });
+      positions.set(n.id, {
+        x: (extra % COLS) * (nodeWidth + gapX),
+        y: (extraRows + Math.floor(extra / COLS)) * (nodeHeight + gapY),
+      });
       extra++;
     }
   });
@@ -125,13 +138,9 @@ function computeDagreLayout(
   g.setDefaultEdgeLabel(() => ({}));
 
   const nodeCount = nodes.length;
-  // More nodes = tighter but never overlapping (Phase 2: adaptive spacing)
-  const ranksepBase = direction === "LR"
-    ? Math.max(60, 140 - nodeCount * 8)
-    : Math.max(50, 120 - nodeCount * 8);
-  const nodesepBase = direction === "LR"
-    ? Math.max(30, 60 - nodeCount * 3)
-    : Math.max(40, 80 - nodeCount * 4);
+  // Generous fixed spacing — let fitView handle the zoom, not cramped nodes
+  const ranksepBase = direction === "LR" ? 100 : 80;
+  const nodesepBase = direction === "LR" ? 60 : 60;
 
   // Apply density multiplier (Phase 1: settings bar)
   const densityMultiplier = density === "compact" ? 0.6 : density === "spread" ? 1.5 : 1.0;
@@ -142,7 +151,7 @@ function computeDagreLayout(
 
   // Use actual node dimensions matching the render
   const nodeWidth = nodeStyle === "minimal" ? 120 : 220;
-  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 80 : 56);
+  const nodeHeight = nodeStyle === "minimal" ? 48 : (showDescriptions ? 100 : 72);
 
   nodes.forEach((n) => {
     g.setNode(n.id, { width: nodeWidth, height: nodeHeight });
@@ -412,7 +421,7 @@ function CustomFlowNode({ data }: NodeProps) {
 
   // Minimal style: 120x48, no description
   const nodeWidth = isMinimal ? 120 : 220;
-  const nodeHeight = isMinimal ? 48 : (showDescriptions ? 80 : 56);
+  const nodeHeight = isMinimal ? 48 : (showDescriptions ? 100 : 72);
 
   return (
     <motion.div
@@ -599,7 +608,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
   );
 
   // ── Adaptive fitPadding (Phase 2) ──────────────────────────────
-  const fitPadding = data.nodes.length > 6 ? 0.08 : 0.15;
+  const fitPadding = data.nodes.length > 8 ? 0.12 : data.nodes.length > 4 ? 0.15 : 0.2;
 
   // ── Build React Flow nodes ────────────────────────────────────────
   const rfNodes: Node[] = useMemo(
@@ -804,9 +813,9 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: fitPadding, minZoom: 0.5, maxZoom: 1.5 }}
+          fitViewOptions={{ padding: fitPadding, minZoom: 0.1, maxZoom: 1.5 }}
           proOptions={{ hideAttribution: true }}
-          minZoom={0.3}
+          minZoom={0.1}
           maxZoom={2}
         >
           <Background variant={BackgroundVariant.Lines} gap={40} color="rgba(148,163,184,0.06)" />
