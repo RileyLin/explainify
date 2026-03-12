@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { FlowAnimator } from "@/components/renderers/flow-animator";
+import { WaitlistCapture } from "@/components/waitlist/waitlist-capture";
 import type { FlowAnimatorData } from "@/lib/schemas/flow";
 
 // ── Hard-coded demo data ────────────────────────────────────────────
@@ -648,6 +649,7 @@ export default function HomePage() {
       <HowItWorksSection />
       <TemplatesSection />
       <CTASection />
+      <WaitlistCapture />
       <Footer />
     </div>
   );
