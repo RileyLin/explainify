@@ -198,12 +198,15 @@ export function TopicIllustration({ tags = [], icon: _icon, className }: TopicIl
   return (
     <div
       className={cn(
-        "w-full h-[100px] flex items-center justify-center rounded-lg overflow-hidden",
+        "flex items-center justify-center rounded-lg overflow-hidden",
         className
       )}
       style={{
         background:
           "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(59,130,246,0.04))",
+        // Default size; override with className !w-12 !h-12 etc. for inline
+        width: className?.includes("!w-") ? undefined : "100%",
+        height: className?.includes("!h-") ? undefined : "100px",
       }}
     >
       <Illustration />

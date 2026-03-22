@@ -67,25 +67,34 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
           {Icon ? <Icon size={16} /> : index + 1}
         </motion.div>
         <div className="flex-1 min-w-0">
-          {layer.tags && <TopicIllustration tags={layer.tags} className="mb-3" />}
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-foreground">{layer.title}</h3>
-            {layer.visualLabel && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                {layer.visualLabel}
-              </span>
+          <div className="flex items-start gap-3">
+            {layer.tags && (
+              <TopicIllustration
+                tags={layer.tags}
+                className="!w-12 !h-12 shrink-0 rounded-md !p-0"
+              />
             )}
-            <ExploreButton
-              nodeId={layer.id}
-              nodeTitle={layer.title}
-              nodeDescription={layer.description}
-              className="ml-auto"
-            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-foreground">{layer.title}</h3>
+                {layer.visualLabel && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    {layer.visualLabel}
+                  </span>
+                )}
+                <ExploreButton
+                  nodeId={layer.id}
+                  nodeTitle={layer.title}
+                  nodeDescription={layer.description}
+                  className="ml-auto"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{layer.description}</p>
+              {layer.details && (
+                <p className="text-xs text-muted-foreground/70 mt-2 leading-relaxed">{layer.details}</p>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">{layer.description}</p>
-          {layer.details && (
-            <p className="text-xs text-muted-foreground/70 mt-2 leading-relaxed">{layer.details}</p>
-          )}
         </div>
       </div>
     </motion.div>

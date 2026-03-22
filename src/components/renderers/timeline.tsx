@@ -178,23 +178,34 @@ function TimelineInner({ data }: TimelineProps) {
                   </div>
                 )}
 
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-foreground">{event.title}</h3>
-                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                    <ExploreButton
-                      nodeId={event.id}
-                      nodeTitle={event.title}
-                      nodeDescription={event.description}
+                <div className="flex items-start gap-3">
+                  {/* Inline topic illustration — always visible */}
+                  {event.tags && event.tags.length > 0 && (
+                    <TopicIllustration
+                      tags={event.tags}
+                      className="!w-12 !h-12 shrink-0 rounded-md !p-0 mt-0.5"
                     />
-                    {event.details && !isCompact && (
-                      <motion.div
-                        animate={{ rotate: expandedId === event.id ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-muted-foreground"
-                      >
-                        <ChevronDown size={16} />
-                      </motion.div>
-                    )}
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-foreground">{event.title}</h3>
+                      <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                        <ExploreButton
+                          nodeId={event.id}
+                          nodeTitle={event.title}
+                          nodeDescription={event.description}
+                        />
+                        {event.details && !isCompact && (
+                          <motion.div
+                            animate={{ rotate: expandedId === event.id ? 180 : 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="text-muted-foreground"
+                          >
+                            <ChevronDown size={16} />
+                          </motion.div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -231,9 +242,6 @@ function TimelineInner({ data }: TimelineProps) {
                         transition={{ duration: 0.22 }}
                         className="overflow-hidden"
                       >
-                        {event.tags && (
-                          <TopicIllustration tags={event.tags} className="mt-3 mb-3" />
-                        )}
                         <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-foreground/80 leading-relaxed">
                           {event.details}
                         </div>
