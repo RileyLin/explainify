@@ -7,6 +7,7 @@ export const CompareItemSchema = z.object({
   icon: z.string().optional(),
   pros: z.array(z.string().min(1)).min(1),
   cons: z.array(z.string().min(1)).min(1),
+  illustrationSvg: z.string().optional(),
 });
 
 export type CompareItem = z.infer<typeof CompareItemSchema>;

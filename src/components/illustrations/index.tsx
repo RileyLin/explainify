@@ -213,3 +213,89 @@ export function TopicIllustration({ tags = [], icon: _icon, className }: TopicIl
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// DynamicIllustration — renders LLM-generated SVGs with sanitization fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitizes an LLM-generated SVG string to prevent XSS.
+ * Strips scripts, event handlers, and dangerous elements.
+ * Returns empty string if the SVG fails basic structure validation.
+ */
+export function sanitizeSvg(raw: string): string {
+  if (typeof raw !== "string") return "";
+
+  const trimmed = raw.trim();
+
+  // Must start with <svg and end with </svg>
+  if (!trimmed.startsWith("<svg") || !trimmed.endsWith("</svg>")) {
+    return "";
+  }
+
+  let result = trimmed;
+
+  // Strip <script> ... </script> blocks (case-insensitive)
+  result = result.replace(/<script[\s\S]*?<\/script>/gi, "");
+
+  // Strip <foreignObject> ... </foreignObject> blocks
+  result = result.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "");
+
+  // Remove on* event attributes (onclick, onerror, onload, onmouseover, etc.)
+  result = result.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "");
+
+  // Remove javascript: href/xlink:href values
+  result = result.replace(/(href|xlink:href)\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, "");
+
+  // Remove data: URIs (can embed scripts)
+  result = result.replace(/(href|src|xlink:href)\s*=\s*["']?\s*data:[^"'\s>]*/gi, "");
+
+  // Final structure check — make sure we still have a valid svg wrapper
+  if (!result.trim().startsWith("<svg") || !result.trim().endsWith("</svg>")) {
+    return "";
+  }
+
+  return result;
+}
+
+interface DynamicIllustrationProps {
+  svgString?: string;  // LLM-generated SVG (may be undefined if enrichment skipped)
+  tags?: string[];     // Fallback to static TopicIllustration
+  className?: string;
+}
+
+/**
+ * Renders a LLM-generated SVG illustration if available, otherwise falls back
+ * to the static TopicIllustration component.
+ *
+ * Cascade: generated SVG → static topic SVG → default illustration
+ */
+export function DynamicIllustration({
+  svgString,
+  tags,
+  className,
+}: DynamicIllustrationProps) {
+  if (svgString) {
+    const safe = sanitizeSvg(svgString);
+    if (safe) {
+      return (
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-lg overflow-hidden",
+            className,
+          )}
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(59,130,246,0.04))",
+          }}
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: safe }}
+        />
+      );
+    }
+  }
+
+  // Fallback — static topic illustration
+  return <TopicIllustration tags={tags} className={className} />;
+}
+

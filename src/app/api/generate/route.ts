@@ -3,6 +3,7 @@ import { analyzeContent, AnalysisError } from "@/lib/llm/analyzer";
 import { auth } from "@/lib/auth";
 import { getServiceClient } from "@/lib/db";
 import type { TemplateChoice } from "@/lib/llm/prompts";
+import { enrichWithSvgIllustrations, type SvgEnrichmentInput } from "@/lib/llm/svg-enrichment";
 
 const VALID_TEMPLATES = [
   "auto",
@@ -88,6 +89,81 @@ async function checkUsage(userId: string): Promise<string | null> {
   }
 }
 
+/**
+ * Extract nodes from any template type for SVG illustration enrichment.
+ *
+ * Each template stores its "nodes" under a different key:
+ *   Timeline         → data.events
+ *   Flow Animator    → data.nodes
+ *   Molecule         → data.nodes
+ *   Concept Builder  → data.layers
+ *   Compare Contrast → data.items
+ *   Component Exp.   → data.components
+ *   Decision Tree    → data.nodes
+ *   Code Walkthrough → no good per-node illustrations (skip)
+ */
+function extractNodesForSvg(data: Record<string, unknown>): SvgEnrichmentInput["nodes"] {
+  type RawNode = { id?: unknown; title?: unknown; label?: unknown; name?: unknown; description?: unknown; tags?: unknown };
+
+  function toNode(raw: RawNode): SvgEnrichmentInput["nodes"][number] | null {
+    const id = typeof raw.id === "string" ? raw.id : null;
+    // title can come from different field names across templates
+    const title =
+      typeof raw.title === "string" ? raw.title
+      : typeof raw.label === "string" ? raw.label
+      : typeof raw.name === "string" ? raw.name
+      : null;
+    const description = typeof raw.description === "string" ? raw.description : "";
+    const tags = Array.isArray(raw.tags)
+      ? (raw.tags as unknown[]).filter((t): t is string => typeof t === "string")
+      : undefined;
+
+    if (!id || !title) return null;
+    return { id, title, description, tags };
+  }
+
+  // Pick the right array based on template type
+  const candidates: unknown[] =
+    Array.isArray(data.events) ? (data.events as unknown[])
+    : Array.isArray(data.nodes) ? (data.nodes as unknown[])
+    : Array.isArray(data.layers) ? (data.layers as unknown[])
+    : Array.isArray(data.items) ? (data.items as unknown[])
+    : Array.isArray(data.components) ? (data.components as unknown[])
+    : [];
+
+  return candidates
+    .map((c) => toNode(c as RawNode))
+    .filter((n): n is SvgEnrichmentInput["nodes"][number] => n !== null);
+}
+
+/**
+ * Merge generated SVG strings back into the explainer data in-place.
+ * Mutates the data object directly (safe — it's a fresh object from the LLM).
+ */
+function mergeSvgIllustrations(
+  data: Record<string, unknown>,
+  illustrations: Record<string, string>,
+): void {
+  if (Object.keys(illustrations).length === 0) return;
+
+  type WithSvg = { id?: string; illustrationSvg?: string };
+
+  function injectInto(arr: unknown[]): void {
+    for (const item of arr) {
+      const node = item as WithSvg;
+      if (node.id && illustrations[node.id]) {
+        node.illustrationSvg = illustrations[node.id];
+      }
+    }
+  }
+
+  if (Array.isArray(data.events)) injectInto(data.events as unknown[]);
+  else if (Array.isArray(data.nodes)) injectInto(data.nodes as unknown[]);
+  else if (Array.isArray(data.layers)) injectInto(data.layers as unknown[]);
+  else if (Array.isArray(data.items)) injectInto(data.items as unknown[]);
+  else if (Array.isArray(data.components)) injectInto(data.components as unknown[]);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -141,6 +217,20 @@ export async function POST(request: NextRequest) {
       (result.data as Record<string, unknown>).template = finalTemplate;
       const meta = (result.data as Record<string, unknown>).meta as Record<string, unknown>;
       if (meta) meta.template = finalTemplate;
+    }
+
+    // --- SVG Enrichment (best-effort, non-blocking) ---
+    // Extract nodes from the generated explainer, generate SVG illustrations,
+    // and merge them back. If anything fails we still return the explainer.
+    try {
+      const svgNodes = extractNodesForSvg(result.data as Record<string, unknown>);
+      if (svgNodes.length > 0) {
+        const { illustrations } = await enrichWithSvgIllustrations({ nodes: svgNodes });
+        mergeSvgIllustrations(result.data as Record<string, unknown>, illustrations);
+      }
+    } catch (svgError) {
+      // Never block the main response — log and move on
+      console.warn("[generate] SVG enrichment failed (non-fatal):", svgError);
     }
 
     return NextResponse.json({

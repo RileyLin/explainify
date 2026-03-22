@@ -7,7 +7,7 @@ import type { TimelineData } from "@/lib/schemas/timeline";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
 import { ExploreButton } from "./explore-button";
-import { TopicIllustration } from "@/components/illustrations";
+import { DynamicIllustration } from "@/components/illustrations";
 
 interface TimelineProps {
   data: TimelineData;
@@ -181,7 +181,8 @@ function TimelineInner({ data }: TimelineProps) {
                 <div className="flex items-start gap-3">
                   {/* Inline topic illustration — always visible */}
                   {event.tags && event.tags.length > 0 && (
-                    <TopicIllustration
+                    <DynamicIllustration
+                      svgString={event.illustrationSvg}
                       tags={event.tags}
                       className="!w-12 !h-12 shrink-0 rounded-md !p-0 mt-0.5"
                     />
