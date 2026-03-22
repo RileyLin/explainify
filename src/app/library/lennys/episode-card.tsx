@@ -57,10 +57,13 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
         ease: [0.16, 1, 0.3, 1],
       }}
       className={cn(
-        "group flex flex-col rounded-xl border border-stone-200 bg-white",
-        "transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-stone-300"
+        "group flex flex-col rounded-xl",
+        "transition-all duration-200 hover:-translate-y-0.5"
       )}
-      style={{ backgroundColor: "#ffffff" }}
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
     >
       {/* Card body */}
       <div className="flex flex-col flex-1 p-5 gap-3">
@@ -71,8 +74,8 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
             className={cn(
               "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold",
               isPodcast
-                ? "bg-amber-100 text-amber-700"
-                : "bg-stone-100 text-stone-600"
+                ? "bg-indigo-500/15 text-indigo-300"
+                : "bg-white/10 text-white/50"
             )}
           >
             {isPodcast ? (
@@ -84,26 +87,26 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
           </span>
 
           {/* Date */}
-          <span className="flex items-center gap-1 text-xs text-stone-400">
+          <span className="flex items-center gap-1 text-xs text-white/30">
             <Calendar className="w-3 h-3" />
             {formatDate(entry.date)}
           </span>
         </div>
 
         {/* Title */}
-        <h3 className="font-semibold text-stone-900 leading-snug line-clamp-2 text-sm">
+        <h3 className="font-semibold text-white leading-snug line-clamp-2 text-sm">
           {displayTitle}
         </h3>
 
         {/* Subtitle: episode title when guest is shown as main title */}
         {isPodcast && entry.guest && entry.title !== entry.guest && (
-          <p className="text-xs text-stone-500 -mt-1 font-medium">
+          <p className="text-xs text-white/40 -mt-1 font-medium">
             {entry.title}
           </p>
         )}
 
         {/* Description */}
-        <p className="text-xs text-stone-500 leading-relaxed line-clamp-2 flex-1">
+        <p className="text-xs text-white/40 leading-relaxed line-clamp-2 flex-1">
           {entry.description}
         </p>
 
@@ -113,7 +116,7 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
             {displayTags.map((tag) => (
               <span
                 key={tag}
-                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 text-stone-500"
+                className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/8 text-white/40"
               >
                 {tag}
               </span>
@@ -122,7 +125,7 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
         )}
 
         {/* Stats row */}
-        <div className="flex items-center gap-3 text-[11px] text-stone-400 pt-0.5">
+        <div className="flex items-center gap-3 text-[11px] text-white/30 pt-0.5">
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
             {estimateReadTime(entry.word_count)}
@@ -139,7 +142,7 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
             className={cn(
               "w-full inline-flex items-center justify-center gap-2",
               "px-4 py-2.5 rounded-lg text-xs font-semibold",
-              "bg-amber-500 hover:bg-amber-600 text-white",
+              "bg-indigo-500 hover:bg-indigo-600 text-white",
               "transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
             )}
           >
@@ -151,7 +154,7 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
             className={cn(
               "w-full inline-flex items-center justify-center gap-2",
               "px-4 py-2.5 rounded-lg text-xs font-semibold",
-              "bg-stone-100 text-stone-400 cursor-not-allowed"
+              "bg-white/5 text-white/25 cursor-not-allowed"
             )}
           >
             Coming Soon
@@ -165,25 +168,25 @@ export function EpisodeCard({ entry, generated, index }: EpisodeCardProps) {
 // Skeleton card for loading state
 export function EpisodeCardSkeleton() {
   return (
-    <div className="flex flex-col rounded-xl border border-stone-200 bg-white animate-pulse">
+    <div className="flex flex-col rounded-xl animate-pulse" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="flex flex-col flex-1 p-5 gap-3">
         <div className="flex items-center justify-between">
-          <div className="h-6 w-20 rounded-full bg-stone-100" />
-          <div className="h-4 w-24 rounded bg-stone-100" />
+          <div className="h-6 w-20 rounded-full bg-white/8" />
+          <div className="h-4 w-24 rounded bg-white/8" />
         </div>
-        <div className="h-4 w-3/4 rounded bg-stone-100" />
+        <div className="h-4 w-3/4 rounded bg-white/8" />
         <div className="space-y-1.5">
-          <div className="h-3 w-full rounded bg-stone-100" />
-          <div className="h-3 w-5/6 rounded bg-stone-100" />
+          <div className="h-3 w-full rounded bg-white/8" />
+          <div className="h-3 w-5/6 rounded bg-white/8" />
         </div>
         <div className="flex gap-1.5">
-          <div className="h-5 w-14 rounded-full bg-stone-100" />
-          <div className="h-5 w-16 rounded-full bg-stone-100" />
-          <div className="h-5 w-12 rounded-full bg-stone-100" />
+          <div className="h-5 w-14 rounded-full bg-white/8" />
+          <div className="h-5 w-16 rounded-full bg-white/8" />
+          <div className="h-5 w-12 rounded-full bg-white/8" />
         </div>
       </div>
       <div className="px-5 pb-5">
-        <div className="h-9 w-full rounded-lg bg-stone-100" />
+        <div className="h-9 w-full rounded-lg bg-white/8" />
       </div>
     </div>
   );
