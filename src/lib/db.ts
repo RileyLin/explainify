@@ -61,4 +61,8 @@ export interface ExplainerRow {
   user_id: string | null;
   parent_slug: string | null;
   source_node_id: string | null;
+  /** JSON map of nodeId → imageUrl, populated asynchronously after generation. Null if not yet generated. */
+  image_url: Record<string, string> | null;
+  /** Chapter illustration URL for deep-dive explainers. Populated by image gen service after deep-dive creation. */
+  chapter_image_url: string | null;
 }

@@ -424,9 +424,33 @@ function CustomFlowNode({ data }: NodeProps) {
   const nodeWidth = isMinimal ? 120 : 220;
   const nodeHeight = isMinimal ? 48 : (showDescriptions ? 100 : 72);
 
+  // ── Background image state ─────────────────────────────────────
+  const hasImageBg = !isMinimal && !!nodeData.imageUrl;
+  const [imgLoaded, setImgLoaded] = useState(false);
+  // Parallax offset on hover (max ±3px)
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!hasImageBg) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) / rect.width - 0.5; // -0.5 to 0.5
+      const cy = (e.clientY - rect.top) / rect.height - 0.5;
+      // Move opposite to cursor for depth illusion (max 3px)
+      setParallax({ x: -cx * 6, y: -cy * 6 });
+    },
+    [hasImageBg]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    setParallax({ x: 0, y: 0 });
+  }, []);
+
   return (
     <motion.div
       onClick={nodeData.onClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       initial={{ opacity: 0, y: 16, scale: 0.97 }}
       animate={
         nodeData.isActive
@@ -459,7 +483,7 @@ function CustomFlowNode({ data }: NodeProps) {
               scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15 },
               boxShadow: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
       }
-      className="group cursor-pointer relative overflow-visible"
+      className="group cursor-pointer relative overflow-hidden"
       style={{
         width: nodeWidth,
         minHeight: nodeHeight,
@@ -471,6 +495,46 @@ function CustomFlowNode({ data }: NodeProps) {
         backdropFilter: "blur(8px)",
       }}
     >
+      {/* ── Background image (RIL-99) ─────────────────────────── */}
+      {hasImageBg && (
+        <>
+          {/* The image itself — very subtle, fades in over 800ms */}
+          <motion.img
+            src={nodeData.imageUrl}
+            alt=""
+            aria-hidden="true"
+            onLoad={() => setImgLoaded(true)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: imgLoaded ? 0.15 : 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="absolute object-cover pointer-events-none select-none"
+            style={{
+              // Slightly oversized so parallax shift doesn't show edges
+              inset: "-6px",
+              width: "calc(100% + 12px)",
+              height: "calc(100% + 12px)",
+              borderRadius: 14,
+              transform: `translate(${parallax.x}px, ${parallax.y}px)`,
+              transition: "transform 0.15s ease-out",
+              willChange: "transform",
+              zIndex: 0,
+            }}
+          />
+          {/* Gradient overlay: fades from node bg color to transparent, preserving readability */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              borderRadius: 14,
+              background: `linear-gradient(135deg,
+                rgba(10,14,26,0.82) 0%,
+                rgba(10,14,26,0.55) 40%,
+                rgba(10,14,26,0.7) 100%)`,
+              zIndex: 1,
+            }}
+          />
+        </>
+      )}
+
       {!isMinimal && (
         <div
           className="absolute top-0 left-0 right-0 pointer-events-none"
@@ -478,6 +542,7 @@ function CustomFlowNode({ data }: NodeProps) {
             height: "45%",
             borderRadius: "14px 14px 0 0",
             background: `linear-gradient(135deg, rgba(${r},${g},${b},0.08) 0%, transparent 65%)`,
+            zIndex: 2,
           }}
         />
       )}
@@ -489,6 +554,7 @@ function CustomFlowNode({ data }: NodeProps) {
             background: `rgba(${r},${g},${b},0.12)`,
             color: accentColor,
             letterSpacing: "0.08em",
+            zIndex: 3,
           }}
         >
           {badge}
@@ -498,7 +564,7 @@ function CustomFlowNode({ data }: NodeProps) {
       {/* Explore button — top-right corner, above badge on non-minimal */}
       <div
         className="absolute z-20 pointer-events-auto"
-        style={{ top: isMinimal ? -14 : -14, right: isMinimal ? 0 : 0 }}
+        style={{ top: isMinimal ? -14 : -14, right: isMinimal ? 0 : 0, zIndex: 20 }}
         onClick={(e) => e.stopPropagation()}
       >
         <ExploreButton
@@ -510,7 +576,7 @@ function CustomFlowNode({ data }: NodeProps) {
 
       <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 4, height: 4 }} />
 
-      <div className={`relative z-10 ${isMinimal ? "flex items-center gap-2" : ""}`}>
+      <div className={`relative ${isMinimal ? "flex items-center gap-2" : ""}`} style={{ zIndex: 10 }}>
         <div
           className={`${isMinimal ? "w-5 h-5 shrink-0" : "w-7 h-7 mb-2"} rounded-lg flex items-center justify-center`}
           style={{ background: `rgba(${r},${g},${b},0.12)` }}
@@ -531,7 +597,7 @@ function CustomFlowNode({ data }: NodeProps) {
           animate={{ opacity: 0, scale: 1.12 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
           className="absolute inset-0 rounded-[14px] pointer-events-none"
-          style={{ border: `2px solid ${accentColor}`, boxShadow: `0 0 18px ${accentColor}88` }}
+          style={{ border: `2px solid ${accentColor}`, boxShadow: `0 0 18px ${accentColor}88`, zIndex: 15 }}
         />
       )}
 
@@ -547,6 +613,7 @@ function CustomFlowNode({ data }: NodeProps) {
             ],
           }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          style={{ zIndex: 15 }}
         />
       )}
 

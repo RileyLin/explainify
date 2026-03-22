@@ -184,6 +184,7 @@ export default async function ExplainerPage({ params }: PageProps) {
         isDraft={isDraft}
         breadcrumbs={breadcrumbs}
         childrenMap={childrenMap}
+        chapterImageUrl={explainer.chapter_image_url ?? null}
       />
     </div>
   );

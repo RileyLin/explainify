@@ -105,70 +105,130 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                   }}
                   onHoverStart={() => setHoveredItemId(item.id)}
                   onHoverEnd={() => setHoveredItemId(null)}
-                  className={`group rounded-xl border ${color.border} ${color.bg} p-5 space-y-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0 relative overflow-hidden`}
+                  className={`group rounded-xl border ${color.border} ${color.bg} overflow-hidden space-y-0 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0 relative`}
                 >
-                  {/* Scan line reveal effect on first render */}
-                  <motion.div
-                    className="absolute inset-y-0 w-0.5 bg-indigo-400/40 pointer-events-none"
-                    initial={{ left: "-2px", opacity: 0.8 }}
-                    animate={{ left: "102%", opacity: 0 }}
-                    transition={{ delay: idx * 0.1 + 0.15, duration: 0.55, ease: "easeInOut" }}
-                  />
+                  {/* Hero image — progressive enhancement */}
+                  {item.imageUrl ? (
+                    <div className="relative" style={{ height: 180 }}>
+                      <motion.div
+                        initial={{ clipPath: "inset(0 0 100% 0)" }}
+                        animate={{ clipPath: "inset(0 0 0% 0)" }}
+                        transition={{
+                          delay: idx * 0.15,
+                          duration: 0.6,
+                          ease: "easeOut",
+                        }}
+                        className="absolute inset-0"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          style={{ borderRadius: "0.75rem 0.75rem 0 0" }}
+                        />
+                        {/* Gradient overlay — transparent → card bg color */}
+                        <div
+                          className="absolute inset-0 pointer-events-none"
+                          style={{
+                            background:
+                              "linear-gradient(to bottom, transparent 40%, rgba(10,12,26,0.85) 100%)",
+                            borderRadius: "0.75rem 0.75rem 0 0",
+                          }}
+                        />
+                      </motion.div>
+                      {/* Item name overlaid at bottom of image */}
+                      <div
+                        className="absolute bottom-0 left-0 right-0 px-5 pb-3 z-10"
+                      >
+                        <h3
+                          className={`text-lg font-semibold ${color.text}`}
+                          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}
+                        >
+                          {item.name}
+                        </h3>
+                      </div>
+                    </div>
+                  ) : null}
 
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
-                      <ExploreButton
-                        nodeId={item.id}
-                        nodeTitle={item.name}
-                        nodeDescription={item.description}
+                  <div className="p-5 space-y-4 relative">
+                    {/* Scan line reveal effect on first render (only when no hero image) */}
+                    {!item.imageUrl && (
+                      <motion.div
+                        className="absolute inset-y-0 w-0.5 bg-indigo-400/40 pointer-events-none"
+                        initial={{ left: "-2px", opacity: 0.8 }}
+                        animate={{ left: "102%", opacity: 0 }}
+                        transition={{ delay: idx * 0.1 + 0.15, duration: 0.55, ease: "easeInOut" }}
                       />
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
-                  </div>
+                    )}
 
-                  {/* Pros */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
-                      <ThumbsUp size={12} />
-                      Pros
+                    <div>
+                      {/* Only show name/description header when no hero image (hero image shows the name) */}
+                      {!item.imageUrl && (
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
+                          <ExploreButton
+                            nodeId={item.id}
+                            nodeTitle={item.name}
+                            nodeDescription={item.description}
+                          />
+                        </div>
+                      )}
+                      {item.imageUrl && (
+                        <div className="flex items-start justify-end gap-2">
+                          <ExploreButton
+                            nodeId={item.id}
+                            nodeTitle={item.name}
+                            nodeDescription={item.description}
+                          />
+                        </div>
+                      )}
+                      <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                     </div>
-                    <ul className="space-y-1">
-                      {item.pros.map((pro, pi) => (
-                        <motion.li
-                          key={pi}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 + pi * 0.06 }}
-                          className="flex items-start gap-2 text-sm text-foreground/80"
-                        >
-                          <span className="text-emerald-400 mt-0.5 shrink-0">+</span>
-                          {pro}
-                        </motion.li>
-                      ))}
-                    </ul>
-                  </div>
 
-                  {/* Cons */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-red-400">
-                      <ThumbsDown size={12} />
-                      Cons
+                    {/* Pros */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+                        <ThumbsUp size={12} />
+                        Pros
+                      </div>
+                      <ul className="space-y-1">
+                        {item.pros.map((pro, pi) => (
+                          <motion.li
+                            key={pi}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.1 + pi * 0.06 }}
+                            className="flex items-start gap-2 text-sm text-foreground/80"
+                          >
+                            <span className="text-emerald-400 mt-0.5 shrink-0">+</span>
+                            {pro}
+                          </motion.li>
+                        ))}
+                      </ul>
                     </div>
-                    <ul className="space-y-1">
-                      {item.cons.map((con, ci) => (
-                        <motion.li
-                          key={ci}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 + ci * 0.06 + 0.2 }}
-                          className="flex items-start gap-2 text-sm text-foreground/80"
-                        >
-                          <span className="text-red-400 mt-0.5 shrink-0">−</span>
-                          {con}
-                        </motion.li>
-                      ))}
-                    </ul>
+
+                    {/* Cons */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-red-400">
+                        <ThumbsDown size={12} />
+                        Cons
+                      </div>
+                      <ul className="space-y-1">
+                        {item.cons.map((con, ci) => (
+                          <motion.li
+                            key={ci}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.1 + ci * 0.06 + 0.2 }}
+                            className="flex items-start gap-2 text-sm text-foreground/80"
+                          >
+                            <span className="text-red-400 mt-0.5 shrink-0">−</span>
+                            {con}
+                          </motion.li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </motion.div>
               );

@@ -21,6 +21,7 @@ export const ExplainerMetaSchema = z.object({
     "timeline",
     "component-explorer",
   ]),
+  chapterImageUrl: z.string().url().optional(),
 });
 
 export type ExplainerMeta = z.infer<typeof ExplainerMetaSchema>;

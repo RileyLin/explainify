@@ -10,6 +10,7 @@ export const TimelineEventSchema = z.object({
   icon: z.string().optional(),
   tags: z.array(z.string()).optional(),
   illustrationSvg: z.string().optional(),
+  imageUrl: z.string().url().optional(),
 });
 
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;

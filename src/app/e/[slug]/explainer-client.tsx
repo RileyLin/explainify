@@ -8,6 +8,7 @@ import { ExplainerFooter } from "./footer";
 import { Breadcrumb, type BreadcrumbSegment } from "@/components/viewer/breadcrumb";
 import { ExploreProvider, type ChildrenMap } from "@/components/viewer/explore-context";
 import { ExploreToggle } from "@/components/viewer/explore-toggle";
+import { DeepDiveChapterArt } from "@/components/deep-dive-chapter-art";
 
 interface ExplainerClientProps {
   data: ExplainerData;
@@ -19,9 +20,11 @@ interface ExplainerClientProps {
   breadcrumbs?: BreadcrumbSegment[];
   /** Map of nodeId → existing child explainer for explored-node indicators */
   childrenMap?: ChildrenMap;
+  /** Chapter illustration URL for deep-dive explainers (populated by image gen service). */
+  chapterImageUrl?: string | null;
 }
 
-export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs = [], childrenMap = {} }: ExplainerClientProps) {
+export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs = [], childrenMap = {}, chapterImageUrl }: ExplainerClientProps) {
   const diagramRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -45,8 +48,23 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
     }
   }, [slug, isExporting]);
 
+  // depth = number of ancestors (breadcrumbs.length - 1)
+  // depth=1 → has parent but no grandparent
+  // depth=2+ → has grandparent or deeper
+  const depth = Math.max(1, breadcrumbs.length - 1);
+  const isDeepDive = breadcrumbs.length >= 2;
+
   return (
     <ExploreProvider childrenMap={childrenMap}>
+      {/* Chapter art — sits above breadcrumb nav, only on deep dives with an image */}
+      {isDeepDive && chapterImageUrl && (
+        <DeepDiveChapterArt
+          imageUrl={chapterImageUrl}
+          title={title}
+          depth={depth}
+        />
+      )}
+
       {/* Breadcrumb navigation — sticky at top, only shows for deep dives */}
       <Breadcrumb segments={breadcrumbs} />
 

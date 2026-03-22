@@ -9,6 +9,7 @@ export const FlowNodeSchema = z.object({
   codeSnippet: z.string().optional(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
   illustrationSvg: z.string().optional(),
+  imageUrl: z.string().url().optional(),
 });
 
 export type FlowNode = z.infer<typeof FlowNodeSchema>;

@@ -4,6 +4,8 @@ import { invokeClaudeJSON, extractJSON } from "@/lib/llm/client";
 import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
 import { getDeepDiveSystemPrompt, buildDeepDiveUserMessage } from "@/lib/llm/deep-dive-prompt";
 import { AnalysisError } from "@/lib/llm/analyzer";
+import { generateNodeImages } from "@/lib/image-gen";
+import { extractImageRequests } from "@/lib/image-gen/extract-requests";
 
 // ── In-memory rate limiter (IP-based, 10 requests/hour) ──────────────────────
 interface RateEntry {
@@ -51,6 +53,41 @@ function generateSlug(length = 8): string {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+// ── Fire-and-forget image generation ─────────────────────────────────────────
+/**
+ * Generates images for all nodes and stores the URL map in the DB.
+ * Best-effort — never throws or blocks the response.
+ */
+async function fireAndForgetImages(data: ExplainerData, slug: string, parentTitle?: string): Promise<void> {
+  try {
+    const requests = extractImageRequests(data, parentTitle);
+    if (requests.length === 0) return;
+
+    const result = await generateNodeImages(requests, slug);
+
+    const imageUrlMap: Record<string, string> = {};
+    for (const [nodeId, imgResult] of Object.entries(result.images)) {
+      imageUrlMap[nodeId] = imgResult.imageUrl;
+    }
+
+    if (Object.keys(imageUrlMap).length === 0) return;
+
+    const supabase = getServiceClient();
+    const { error } = await supabase
+      .from("explainers")
+      .update({ image_url: imageUrlMap })
+      .eq("slug", slug);
+
+    if (error) {
+      console.error(`[image-gen] Failed to store image URLs for ${slug}:`, error.message);
+    } else if (Object.keys(result.errors).length > 0) {
+      console.warn(`[image-gen] Partial failures for ${slug}:`, result.errors);
+    }
+  } catch (err) {
+    console.error(`[image-gen] Unexpected error for ${slug}:`, err);
+  }
 }
 
 // ── Deep Dive Generation ──────────────────────────────────────────────────────
@@ -229,6 +266,12 @@ export async function POST(request: NextRequest) {
         const retrySlug = generateSlug(10);
         await supabase.from("explainers").insert({ ...insertData, slug: retrySlug });
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
+
+        // Fire-and-forget for retry slug path
+        if (process.env.ENABLE_IMAGE_GEN === "true") {
+          void fireAndForgetImages(data, retrySlug, parent.title);
+        }
+
         return NextResponse.json({
           url: `${appUrl}/e/${retrySlug}`,
           slug: retrySlug,
@@ -240,6 +283,12 @@ export async function POST(request: NextRequest) {
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
+
+    // Fire-and-forget: generate node images asynchronously (does not block response)
+    if (process.env.ENABLE_IMAGE_GEN === "true") {
+      void fireAndForgetImages(data, newSlug, parent.title);
+    }
+
     return NextResponse.json(
       {
         url: `${appUrl}/e/${newSlug}`,

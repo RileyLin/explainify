@@ -34,7 +34,7 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
           : "0 8px 30px rgba(99,102,241,0.1)",
       }}
       className={`
-        group relative border-2 rounded-xl p-5 overflow-hidden cursor-pointer
+        group relative border-2 rounded-xl overflow-hidden cursor-pointer
         transition-all duration-200
         focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0
         ${isLatest
@@ -54,7 +54,28 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
         />
       )}
 
-      <div className="flex items-start gap-3">
+      {/* Visual anchor image — progressive enhancement */}
+      {layer.imageUrl && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: "easeOut", delay: 0.08 }}
+          className="px-2 pt-2"
+        >
+          <div className="rounded-lg overflow-hidden ring-1 ring-indigo-500/20" style={{ width: 200, height: 120 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={layer.imageUrl}
+              alt={layer.title}
+              width={200}
+              height={120}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </motion.div>
+      )}
+
+      <div className="flex items-start gap-3 p-5">
         <motion.div
           initial={{ scale: 0.6, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -68,7 +89,8 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
         </motion.div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-3">
-            {layer.tags && (
+            {/* Only show DynamicIllustration when there's no imageUrl */}
+            {!layer.imageUrl && layer.tags && (
               <DynamicIllustration
                 svgString={layer.illustrationSvg}
                 tags={layer.tags}
