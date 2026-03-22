@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
 
 interface ExploreContextValue {
   exploreEnabled: boolean;
@@ -19,15 +18,24 @@ export function useExplore() {
 
 const STORAGE_KEY = "vizbrief-explore-mode";
 
-export function ExploreProvider({ children }: { children: ReactNode }) {
-  const searchParams = useSearchParams();
-  const urlOverride = searchParams.get("explore");
+/**
+ * Reads ?explore= param from the URL without useSearchParams
+ * (avoids Next.js Suspense boundary requirement).
+ */
+function getUrlExploreOverride(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("explore");
+}
 
+export function ExploreProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
-  // Hydrate from localStorage on mount, then apply URL override
+  // Hydrate from URL param → localStorage on mount
   useEffect(() => {
+    const urlOverride = getUrlExploreOverride();
+
     if (urlOverride === "false") {
       setEnabled(false);
     } else if (urlOverride === "true") {
@@ -42,7 +50,7 @@ export function ExploreProvider({ children }: { children: ReactNode }) {
       }
     }
     setHydrated(true);
-  }, [urlOverride]);
+  }, []);
 
   const toggleExplore = () => {
     setEnabled((prev) => {
