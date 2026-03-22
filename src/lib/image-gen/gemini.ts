@@ -1,13 +1,13 @@
 /**
  * Gemini image generation client.
- * Uses gemini-2.0-flash-exp-image-generation via REST API.
+ * Uses gemini-2.5-flash-image (Nano Banana) via REST API.
  * Returns PNG buffers matching VizBrief's dark brand aesthetic.
  */
 
 import type { ImageGenRequest } from "./types";
 
 const GEMINI_API_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
 
 /** Shared brand suffix appended to every prompt */
 const BRAND_SUFFIX =
@@ -109,7 +109,7 @@ export async function generateImage(
       },
     ],
     generationConfig: {
-      responseModalities: ["IMAGE"],
+      responseModalities: ["IMAGE", "TEXT"],
       // Gemini image gen doesn't support temperature etc. for image-only outputs
     },
   });
