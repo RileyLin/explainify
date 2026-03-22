@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getServiceClient } from "@/lib/db";
 import { invokeClaudeJSON, extractJSON } from "@/lib/llm/client";
 import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
 
         // Fire-and-forget for retry slug path
         if (process.env.ENABLE_IMAGE_GEN === "true") {
-          void fireAndForgetImages(data, retrySlug, parent.title);
+          after(() => fireAndForgetImages(data, retrySlug, parent.title));
         }
 
         return NextResponse.json({
@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
 
     // Fire-and-forget: generate node images asynchronously (does not block response)
     if (process.env.ENABLE_IMAGE_GEN === "true") {
-      void fireAndForgetImages(data, newSlug, parent.title);
+      after(() => fireAndForgetImages(data, newSlug, parent.title));
     }
 
     return NextResponse.json(

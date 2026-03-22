@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { validateApiKey } from "@/lib/api-auth";
 import { analyzeContent, AnalysisError } from "@/lib/llm/analyzer";
 import { getServiceClient } from "@/lib/db";
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest) {
 
         // Fire-and-forget for retry slug path too
         if (process.env.ENABLE_IMAGE_GEN === "true") {
-          void fireAndForgetImages(result.data as ExplainerData, retrySlug);
+          after(() => fireAndForgetImages(result.data as ExplainerData, retrySlug));
         }
 
         return NextResponse.json({
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest) {
 
     // Fire-and-forget: generate node images asynchronously (does not block response)
     if (process.env.ENABLE_IMAGE_GEN === "true") {
-      void fireAndForgetImages(result.data as ExplainerData, slug);
+      after(() => fireAndForgetImages(result.data as ExplainerData, slug));
     }
 
     return NextResponse.json({
