@@ -1,0 +1,7 @@
+{
+  "podcasts/boris-cherny.md": [
+    { "slug": "pdx13spx", "template": "timeline", "title": "The Evolution of Claude Code" },
+    { "slug": "gccy4ztk", "template": "flow-animator", "title": "How Claude Code Works — From Prompt to Pull Request" },
+    { "slug": "vs2974y1", "template": "concept-builder", "title": "The Future of Software Engineering" }
+  ]
+}
