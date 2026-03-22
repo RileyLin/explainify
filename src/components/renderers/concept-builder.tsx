@@ -6,6 +6,7 @@ import { ChevronDown, RotateCcw, Plus } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { ConceptBuilderData, ConceptLayer } from "@/lib/schemas/concept";
 import { ExploreButton } from "./explore-button";
+import { TopicIllustration } from "@/components/illustrations";
 
 function getIcon(name?: string) {
   if (!name) return null;
@@ -66,6 +67,7 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
           {Icon ? <Icon size={16} /> : index + 1}
         </motion.div>
         <div className="flex-1 min-w-0">
+          {layer.tags && <TopicIllustration tags={layer.tags} className="mb-3" />}
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-semibold text-foreground">{layer.title}</h3>
             {layer.visualLabel && (

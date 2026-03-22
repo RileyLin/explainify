@@ -7,6 +7,7 @@ export const ConceptLayerSchema = z.object({
   visualLabel: z.string().optional(),
   details: z.string().optional(),
   icon: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export type ConceptLayer = z.infer<typeof ConceptLayerSchema>;

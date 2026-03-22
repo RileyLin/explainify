@@ -7,6 +7,7 @@ import type { TimelineData } from "@/lib/schemas/timeline";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
 import { ExploreButton } from "./explore-button";
+import { TopicIllustration } from "@/components/illustrations";
 
 interface TimelineProps {
   data: TimelineData;
@@ -230,6 +231,9 @@ function TimelineInner({ data }: TimelineProps) {
                         transition={{ duration: 0.22 }}
                         className="overflow-hidden"
                       >
+                        {event.tags && (
+                          <TopicIllustration tags={event.tags} className="mt-3 mb-3" />
+                        )}
                         <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-foreground/80 leading-relaxed">
                           {event.details}
                         </div>
