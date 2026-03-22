@@ -303,7 +303,7 @@ function AnimatedPacketEdge({
 
       {/* Edge label at midpoint — only when showEdgeLabels is true */}
       {showEdgeLabels && label && label.trim() && (
-        <g>
+        <g style={{ opacity: 0, animation: "edgeLabelFadeIn 0.3s ease-out 0.2s forwards" }}>
           <rect
             x={midX - label.length * 3.2}
             y={midY - 9}
@@ -450,13 +450,13 @@ function CustomFlowNode({ data }: NodeProps) {
       }
       transition={
         nodeData.isActive
-          ? { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
-              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+          ? { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15, ease: [0.34, 1.56, 0.64, 1] },
+              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15, ease: [0.34, 1.56, 0.64, 1] },
               scale: { duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay },
               boxShadow: { duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
-          : { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
-              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08, ease: [0.34, 1.56, 0.64, 1] },
-              scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
+          : { opacity: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15, ease: [0.34, 1.56, 0.64, 1] },
+              y: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15, ease: [0.34, 1.56, 0.64, 1] },
+              scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.15 },
               boxShadow: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
       }
       className="group cursor-pointer relative overflow-visible"
@@ -532,6 +532,21 @@ function CustomFlowNode({ data }: NodeProps) {
           transition={{ duration: 0.55, ease: "easeOut" }}
           className="absolute inset-0 rounded-[14px] pointer-events-none"
           style={{ border: `2px solid ${accentColor}`, boxShadow: `0 0 18px ${accentColor}88` }}
+        />
+      )}
+
+      {/* Active node glow ring — pulsing when selected/active */}
+      {nodeData.isActive && (
+        <motion.div
+          className="absolute inset-[-3px] rounded-[16px] pointer-events-none"
+          animate={{
+            boxShadow: [
+              `0 0 0px 0px rgba(${r},${g},${b},0)`,
+              `0 0 20px 4px rgba(${r},${g},${b},0.3)`,
+              `0 0 0px 0px rgba(${r},${g},${b},0)`,
+            ],
+          }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
 

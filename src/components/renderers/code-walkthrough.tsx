@@ -30,19 +30,23 @@ function Badge({
   onClick: () => void;
 }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
+      whileHover={{ scale: 1.15 }}
+      whileTap={{ scale: 0.9 }}
+      animate={isActive ? { scale: 1.1 } : { scale: 1 }}
+      transition={{ type: "spring", stiffness: 400, damping: 20 }}
       className={`
         inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-all
-        ${isActive ? "bg-blue-500 text-white scale-110" : "bg-muted-foreground/20 text-muted-foreground hover:bg-blue-400 hover:text-white"}
+        ${isActive ? "bg-indigo-500 text-white" : "bg-muted-foreground/20 text-muted-foreground hover:bg-indigo-400 hover:text-white"}
       `}
     >
       {index + 1}
-    </button>
+    </motion.button>
   );
 }
 
-// ── Highlight Overlay with smooth transitions ───────────────────────
+// ── Highlight Overlay with sweep effect ────────────────────────────
 function HighlightOverlay({
   annotation,
   lineHeight,
@@ -62,15 +66,27 @@ function HighlightOverlay({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25, ease: "easeInOut" }}
-      className="absolute left-0 right-0 pointer-events-none"
+      className="absolute left-0 right-0 pointer-events-none overflow-hidden"
       style={{
         top: `${top}px`,
         height: `${height}px`,
-        background: "rgba(59, 130, 246, 0.15)",
-        borderLeft: "3px solid #3b82f6",
+        background: "rgba(99, 102, 241, 0.12)",
+        borderLeft: "3px solid #6366f1",
         marginTop: "16px", // account for pre padding
       }}
-    />
+    >
+      {/* Left-to-right sweep gradient that moves across once */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        initial={{ x: "-100%" }}
+        animate={{ x: "200%" }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        style={{
+          background: "linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 50%, transparent 100%)",
+          width: "60%",
+        }}
+      />
+    </motion.div>
   );
 }
 
@@ -144,7 +160,7 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
               className={`
                 flex items-center gap-1.5 px-3 py-2 text-sm transition-colors border-b-2 -mb-px
                 ${block.id === activeBlockId
-                  ? "border-blue-500 text-foreground"
+                  ? "border-indigo-500 text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
                 }
               `}
@@ -175,7 +191,7 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
           <div ref={codeRef} className="overflow-auto max-h-[500px] relative">
             {highlightedHtml[activeBlock.id] ? (
               <div className="relative">
-                {/* Animated highlight overlay */}
+                {/* Animated highlight overlay with sweep */}
                 <AnimatePresence mode="wait">
                   <HighlightOverlay
                     annotation={activeAnnotation}
@@ -242,21 +258,26 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
             )}
           </div>
 
-          {/* Explanation */}
+          {/* Explanation — slides in from the right with spring */}
           <AnimatePresence mode="wait">
             {activeAnnotation && (
               <motion.div
                 key={activeAnnotation.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -12 }}
+                transition={{ type: "spring", stiffness: 320, damping: 26 }}
                 className="bg-card border border-border rounded-xl p-4"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold">
+                  <motion.span
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.05, type: "spring", stiffness: 400, damping: 18 }}
+                    className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-500 text-white text-xs font-bold"
+                  >
                     {activeAnnotationIdx + 1}
-                  </span>
+                  </motion.span>
                   <h4 className="font-semibold text-foreground">{activeAnnotation.label}</h4>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">

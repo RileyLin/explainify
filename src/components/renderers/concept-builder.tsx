@@ -22,36 +22,49 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
   const Icon = getIcon(layer.icon);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      initial={{ opacity: 0, y: 30, scale: 0.95, rotateX: 4 }}
+      animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
       exit={{ opacity: 0, y: -20, scale: 0.95 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      transition={{ type: "spring", stiffness: 280, damping: 28 }}
+      whileHover={{
+        y: -4,
+        boxShadow: isLatest
+          ? "0 8px 30px rgba(99,102,241,0.2)"
+          : "0 8px 30px rgba(99,102,241,0.1)",
+      }}
       className={`
-        group relative border-2 rounded-xl p-5 overflow-hidden
+        group relative border-2 rounded-xl p-5 overflow-hidden cursor-pointer
+        transition-all duration-200
+        focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0
         ${isLatest
-          ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-lg shadow-blue-500/10"
-          : "border-border bg-card"
+          ? "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-lg shadow-indigo-500/10"
+          : "border-border bg-card hover:shadow-lg"
         }
       `}
+      style={{ perspective: "800px" }}
     >
       {/* Background pulse animation on new layer */}
       {isLatest && (
         <motion.div
           initial={{ opacity: 0.3 }}
           animate={{ opacity: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="absolute inset-0 bg-blue-400/20 dark:bg-blue-500/15 pointer-events-none rounded-xl"
+          transition={{ duration: 0.9, ease: "easeOut" }}
+          className="absolute inset-0 bg-indigo-400/20 dark:bg-indigo-500/15 pointer-events-none rounded-xl"
         />
       )}
+
       <div className="flex items-start gap-3">
-        <div
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.05, type: "spring", stiffness: 400, damping: 20 }}
           className={`
             flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold shrink-0
-            ${isLatest ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}
+            ${isLatest ? "bg-indigo-500 text-white" : "bg-muted text-muted-foreground"}
           `}
         >
           {Icon ? <Icon size={16} /> : index + 1}
-        </div>
+        </motion.div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-semibold text-foreground">{layer.title}</h3>
@@ -81,11 +94,19 @@ function Connector() {
   return (
     <div className="flex justify-center py-1">
       <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: 32, opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="w-0.5 bg-border relative"
+        initial={{ scaleY: 0, opacity: 0 }}
+        animate={{ scaleY: 1, opacity: 1 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="w-0.5 bg-border relative overflow-visible"
+        style={{ height: 32, transformOrigin: "top" }}
       >
+        {/* Travelling dot along the connector */}
+        <motion.div
+          className="absolute left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-indigo-400"
+          initial={{ top: 0, opacity: 0 }}
+          animate={{ top: "100%", opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 0.6, ease: "easeIn", delay: 0.1 }}
+        />
         <ChevronDown size={14} className="absolute -bottom-1.5 -left-[5.5px] text-muted-foreground" />
       </motion.div>
     </div>
@@ -96,14 +117,19 @@ function ProgressDots({ total, visible }: { total: number; visible: number }) {
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: total }).map((_, i) => (
-        <div
+        <motion.div
           key={i}
+          animate={{
+            scale: i < visible ? (i === visible - 1 ? 1.3 : 1) : 1,
+            backgroundColor: i < visible ? "#6366f1" : undefined,
+          }}
+          transition={{ type: "spring", stiffness: 400, damping: 20 }}
           className={`
             w-2.5 h-2.5 rounded-full transition-all duration-300
             ${i < visible
               ? i === visible - 1
-                ? "bg-blue-500 scale-125"
-                : "bg-blue-500/50"
+                ? "bg-indigo-500 scale-125"
+                : "bg-indigo-500/50"
               : "bg-muted"
             }
           `}
@@ -144,13 +170,15 @@ export function ConceptBuilder({ data }: { data: ConceptBuilderData }) {
       {/* Controls */}
       <div className="flex items-center justify-center gap-3 mt-6">
         {!allRevealed ? (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={() => setVisibleCount((v) => v + 1)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-500 text-white font-medium text-sm hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/25"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-500 text-white font-medium text-sm hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/25"
           >
             <Plus size={16} />
             Add complexity
-          </button>
+          </motion.button>
         ) : (
           <span className="text-sm text-muted-foreground">All layers revealed ✓</span>
         )}

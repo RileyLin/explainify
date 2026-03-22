@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, RotateCcw, ChevronLeft, CheckCircle2, HelpCircle } from "lucide-react";
-import type { DecisionTreeData, DecisionNode, DecisionEdge } from "@/lib/schemas/decision";
+import type { DecisionTreeData } from "@/lib/schemas/decision";
 import { ExploreButton } from "./explore-button";
 
 interface DecisionTreeProps {
@@ -54,40 +54,50 @@ export function DecisionTree({ data }: DecisionTreeProps) {
 
       {/* Path breadcrumb */}
       {path.length > 1 && (
-        <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground">
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground"
+        >
           {path.map((nodeId, idx) => {
             const node = data.nodes.find((n) => n.id === nodeId);
             const edge = idx > 0 ? data.edges.find((e) => e.from === path[idx - 1] && e.to === nodeId) : null;
             return (
-              <span key={nodeId} className="flex items-center gap-1.5">
+              <motion.span
+                key={nodeId}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.06 }}
+                className="flex items-center gap-1.5"
+              >
                 {idx > 0 && (
-                  <span className="text-blue-400 font-medium">→ {edge?.label}</span>
+                  <span className="text-indigo-400 font-medium">→ {edge?.label}</span>
                 )}
                 <span
                   className={`px-2 py-0.5 rounded ${
                     idx === path.length - 1
-                      ? "bg-blue-500/20 text-blue-400 font-medium"
+                      ? "bg-indigo-500/20 text-indigo-400 font-medium"
                       : "bg-muted"
                   }`}
                 >
                   {node?.question?.slice(0, 30) || node?.answer?.slice(0, 30) || nodeId}
                   {((node?.question?.length ?? 0) > 30 || (node?.answer?.length ?? 0) > 30) && "…"}
                 </span>
-              </span>
+              </motion.span>
             );
           })}
-        </div>
+        </motion.div>
       )}
 
       {/* Current node */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentNodeId}
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -30 }}
-          transition={{ duration: 0.25 }}
-          className={`group rounded-xl border p-6 space-y-4 ${
+          initial={{ opacity: 0, x: 30, scale: 0.98 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -30, scale: 0.98 }}
+          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          className={`group rounded-xl border p-6 space-y-4 transition-all duration-200 ${
             currentNode.isLeaf
               ? "border-emerald-500/30 bg-emerald-500/5"
               : "border-border bg-card"
@@ -95,17 +105,20 @@ export function DecisionTree({ data }: DecisionTreeProps) {
         >
           {/* Icon and question/answer */}
           <div className="flex items-start gap-3">
-            <div
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.08, type: "spring", stiffness: 400, damping: 20 }}
               className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                currentNode.isLeaf ? "bg-emerald-500/20" : "bg-blue-500/20"
+                currentNode.isLeaf ? "bg-emerald-500/20" : "bg-indigo-500/20"
               }`}
             >
               {currentNode.isLeaf ? (
                 <CheckCircle2 size={20} className="text-emerald-400" />
               ) : (
-                <HelpCircle size={20} className="text-blue-400" />
+                <HelpCircle size={20} className="text-indigo-400" />
               )}
-            </div>
+            </motion.div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -138,14 +151,16 @@ export function DecisionTree({ data }: DecisionTreeProps) {
                     key={edge.to}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.08 }}
+                    transition={{ delay: idx * 0.08, type: "spring", stiffness: 380, damping: 22 }}
+                    whileHover={{ scale: 1.02, y: -1 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => handleChoice(edge.to)}
-                    className="flex items-center justify-between w-full px-4 py-3 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-blue-500/30 text-sm text-foreground transition-all group text-left"
+                    className="flex items-center justify-between w-full px-4 py-3 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-indigo-500/30 text-sm text-foreground transition-all group text-left focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0"
                   >
                     <span>{edge.label}</span>
                     <ArrowRight
                       size={16}
-                      className="text-muted-foreground group-hover:text-blue-400 transition-colors shrink-0 ml-2"
+                      className="text-muted-foreground group-hover:text-indigo-400 transition-colors shrink-0 ml-2"
                     />
                   </motion.button>
                 ))}

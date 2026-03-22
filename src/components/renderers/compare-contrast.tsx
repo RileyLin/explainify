@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
 import type { CompareContrastData } from "@/lib/schemas/compare";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
@@ -22,7 +22,7 @@ export function CompareContrast({ data }: CompareContrastProps) {
 
 function CompareContrastInner({ data }: CompareContrastProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "dimensions">("overview");
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const { settings } = useDiagramSettings();
 
   // LR = side-by-side (grid), TB = stacked (single column)
@@ -90,14 +90,31 @@ function CompareContrastInner({ data }: CompareContrastProps) {
           >
             {data.items.map((item, idx) => {
               const color = colors[idx % colors.length];
+              const isDimmed = hoveredItemId !== null && hoveredItemId !== item.id;
               return (
                 <motion.div
                   key={item.id}
                   initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.1 }}
-                  className={`group rounded-xl border ${color.border} ${color.bg} p-5 space-y-4`}
+                  animate={{
+                    opacity: isDimmed ? 0.5 : 1,
+                    y: 0,
+                  }}
+                  transition={{
+                    delay: idx * 0.1,
+                    opacity: { duration: 0.2 },
+                  }}
+                  onHoverStart={() => setHoveredItemId(item.id)}
+                  onHoverEnd={() => setHoveredItemId(null)}
+                  className={`group rounded-xl border ${color.border} ${color.bg} p-5 space-y-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0 relative overflow-hidden`}
                 >
+                  {/* Scan line reveal effect on first render */}
+                  <motion.div
+                    className="absolute inset-y-0 w-0.5 bg-indigo-400/40 pointer-events-none"
+                    initial={{ left: "-2px", opacity: 0.8 }}
+                    animate={{ left: "102%", opacity: 0 }}
+                    transition={{ delay: idx * 0.1 + 0.15, duration: 0.55, ease: "easeInOut" }}
+                  />
+
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
@@ -122,7 +139,7 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                           key={pi}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 + pi * 0.05 }}
+                          transition={{ delay: idx * 0.1 + pi * 0.06 }}
                           className="flex items-start gap-2 text-sm text-foreground/80"
                         >
                           <span className="text-emerald-400 mt-0.5 shrink-0">+</span>
@@ -144,7 +161,7 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                           key={ci}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 + ci * 0.05 + 0.2 }}
+                          transition={{ delay: idx * 0.1 + ci * 0.06 + 0.2 }}
                           className="flex items-start gap-2 text-sm text-foreground/80"
                         >
                           <span className="text-red-400 mt-0.5 shrink-0">−</span>
@@ -190,7 +207,7 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                       key={row.dimensionId}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: ri * 0.05 }}
+                      transition={{ delay: ri * 0.06 }}
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                     >
                       <td className="p-3">
@@ -210,10 +227,18 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                                   <div className="flex items-center gap-1.5">
                                     <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
                                       <motion.div
-                                        className="h-full bg-blue-500 rounded-full"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${(rating.score / 10) * 100}%` }}
-                                        transition={{ delay: ri * 0.05 + 0.3 }}
+                                        className="h-full bg-indigo-500 rounded-full"
+                                        initial={{ scaleX: 0 }}
+                                        animate={{ scaleX: 1 }}
+                                        transition={{
+                                          delay: ri * 0.06 + 0.3,
+                                          duration: 0.6,
+                                          ease: [0.25, 0.46, 0.45, 0.94],
+                                        }}
+                                        style={{
+                                          width: `${(rating.score / 10) * 100}%`,
+                                          transformOrigin: "left",
+                                        }}
                                       />
                                     </div>
                                     <span className="text-xs text-muted-foreground">{rating.score}/10</span>

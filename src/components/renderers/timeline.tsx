@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronDown, ChevronUp, Clock, Tag } from "lucide-react";
-import type { TimelineData, TimelineEvent } from "@/lib/schemas/timeline";
+import { ChevronDown, Clock } from "lucide-react";
+import type { TimelineData } from "@/lib/schemas/timeline";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
 import { ExploreButton } from "./explore-button";
@@ -39,7 +39,6 @@ export function Timeline({ data }: TimelineProps) {
 
 function TimelineInner({ data }: TimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(data.events.length);
   const { settings } = useDiagramSettings();
 
   const isCompact = settings.density === "compact";
@@ -72,53 +71,102 @@ function TimelineInner({ data }: TimelineProps) {
         </div>
       </div>
 
-      {/* Progress indicator */}
-      <div className="flex items-center gap-1.5">
+      {/* Progress indicator — dots with shimmer on active */}
+      <div className="flex items-center gap-1.5 relative">
         {data.events.map((event, idx) => (
           <motion.div
             key={event.id}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: idx * 0.05 }}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              expandedId === event.id ? "bg-blue-500" : "bg-muted"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: idx * 0.05, type: "spring", stiffness: 400, damping: 20 }}
+            className={`h-1.5 flex-1 rounded-full relative overflow-hidden transition-colors duration-300 ${
+              expandedId === event.id ? "bg-indigo-500" : "bg-muted"
             }`}
-          />
+          >
+            {/* Shimmer sweep on active segment */}
+            {expandedId === event.id && (
+              <motion.div
+                className="absolute inset-y-0 w-6 bg-white/50 rounded-full blur-[2px]"
+                initial={{ x: "-100%" }}
+                animate={{ x: "200%" }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.4 }}
+              />
+            )}
+          </motion.div>
         ))}
       </div>
 
       {/* Timeline */}
       <div className="relative">
-        {/* Vertical line */}
+        {/* Static background vertical line */}
         <div className="absolute left-[19px] top-2 bottom-2 w-0.5 bg-border" />
 
         <div className="space-y-1">
-          {data.events.slice(0, visibleCount).map((event, idx) => (
+          {data.events.map((event, idx) => (
             <motion.div
               key={event.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.08 }}
+              transition={{ delay: idx * 0.08, duration: 0.35, ease: [0.34, 1.56, 0.64, 1] }}
               className="relative flex gap-4"
             >
-              {/* Dot */}
+              {/* Dot + animated connecting line below */}
               <div className="relative z-10 flex flex-col items-center">
-                <motion.div
-                  whileHover={{ scale: 1.3 }}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
-                    expandedId === event.id
-                      ? "bg-blue-500 text-white"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                  onClick={() => toggleExpand(event.id)}
-                >
-                  <span className="text-xs font-bold">{idx + 1}</span>
-                </motion.div>
+                {/* The dot */}
+                <div className="relative">
+                  <motion.div
+                    whileHover={{ scale: 1.25 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-colors focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0 ${
+                      expandedId === event.id
+                        ? "bg-indigo-500 text-white"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                    onClick={() => toggleExpand(event.id)}
+                  >
+                    <span className="text-xs font-bold">{idx + 1}</span>
+                  </motion.div>
+
+                  {/* Pulse ring when expanded */}
+                  {expandedId === event.id && (
+                    <motion.div
+                      className="absolute inset-0 rounded-full pointer-events-none"
+                      style={{ border: "2px solid rgba(99,102,241,0.6)" }}
+                      animate={{
+                        scale: [1, 1.8, 2.2],
+                        opacity: [0.4, 0.15, 0],
+                      }}
+                      transition={{
+                        duration: 1.4,
+                        repeat: Infinity,
+                        ease: "easeOut",
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* Animated connector line that draws downward */}
+                {idx < data.events.length - 1 && (
+                  <motion.div
+                    className="w-0.5 bg-indigo-500/30 mt-1"
+                    initial={{ scaleY: 0 }}
+                    animate={{ scaleY: 1 }}
+                    transition={{
+                      delay: idx * 0.08 + 0.25,
+                      duration: 0.3,
+                      ease: "easeOut",
+                    }}
+                    style={{
+                      transformOrigin: "top",
+                      height: isCompact ? 24 : isSpread ? 72 : 40,
+                    }}
+                  />
+                )}
               </div>
 
               {/* Content */}
               <div
-                className={`group relative flex-1 ${isCompact ? "pb-2" : isSpread ? "pb-10" : "pb-6"} rounded-xl transition-colors cursor-pointer`}
+                className={`group relative flex-1 ${isCompact ? "pb-2" : isSpread ? "pb-10" : "pb-6"} rounded-xl transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-0`}
                 onClick={() => toggleExpand(event.id)}
               >
                 {/* Date/Period badge */}
@@ -140,6 +188,7 @@ function TimelineInner({ data }: TimelineProps) {
                     {event.details && !isCompact && (
                       <motion.div
                         animate={{ rotate: expandedId === event.id ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
                         className="text-muted-foreground"
                       >
                         <ChevronDown size={16} />
@@ -153,21 +202,24 @@ function TimelineInner({ data }: TimelineProps) {
                   <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
                 )}
 
-                {/* Tags — always shown */}
+                {/* Tags */}
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {event.tags.map((tag) => (
-                      <span
+                    {event.tags.map((tag, tagIdx) => (
+                      <motion.span
                         key={tag}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: idx * 0.08 + tagIdx * 0.04 + 0.1 }}
                         className={`px-2 py-0.5 rounded-full text-xs font-medium ${getTagColor(tag)}`}
                       >
                         {tag}
-                      </span>
+                      </motion.span>
                     ))}
                   </div>
                 )}
 
-                {/* Expanded details — only in non-compact mode */}
+                {/* Expanded details */}
                 {!isCompact && (
                   <AnimatePresence>
                     {expandedId === event.id && event.details && (
@@ -175,7 +227,7 @@ function TimelineInner({ data }: TimelineProps) {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.22 }}
                         className="overflow-hidden"
                       >
                         <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-sm text-foreground/80 leading-relaxed">

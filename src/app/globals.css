@@ -156,7 +156,47 @@
   to   { stroke-dashoffset: -48; }
 }
 
+/* ── Edge label fade-in (200ms delay after edge appears) ─────────── */
+@keyframes edgeLabelFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Indigo shimmer sweep (progress bars, highlights) ───────────── */
+@keyframes shimmerSweep {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(250%); }
+}
+.animate-shimmer-sweep {
+  animation: shimmerSweep 1.4s ease-in-out infinite;
+}
+
+/* ── Indigo pulse ring (active nodes, dots) ─────────────────────── */
+@keyframes indigoPulseRing {
+  0%   { transform: scale(1);   opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0;   }
+}
+.animate-indigo-pulse-ring {
+  animation: indigoPulseRing 1.4s ease-out infinite;
+}
+
+/* ── Connector line draw (concept builder) ─────────────────────── */
+@keyframes drawDown {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
 /* ── ReactFlow background: use CSS var for theme-aware grid ─────── */
 .react-flow__background {
   background-color: transparent !important;
+}
+
+/* ── Mobile: reduce animation durations ~30% ─────────────────────── */
+@media (max-width: 640px) {
+  .animate-shimmer-sweep {
+    animation-duration: 1.0s;
+  }
+  .animate-indigo-pulse-ring {
+    animation-duration: 1.0s;
+  }
 }
