@@ -1,7 +1,159 @@
 {
   "podcasts/boris-cherny.md": [
-    { "slug": "pdx13spx", "template": "timeline", "title": "The Evolution of Claude Code" },
-    { "slug": "gccy4ztk", "template": "flow-animator", "title": "How Claude Code Works — From Prompt to Pull Request" },
-    { "slug": "vs2974y1", "template": "concept-builder", "title": "The Future of Software Engineering" }
+    {
+      "slug": "pdx13spx",
+      "template": "timeline",
+      "title": "The Evolution of Claude Code"
+    },
+    {
+      "slug": "gccy4ztk",
+      "template": "flow-animator",
+      "title": "How Claude Code Works \u2014 From Prompt to Pull Request"
+    },
+    {
+      "slug": "vs2974y1",
+      "template": "concept-builder",
+      "title": "The Future of Software Engineering"
+    }
+  ],
+  "podcasts/eric-ries.md": [
+    {
+      "slug": "3vgp1if9",
+      "template": "timeline",
+      "title": "Evolution of the Lean Startup Movement"
+    }
+  ],
+  "podcasts/jason-m-lemkin.md": [
+    {
+      "slug": "5grkfxgr",
+      "template": "timeline",
+      "title": "The Evolution of AI in Sales Teams"
+    }
+  ],
+  "podcasts/jeff-weinstein.md": [
+    {
+      "slug": "ekbd9e6p",
+      "template": "timeline",
+      "title": "Building Product at Stripe: Craft, Metrics, and Customer Obsession"
+    }
+  ],
+  "podcasts/grant-lee.md": [
+    {
+      "slug": "dh5xtqed",
+      "template": "timeline",
+      "title": "The Rise of Gamma: From 'Dumbest Idea' to $100M ARR"
+    }
+  ],
+  "podcasts/evan-lapointe.md": [
+    {
+      "slug": "ysvu6tjm",
+      "template": "timeline",
+      "title": "Understanding Your Brain for Better Strategy and Decision-Making"
+    }
+  ],
+  "podcasts/eli-schwartz.md": [
+    {
+      "slug": "9huuv5s4",
+      "template": "timeline",
+      "title": "Rethinking SEO in the Age of AI"
+    }
+  ],
+  "podcasts/hilary-gridley.md": [
+    {
+      "slug": "09gksgdy",
+      "template": "timeline",
+      "title": "Building Resilient, High-Performing Teams: Insights from Hilary Gridley"
+    }
+  ],
+  "podcasts/marc-andreessen.md": [
+    {
+      "slug": "u08umkov",
+      "template": "timeline",
+      "title": "Marc Andreessen: The Real AI Boom"
+    }
+  ],
+  "podcasts/peter-deng.md": [
+    {
+      "slug": "j5h2ioiz",
+      "template": "timeline",
+      "title": "The Career Journey of Peter Deng: Architect of Popular Products"
+    }
+  ],
+  "podcasts/farhan-thawar.md": [
+    {
+      "slug": "7myczix4",
+      "template": "timeline",
+      "title": "Evolution of Shopify's High-Intensity Culture"
+    }
+  ],
+  "podcasts/jason-fried.md": [
+    {
+      "slug": "7voy0558",
+      "template": "timeline",
+      "title": "Jason Fried's Insights on Business and Entrepreneurship"
+    }
+  ],
+  "podcasts/bob-baxley.md": [
+    {
+      "slug": "gaqcynpq",
+      "template": "timeline",
+      "title": "35 Years of Product Design Wisdom with Bob Baxley"
+    }
+  ],
+  "podcasts/boz.md": [
+    {
+      "slug": "s6mjrha7",
+      "template": "timeline",
+      "title": "Andrew 'Boz' Bosworth's Journey at Meta"
+    }
+  ],
+  "podcasts/jason-cohen.md": [
+    {
+      "slug": "mwpf33ma",
+      "template": "timeline",
+      "title": "Diagnosing Product Growth Stagnation: Jason Cohen's Framework"
+    }
+  ],
+  "podcasts/phyl-terry.md": [
+    {
+      "slug": "nwgxczsd",
+      "template": "timeline",
+      "title": "Evolution of Job Search Strategies with Phyl Terry"
+    }
+  ],
+  "podcasts/tanguy-crusson.md": [
+    {
+      "slug": "qi7devra",
+      "template": "timeline",
+      "title": "Lessons Learned: Building 0 to 1 at Atlassian"
+    }
+  ],
+  "podcasts/tristan-de-montebello.md": [
+    {
+      "slug": "3xc73596",
+      "template": "timeline",
+      "title": "Overcoming Public Speaking Anxiety with Tristan de Montebello"
+    }
+  ],
+  "podcasts/matthew-dicks.md": [
+    {
+      "slug": "mltetj5s",
+      "template": "timeline",
+      "title": "Evolution of Storytelling Techniques by Matthew Dicks"
+    }
+  ],
+  "podcasts/dharmesh-shah.md": [
+    {
+      "slug": "nv5s80za",
+      "template": "timeline",
+      "title": "The Journey of HubSpot: Insights from Dharmesh Shah"
+    }
+  ],
+  "podcasts/bangaly-kaba.md": [
+    {
+      "slug": "34t11ndg",
+      "template": "timeline",
+      "title": "Unorthodox Frameworks for Growth by Bangaly Kaba"
+    }
   ]
 }
