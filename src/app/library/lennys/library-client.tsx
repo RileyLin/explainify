@@ -154,35 +154,43 @@ export function LennysLibraryClient({
   ];
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#fafaf9" }}>
+    <div className="min-h-screen bg-background">
       {/* ── Hero header ─────────────────────────────────── */}
       <div
-        className="border-b border-stone-200"
+        className="border-b"
         style={{
+          borderColor: "rgba(99,102,241,0.15)",
           background:
-            "linear-gradient(135deg, #fafaf9 0%, #fef9f0 50%, #fafaf9 100%)",
+            "linear-gradient(135deg, var(--background) 0%, rgba(99,102,241,0.05) 50%, var(--background) 100%)",
         }}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
           {/* Breadcrumb */}
-          <p className="text-xs font-semibold uppercase tracking-widest text-amber-600 mb-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-4">
             Visual Library
           </p>
 
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-stone-900 tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
                 Lenny&apos;s Visual Library
               </h1>
-              <p className="mt-2 text-base text-stone-500 max-w-xl leading-relaxed">
+              <p className="mt-2 text-base text-white/60 max-w-xl leading-relaxed">
                 {entries.length} podcasts and newsletters, visualized. Explore every topic
                 from product strategy to engineering leadership.
               </p>
             </div>
 
             {/* Powered-by badge */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-stone-200 text-xs text-stone-500 self-start sm:self-auto shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs text-white/60 self-start sm:self-auto shrink-0"
+              style={{
+                background: "rgba(0,0,0,0.4)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
               Powered by VizBrief
             </div>
           </div>
@@ -193,7 +201,7 @@ export function LennysLibraryClient({
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-4">
         {/* Search bar */}
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
@@ -201,16 +209,26 @@ export function LennysLibraryClient({
             placeholder="Search by title, guest, topic…"
             className={cn(
               "w-full pl-10 pr-10 py-3 rounded-xl",
-              "bg-stone-100 border border-stone-200",
-              "text-stone-900 placeholder:text-stone-400 text-sm",
-              "outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400",
-              "transition-all duration-150"
+              "text-white placeholder:text-white/30 text-sm",
+              "outline-none transition-all duration-150"
             )}
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(99,102,241,0.5)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.1)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(255,255,255,0.1)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
           {searchQuery && (
             <button
               onClick={handleClearSearch}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -225,18 +243,28 @@ export function LennysLibraryClient({
               onClick={() => handleTabChange(tab.id)}
               className={cn(
                 "inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium",
-                "transition-all duration-150",
-                activeTab === tab.id
-                  ? "bg-amber-500 text-white shadow-sm"
-                  : "bg-white text-stone-600 border border-stone-200 hover:border-stone-300 hover:bg-stone-50"
+                "transition-all duration-150"
               )}
+              style={
+                activeTab === tab.id
+                  ? {
+                      background: "#6366f1",
+                      color: "#ffffff",
+                      boxShadow: "0 0 20px rgba(99,102,241,0.3)",
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      color: "rgba(255,255,255,0.6)",
+                    }
+              }
             >
               {tab.icon}
               {tab.label}
               <span
                 className={cn(
                   "ml-0.5 text-xs font-semibold",
-                  activeTab === tab.id ? "text-amber-100" : "text-stone-400"
+                  activeTab === tab.id ? "text-indigo-200" : "text-white/30"
                 )}
               >
                 ({tab.count})
@@ -253,11 +281,20 @@ export function LennysLibraryClient({
               onClick={() => handleTagToggle(tag)}
               className={cn(
                 "px-3 py-1 rounded-full text-xs font-medium",
-                "transition-all duration-150",
-                activeTag === tag
-                  ? "bg-amber-500 text-white"
-                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                "transition-all duration-150"
               )}
+              style={
+                activeTag === tag
+                  ? {
+                      background: "#6366f1",
+                      color: "#ffffff",
+                      boxShadow: "0 0 16px rgba(99,102,241,0.3)",
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.6)",
+                    }
+              }
             >
               {tag}
             </button>
@@ -268,25 +305,25 @@ export function LennysLibraryClient({
       {/* ── Results info ─────────────────────────────────── */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-stone-500">
+          <p className="text-sm text-white/40">
             {filtered.length === entries.length ? (
               <>
-                Showing <span className="font-semibold text-stone-700">{entries.length}</span> items
+                Showing <span className="font-semibold text-white/70">{entries.length}</span> items
               </>
             ) : (
               <>
-                <span className="font-semibold text-stone-700">{filtered.length}</span> results
+                <span className="font-semibold text-white/70">{filtered.length}</span> results
                 {debouncedQuery && (
                   <>
                     {" "}for{" "}
-                    <span className="font-semibold text-amber-600">&ldquo;{debouncedQuery}&rdquo;</span>
+                    <span className="font-semibold text-indigo-400">&ldquo;{debouncedQuery}&rdquo;</span>
                   </>
                 )}
               </>
             )}
           </p>
           {totalPages > 1 && (
-            <p className="text-xs text-stone-400">
+            <p className="text-xs text-white/30">
               Page {safeCurrentPage} of {totalPages}
             </p>
           )}
@@ -309,12 +346,18 @@ export function LennysLibraryClient({
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center py-24 gap-4 text-center"
           >
-            <div className="w-16 h-16 rounded-2xl bg-stone-100 flex items-center justify-center">
-              <Search className="w-7 h-7 text-stone-400" />
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{
+                background: "rgba(99,102,241,0.12)",
+                border: "1px solid rgba(99,102,241,0.25)",
+              }}
+            >
+              <Search className="w-7 h-7 text-indigo-400" />
             </div>
             <div>
-              <p className="font-semibold text-stone-700">No results found</p>
-              <p className="text-sm text-stone-500 mt-1">
+              <p className="font-semibold text-white">No results found</p>
+              <p className="text-sm text-white/50 mt-1">
                 Try a different search term or clear your filters.
               </p>
             </div>
@@ -325,7 +368,10 @@ export function LennysLibraryClient({
                 setActiveTab("all");
                 setCurrentPage(1);
               }}
-              className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+              className="px-4 py-2 rounded-xl text-white text-sm font-medium transition-colors"
+              style={{ background: "#6366f1" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#6366f1")}
             >
               Clear all filters
             </button>
@@ -360,11 +406,21 @@ export function LennysLibraryClient({
               disabled={safeCurrentPage <= 1}
               className={cn(
                 "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium",
-                "transition-all duration-150",
-                safeCurrentPage <= 1
-                  ? "bg-stone-100 text-stone-300 cursor-not-allowed"
-                  : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 hover:border-stone-300"
+                "transition-all duration-150"
               )}
+              style={
+                safeCurrentPage <= 1
+                  ? {
+                      background: "rgba(255,255,255,0.04)",
+                      color: "rgba(255,255,255,0.2)",
+                      cursor: "not-allowed",
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      color: "rgba(255,255,255,0.7)",
+                    }
+              }
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -387,12 +443,20 @@ export function LennysLibraryClient({
                   <button
                     key={page}
                     onClick={() => handlePageChange(page)}
-                    className={cn(
-                      "w-9 h-9 rounded-lg text-sm font-medium transition-all duration-150",
+                    className="w-9 h-9 rounded-lg text-sm font-medium transition-all duration-150"
+                    style={
                       page === safeCurrentPage
-                        ? "bg-amber-500 text-white"
-                        : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50"
-                    )}
+                        ? {
+                            background: "#6366f1",
+                            color: "#ffffff",
+                            boxShadow: "0 0 16px rgba(99,102,241,0.3)",
+                          }
+                        : {
+                            background: "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            color: "rgba(255,255,255,0.6)",
+                          }
+                    }
                   >
                     {page}
                   </button>
@@ -405,11 +469,21 @@ export function LennysLibraryClient({
               disabled={safeCurrentPage >= totalPages}
               className={cn(
                 "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium",
-                "transition-all duration-150",
-                safeCurrentPage >= totalPages
-                  ? "bg-stone-100 text-stone-300 cursor-not-allowed"
-                  : "bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 hover:border-stone-300"
+                "transition-all duration-150"
               )}
+              style={
+                safeCurrentPage >= totalPages
+                  ? {
+                      background: "rgba(255,255,255,0.04)",
+                      color: "rgba(255,255,255,0.2)",
+                      cursor: "not-allowed",
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      color: "rgba(255,255,255,0.7)",
+                    }
+              }
             >
               Next
               <ChevronRight className="w-4 h-4" />

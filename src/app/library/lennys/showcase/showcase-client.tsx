@@ -50,7 +50,7 @@ function FadeIn({
   );
 }
 
-// ─── Animated dots background ─────────────────────────────────────────────────
+// ─── Animated mesh background ─────────────────────────────────────────────────
 
 function AnimatedMesh() {
   return (
@@ -58,20 +58,20 @@ function AnimatedMesh() {
       aria-hidden
       className="absolute inset-0 overflow-hidden pointer-events-none"
     >
-      {/* Radial gradient overlay */}
+      {/* Radial gradient overlay — indigo */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 70% 50%, rgba(251,191,36,0.08) 0%, transparent 70%)",
+            "radial-gradient(ellipse 80% 60% at 70% 50%, rgba(99,102,241,0.08) 0%, transparent 70%)",
         }}
       />
       {/* Subtle dot grid */}
       <div
-        className="absolute inset-0 opacity-[0.35]"
+        className="absolute inset-0 opacity-[0.15]"
         style={{
           backgroundImage:
-            "radial-gradient(circle, #d6d3d1 1px, transparent 1px)",
+            "radial-gradient(circle, rgba(165,180,252,0.6) 1px, transparent 1px)",
           backgroundSize: "28px 28px",
           maskImage:
             "radial-gradient(ellipse 90% 80% at 60% 50%, black 20%, transparent 80%)",
@@ -79,23 +79,24 @@ function AnimatedMesh() {
             "radial-gradient(ellipse 90% 80% at 60% 50%, black 20%, transparent 80%)",
         }}
       />
-      {/* Floating amber blobs */}
+      {/* Floating indigo blob — top right */}
       <motion.div
         className="absolute w-64 h-64 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(251,191,36,0.12) 0%, transparent 70%)",
+            "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)",
           top: "10%",
           right: "15%",
         }}
         animate={{ y: [0, -16, 0], scale: [1, 1.06, 1] }}
         transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
       />
+      {/* Floating blue blob — bottom center */}
       <motion.div
         className="absolute w-40 h-40 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(245,158,11,0.09) 0%, transparent 70%)",
+            "radial-gradient(circle, rgba(59,130,246,0.09) 0%, transparent 70%)",
           bottom: "20%",
           right: "30%",
         }}
@@ -131,22 +132,33 @@ function StepCard({ number, title, description, icon, delay }: StepCardProps) {
       initial={{ opacity: 0, y: 32 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
-      className="relative flex flex-col gap-4 rounded-2xl bg-stone-100 border border-stone-200 p-6 sm:p-7"
+      className="relative flex flex-col gap-4 rounded-2xl p-6 sm:p-7"
+      style={{
+        background: "rgba(99,102,241,0.07)",
+        border: "1px solid rgba(99,102,241,0.18)",
+      }}
     >
-      {/* Amber number */}
+      {/* Indigo number */}
       <div className="flex items-start justify-between gap-3">
-        <span className="text-4xl font-black text-amber-500 leading-none tracking-tighter select-none">
+        <span className="text-4xl font-black leading-none tracking-tighter select-none text-indigo-400">
           {number}
         </span>
-        <div className="mt-1 w-9 h-9 rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-500 shrink-0">
+        <div
+          className="mt-1 w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: "rgba(99,102,241,0.12)",
+            border: "1px solid rgba(99,102,241,0.25)",
+            color: "#a5b4fc",
+          }}
+        >
           {icon}
         </div>
       </div>
       <div>
-        <h3 className="font-bold text-stone-900 text-base tracking-tight mb-1.5">
+        <h3 className="font-bold text-white text-base tracking-tight mb-1.5">
           {title}
         </h3>
-        <p className="text-sm text-stone-500 leading-relaxed">{description}</p>
+        <p className="text-sm text-white/50 leading-relaxed">{description}</p>
       </div>
     </motion.div>
   );
@@ -186,17 +198,31 @@ function FeaturedCard({
       initial={{ opacity: 0, y: 28 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(
-        "group flex flex-col rounded-2xl border border-stone-200 bg-white",
-        "transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-stone-300"
-      )}
+      className="group flex flex-col rounded-2xl transition-all duration-200 hover:-translate-y-1"
+      style={{
+        background: "rgba(99,102,241,0.07)",
+        border: "1px solid rgba(99,102,241,0.18)",
+        boxShadow: "0 0 0 rgba(99,102,241,0)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow =
+          "0 0 40px rgba(99,102,241,0.15)";
+        (e.currentTarget as HTMLDivElement).style.borderColor =
+          "rgba(99,102,241,0.4)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow =
+          "0 0 0 rgba(99,102,241,0)";
+        (e.currentTarget as HTMLDivElement).style.borderColor =
+          "rgba(99,102,241,0.18)";
+      }}
     >
       {/* Card preview area */}
       <div
         className="h-36 sm:h-44 rounded-t-2xl relative overflow-hidden flex items-center justify-center"
         style={{
           background:
-            "linear-gradient(135deg, #fef9f0 0%, #fdf3d8 50%, #fef9f0 100%)",
+            "linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(59,130,246,0.08) 50%, rgba(99,102,241,0.12) 100%)",
         }}
       >
         {/* Abstract visual representing explainer type */}
@@ -205,9 +231,9 @@ function FeaturedCard({
             <div className="flex flex-col gap-3 w-28">
               {[40, 64, 48, 56].map((w, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 shrink-0" />
                   <div
-                    className="h-2 rounded-full bg-amber-400"
+                    className="h-2 rounded-full bg-indigo-500"
                     style={{ width: `${w}%` }}
                   />
                 </div>
@@ -225,7 +251,7 @@ function FeaturedCard({
                   {row.map((n) => (
                     <div
                       key={n}
-                      className="w-10 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-white text-xs font-bold"
+                      className="w-10 h-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white text-xs font-bold"
                     >
                       {n}
                     </div>
@@ -239,7 +265,7 @@ function FeaturedCard({
               {[80, 60, 90, 50, 70].map((w, i) => (
                 <div
                   key={i}
-                  className="h-3 rounded-full bg-amber-400"
+                  className="h-3 rounded-full bg-indigo-400"
                   style={{ width: `${w}%`, marginLeft: `${(5 - i) * 6}%` }}
                 />
               ))}
@@ -262,10 +288,10 @@ function FeaturedCard({
       {/* Card body */}
       <div className="flex flex-col flex-1 p-5 sm:p-6 gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-600 mb-1">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-indigo-400 mb-1">
             {subtitle}
           </p>
-          <h3 className="font-bold text-stone-900 leading-snug tracking-tight text-base">
+          <h3 className="font-bold text-white leading-snug tracking-tight text-base">
             {title}
           </h3>
         </div>
@@ -276,9 +302,15 @@ function FeaturedCard({
           className={cn(
             "mt-auto inline-flex items-center gap-2",
             "px-4 py-2.5 rounded-xl text-sm font-semibold",
-            "bg-amber-500 hover:bg-amber-600 text-white",
-            "transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
+            "text-white transition-all duration-150 active:scale-[0.98]"
           )}
+          style={{ background: "#6366f1" }}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.background = "#4f46e5")
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.background = "#6366f1")
+          }
         >
           View Explainer
           <ArrowRight className="w-3.5 h-3.5" />
@@ -295,17 +327,51 @@ function BreadcrumbVisual() {
   const isInView = useInView(ref, { once: true, margin: "-60px 0px" });
 
   const crumbs = [
-    { label: "Boris Cherny", color: "bg-amber-100 text-amber-700 border-amber-200" },
-    { label: "TypeScript Types", color: "bg-stone-100 text-stone-700 border-stone-200" },
-    { label: "Conditional Types", color: "bg-stone-100 text-stone-700 border-stone-200" },
-    { label: "Distributive Conditionals", color: "bg-stone-50 text-stone-600 border-stone-200" },
+    {
+      label: "Boris Cherny",
+      style: {
+        background: "rgba(99,102,241,0.15)",
+        color: "#a5b4fc",
+        borderColor: "rgba(99,102,241,0.3)",
+      },
+    },
+    {
+      label: "TypeScript Types",
+      style: {
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.7)",
+        borderColor: "rgba(255,255,255,0.1)",
+      },
+    },
+    {
+      label: "Conditional Types",
+      style: {
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.7)",
+        borderColor: "rgba(255,255,255,0.1)",
+      },
+    },
+    {
+      label: "Distributive Conditionals",
+      style: {
+        background: "rgba(255,255,255,0.04)",
+        color: "rgba(255,255,255,0.5)",
+        borderColor: "rgba(255,255,255,0.08)",
+      },
+    },
   ];
 
   return (
     <div ref={ref} className="w-full max-w-lg mx-auto lg:mx-0">
       {/* Breadcrumb path */}
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-400 mb-3">
+      <div
+        className="rounded-2xl p-5"
+        style={{
+          background: "rgba(99,102,241,0.08)",
+          border: "1px solid rgba(99,102,241,0.2)",
+        }}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 mb-3">
           Deep dive path
         </p>
         <div className="flex flex-col gap-2">
@@ -327,22 +393,20 @@ function BreadcrumbVisual() {
                   {Array.from({ length: i }).map((_, j) => (
                     <div key={j} className="w-4 shrink-0" />
                   ))}
-                  <div className="w-3 h-px bg-stone-300 mr-1 shrink-0" />
+                  <div className="w-3 h-px bg-white/20 mr-1 shrink-0" />
                 </div>
               )}
               <span
-                className={cn(
-                  "inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border",
-                  crumb.color
-                )}
+                className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border"
+                style={crumb.style}
               >
                 {crumb.label}
               </span>
               {i < crumbs.length - 1 && (
-                <span className="text-xs text-stone-300 ml-auto">Level {i + 1}</span>
+                <span className="text-xs text-white/20 ml-auto">Level {i + 1}</span>
               )}
               {i === crumbs.length - 1 && (
-                <span className="text-xs text-amber-500 font-semibold ml-auto">
+                <span className="text-xs text-indigo-400 font-semibold ml-auto">
                   Level {i + 1} ↓
                 </span>
               )}
@@ -351,7 +415,10 @@ function BreadcrumbVisual() {
         </div>
 
         {/* Depth meter */}
-        <div className="mt-4 pt-4 border-t border-stone-100 flex items-center gap-2">
+        <div
+          className="mt-4 pt-4 flex items-center gap-2"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+        >
           <div className="flex gap-1">
             {[0, 1, 2, 3].map((d) => (
               <motion.div
@@ -359,14 +426,14 @@ function BreadcrumbVisual() {
                 initial={{ scale: 0 }}
                 animate={isInView ? { scale: 1 } : {}}
                 transition={{ delay: 0.5 + d * 0.08, duration: 0.3, ease: "backOut" }}
-                className={cn(
-                  "w-2 h-2 rounded-full",
-                  d === 3 ? "bg-amber-500" : "bg-stone-200"
-                )}
+                className="w-2 h-2 rounded-full"
+                style={{
+                  background: d === 3 ? "#6366f1" : "rgba(255,255,255,0.15)",
+                }}
               />
             ))}
           </div>
-          <span className="text-xs text-stone-400">4 levels deep — keep going</span>
+          <span className="text-xs text-white/30">4 levels deep — keep going</span>
         </div>
       </div>
 
@@ -375,20 +442,33 @@ function BreadcrumbVisual() {
         initial={{ opacity: 0, y: 8 }}
         animate={isInView ? { opacity: 1, y: 0 } : {}}
         transition={{ delay: 0.7, duration: 0.4 }}
-        className="mt-3 bg-white border border-stone-200 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm"
+        className="mt-3 rounded-xl px-4 py-3 flex items-center gap-3"
+        style={{
+          background: "rgba(99,102,241,0.08)",
+          border: "1px solid rgba(99,102,241,0.2)",
+        }}
       >
-        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{
+            background: "rgba(99,102,241,0.2)",
+            border: "1px solid rgba(99,102,241,0.3)",
+          }}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-stone-700">
+          <p className="text-xs font-semibold text-white/80">
             Generate deeper explainer
           </p>
-          <p className="text-[10px] text-stone-400 truncate">
+          <p className="text-[10px] text-white/30 truncate">
             Distributive Conditional Types → ...
           </p>
         </div>
-        <div className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold">
+        <div
+          className="shrink-0 px-2.5 py-1 rounded-lg text-white text-[10px] font-bold"
+          style={{ background: "#6366f1" }}
+        >
           Go
         </div>
       </motion.div>
@@ -407,15 +487,14 @@ export function ShowcaseClient() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#fafaf9" }}>
+    <div className="min-h-screen bg-background">
       {/* ══════════════════════════════════════════════════════
           SECTION 1: HERO
       ══════════════════════════════════════════════════════ */}
       <section
-        className="relative overflow-hidden border-b border-stone-200"
+        className="relative overflow-hidden"
         style={{
-          background:
-            "linear-gradient(150deg, #fafaf9 0%, #fef9f0 40%, #fff8ed 70%, #fafaf9 100%)",
+          borderBottom: "1px solid rgba(99,102,241,0.15)",
           minHeight: "min(90vh, 720px)",
         }}
       >
@@ -427,7 +506,7 @@ export function ShowcaseClient() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, delay: 0.1, ease: "easeOut" }}
-            className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-5"
+            className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-5"
           >
             Lenny&apos;s Data Challenge · VizBrief
           </motion.p>
@@ -438,18 +517,27 @@ export function ShowcaseClient() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="text-5xl sm:text-6xl lg:text-7xl font-black text-stone-900 tracking-tight leading-[1.05] mb-6"
+              className="text-5xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.05] mb-6"
             >
               Lenny&apos;s Archive,
               <br />
-              <span className="text-amber-500">Visualized.</span>
+              <span
+                style={{
+                  background: "linear-gradient(135deg, #818cf8, #6366f1, #60a5fa)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Visualized.
+              </span>
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-              className="text-lg sm:text-xl text-stone-500 leading-relaxed mb-10 max-w-xl"
+              className="text-lg sm:text-xl text-white/60 leading-relaxed mb-10 max-w-xl"
             >
               638 podcasts and newsletters transformed into interactive visual
               explainers. Search, explore, and deep dive into any topic.
@@ -466,9 +554,23 @@ export function ShowcaseClient() {
                 href="/library/lennys"
                 className={cn(
                   "inline-flex items-center gap-2 px-6 py-3.5 rounded-xl",
-                  "bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm",
-                  "transition-all duration-150 hover:shadow-md active:scale-[0.97]"
+                  "text-white font-bold text-sm",
+                  "transition-all duration-150 active:scale-[0.97]"
                 )}
+                style={{
+                  background: "#6366f1",
+                  boxShadow: "0 4px 24px rgba(99,102,241,0.35)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background = "#4f46e5";
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow =
+                    "0 8px 32px rgba(99,102,241,0.45)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background = "#6366f1";
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow =
+                    "0 4px 24px rgba(99,102,241,0.35)";
+                }}
               >
                 Browse the Library
                 <ArrowRight className="w-4 h-4" />
@@ -478,9 +580,25 @@ export function ShowcaseClient() {
                 onClick={scrollToHowItWorks}
                 className={cn(
                   "inline-flex items-center gap-2 px-6 py-3.5 rounded-xl",
-                  "bg-white border border-stone-200 hover:border-stone-300 text-stone-700 font-semibold text-sm",
-                  "transition-all duration-150 hover:shadow-sm active:scale-[0.97]"
+                  "text-white/80 font-semibold text-sm",
+                  "transition-all duration-150 active:scale-[0.97]"
                 )}
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "rgba(255,255,255,0.1)";
+                  (e.currentTarget as HTMLButtonElement).style.borderColor =
+                    "rgba(255,255,255,0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "rgba(255,255,255,0.06)";
+                  (e.currentTarget as HTMLButtonElement).style.borderColor =
+                    "rgba(255,255,255,0.12)";
+                }}
               >
                 How It Works
                 <ChevronDown className="w-4 h-4" />
@@ -510,19 +628,28 @@ export function ShowcaseClient() {
                     delay: 0.65 + i * 0.1,
                     ease: [0.16, 1, 0.3, 1],
                   }}
-                  className={cn(
-                    "flex items-center gap-4 px-5 py-4 rounded-2xl bg-white border border-stone-200 shadow-sm",
-                    "min-w-[200px]"
-                  )}
+                  className="flex items-center gap-4 px-5 py-4 rounded-2xl min-w-[200px]"
+                  style={{
+                    background: "rgba(99,102,241,0.12)",
+                    border: "1px solid rgba(99,102,241,0.25)",
+                    boxShadow: "0 0 30px rgba(99,102,241,0.08)",
+                  }}
                 >
-                  <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: "rgba(99,102,241,0.2)",
+                      border: "1px solid rgba(99,102,241,0.3)",
+                      color: "#a5b4fc",
+                    }}
+                  >
                     {stat.icon}
                   </div>
                   <div>
-                    <p className="text-xl font-black text-stone-900 tracking-tight leading-none">
+                    <p className="text-xl font-black text-white tracking-tight leading-none">
                       {stat.value}
                     </p>
-                    <p className="text-xs text-stone-500 mt-0.5">{stat.label}</p>
+                    <p className="text-xs text-white/50 mt-0.5">{stat.label}</p>
                   </div>
                 </motion.div>
               ))}
@@ -537,17 +664,18 @@ export function ShowcaseClient() {
       <section
         ref={howItWorksRef}
         id="how-it-works"
-        className="py-20 sm:py-28 border-b border-stone-200"
+        className="py-20 sm:py-28"
+        style={{ borderBottom: "1px solid rgba(99,102,241,0.12)" }}
       >
         <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12">
           <FadeIn className="mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">
               How It Works
             </p>
-            <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight">
+            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
               From dense text to instant clarity
             </h2>
-            <p className="mt-3 text-stone-500 max-w-xl leading-relaxed">
+            <p className="mt-3 text-white/50 max-w-xl leading-relaxed">
               Every episode and newsletter becomes a different kind of visual explainer —
               pick the format that fits how you think.
             </p>
@@ -582,25 +710,28 @@ export function ShowcaseClient() {
       {/* ══════════════════════════════════════════════════════
           SECTION 3: FEATURED EXPLAINERS
       ══════════════════════════════════════════════════════ */}
-      <section className="py-20 sm:py-28 border-b border-stone-200">
+      <section
+        className="py-20 sm:py-28"
+        style={{ borderBottom: "1px solid rgba(99,102,241,0.12)" }}
+      >
         <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12">
           <FadeIn className="mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">
               Featured Explainers
             </p>
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div>
-                <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                   See it in action
                 </h2>
-                <p className="mt-3 text-stone-500 max-w-xl leading-relaxed">
+                <p className="mt-3 text-white/50 max-w-xl leading-relaxed">
                   Three explainers generated from a single episode — same content,
                   different lenses. Boris Cherny on TypeScript.
                 </p>
               </div>
               <Link
                 href="/library/lennys"
-                className="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                className="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
               >
                 Browse all 638 episodes
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -614,7 +745,7 @@ export function ShowcaseClient() {
               title="Boris Cherny's TypeScript career journey"
               subtitle="Timeline Explainer"
               template="timeline"
-              templateColor="bg-amber-100 text-amber-700"
+              templateColor="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
               delay={0}
             />
             <FeaturedCard
@@ -622,7 +753,7 @@ export function ShowcaseClient() {
               title="How TypeScript's type system flows"
               subtitle="Flow Animator"
               template="flow"
-              templateColor="bg-stone-100 text-stone-700"
+              templateColor="bg-blue-500/20 text-blue-300 border border-blue-500/30"
               delay={0.1}
             />
             <FeaturedCard
@@ -630,7 +761,7 @@ export function ShowcaseClient() {
               title="Core concepts behind TypeScript design"
               subtitle="Concept Builder"
               template="concept"
-              templateColor="bg-amber-50 text-amber-600"
+              templateColor="bg-indigo-400/20 text-indigo-200 border border-indigo-400/30"
               delay={0.2}
             />
           </div>
@@ -641,31 +772,44 @@ export function ShowcaseClient() {
           SECTION 4: DEEP DIVE FEATURE
       ══════════════════════════════════════════════════════ */}
       <section
-        className="py-20 sm:py-28 border-b border-stone-200"
-        style={{ background: "linear-gradient(180deg, #fafaf9 0%, #fef9f0 100%)" }}
+        className="py-20 sm:py-28"
+        style={{
+          borderBottom: "1px solid rgba(99,102,241,0.12)",
+          background:
+            "linear-gradient(180deg, var(--background) 0%, rgba(99,102,241,0.04) 100%)",
+        }}
       >
         <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
             {/* Left: copy */}
             <div>
               <FadeIn>
-                <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-3">
+                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">
                   The Deep Dive
                 </p>
-                <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight leading-tight">
+                <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
                   Every node is a{" "}
-                  <span className="text-amber-500">rabbit hole.</span>
+                  <span
+                    style={{
+                      background: "linear-gradient(135deg, #818cf8, #60a5fa)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
+                    rabbit hole.
+                  </span>
                 </h2>
               </FadeIn>
 
               <FadeIn delay={0.1} className="mt-5">
-                <p className="text-stone-500 leading-relaxed text-base">
+                <p className="text-white/50 leading-relaxed text-base">
                   Click any node on a visual explainer to generate a deeper, more
                   detailed visualization of just that topic. Go 3, 4, 5 levels deep.
                 </p>
-                <p className="mt-3 text-stone-500 leading-relaxed text-base">
+                <p className="mt-3 text-white/50 leading-relaxed text-base">
                   It&apos;s like having a visual table of contents for{" "}
-                  <span className="font-semibold text-stone-700">5.4 million words</span>{" "}
+                  <span className="font-semibold text-white/80">5.4 million words</span>{" "}
                   — but instead of reading, you navigate.
                 </p>
               </FadeIn>
@@ -678,10 +822,16 @@ export function ShowcaseClient() {
                     "Each result is fully navigable — go deeper still",
                   ].map((point, i) => (
                     <div key={i} className="flex items-start gap-3">
-                      <div className="mt-0.5 w-5 h-5 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center shrink-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      <div
+                        className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                        style={{
+                          background: "rgba(99,102,241,0.15)",
+                          border: "1px solid rgba(99,102,241,0.3)",
+                        }}
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
                       </div>
-                      <p className="text-sm text-stone-600 leading-relaxed">{point}</p>
+                      <p className="text-sm text-white/60 leading-relaxed">{point}</p>
                     </div>
                   ))}
                 </div>
@@ -699,26 +849,29 @@ export function ShowcaseClient() {
       {/* ══════════════════════════════════════════════════════
           SECTION 5: WHAT'S NEXT
       ══════════════════════════════════════════════════════ */}
-      <section className="py-20 sm:py-28 border-b border-stone-200">
+      <section
+        className="py-20 sm:py-28"
+        style={{ borderBottom: "1px solid rgba(99,102,241,0.12)" }}
+      >
         <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12">
           <div className="max-w-2xl">
             <FadeIn>
-              <p className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">
                 What&apos;s Next
               </p>
-              <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight">
+              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
                 This is just the proof of concept.
               </h2>
             </FadeIn>
 
             <FadeIn delay={0.1} className="mt-5 space-y-4">
-              <p className="text-stone-500 leading-relaxed text-base">
+              <p className="text-white/50 leading-relaxed text-base">
                 This is a proof of concept for VizBrief&apos;s{" "}
-                <span className="font-semibold text-stone-700">Knowledge Source</span>{" "}
+                <span className="font-semibold text-white/80">Knowledge Source</span>{" "}
                 feature — a system for connecting entire content libraries to visual
                 explainers with infinite deep dive.
               </p>
-              <p className="text-stone-500 leading-relaxed text-base">
+              <p className="text-white/50 leading-relaxed text-base">
                 Connect any content library — Notion docs, Confluence wikis, podcast
                 archives — and get visual explainers with deep dive on demand. Turn
                 your team&apos;s institutional knowledge into something navigable.
@@ -730,9 +883,23 @@ export function ShowcaseClient() {
                 href="/create"
                 className={cn(
                   "inline-flex items-center gap-2 px-6 py-3.5 rounded-xl",
-                  "bg-stone-900 hover:bg-stone-800 text-white font-bold text-sm",
-                  "transition-all duration-150 hover:shadow-md active:scale-[0.97]"
+                  "text-white font-bold text-sm",
+                  "transition-all duration-150 active:scale-[0.97]"
                 )}
+                style={{
+                  background: "#6366f1",
+                  boxShadow: "0 4px 24px rgba(99,102,241,0.35)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background = "#4f46e5";
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow =
+                    "0 8px 32px rgba(99,102,241,0.45)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background = "#6366f1";
+                  (e.currentTarget as HTMLAnchorElement).style.boxShadow =
+                    "0 4px 24px rgba(99,102,241,0.35)";
+                }}
               >
                 Try VizBrief
                 <ArrowRight className="w-4 h-4" />
@@ -741,9 +908,25 @@ export function ShowcaseClient() {
                 href="/library/lennys"
                 className={cn(
                   "inline-flex items-center gap-2 px-6 py-3.5 rounded-xl",
-                  "bg-white border border-stone-200 hover:border-stone-300 text-stone-700 font-semibold text-sm",
-                  "transition-all duration-150 hover:shadow-sm active:scale-[0.97]"
+                  "text-white/80 font-semibold text-sm",
+                  "transition-all duration-150 active:scale-[0.97]"
                 )}
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background =
+                    "rgba(255,255,255,0.1)";
+                  (e.currentTarget as HTMLAnchorElement).style.borderColor =
+                    "rgba(255,255,255,0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLAnchorElement).style.background =
+                    "rgba(255,255,255,0.06)";
+                  (e.currentTarget as HTMLAnchorElement).style.borderColor =
+                    "rgba(255,255,255,0.12)";
+                }}
               >
                 Browse the Library
                 <ArrowRight className="w-4 h-4" />
@@ -761,15 +944,15 @@ export function ShowcaseClient() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             {/* Attribution */}
             <div>
-              <p className="text-sm text-stone-500">
+              <p className="text-sm text-white/40">
                 Built for{" "}
-                <span className="font-semibold text-stone-700">
+                <span className="font-semibold text-white/70">
                   Lenny&apos;s Data Challenge
                 </span>{" "}
                 by{" "}
-                <span className="font-semibold text-stone-700">Riley Lin</span>
+                <span className="font-semibold text-white/70">Riley Lin</span>
               </p>
-              <p className="text-xs text-stone-400 mt-0.5">
+              <p className="text-xs text-white/25 mt-0.5">
                 April 2026 · VizBrief
               </p>
             </div>
@@ -778,25 +961,25 @@ export function ShowcaseClient() {
             <nav className="flex items-center gap-5">
               <Link
                 href="/library/lennys"
-                className="text-sm text-stone-500 hover:text-stone-700 transition-colors font-medium"
+                className="text-sm text-white/40 hover:text-white/70 transition-colors font-medium"
               >
                 Browse Library
               </Link>
-              <span className="text-stone-300" aria-hidden>
+              <span className="text-white/20" aria-hidden>
                 ·
               </span>
               <Link
                 href="/"
-                className="text-sm text-stone-500 hover:text-stone-700 transition-colors font-medium"
+                className="text-sm text-white/40 hover:text-white/70 transition-colors font-medium"
               >
                 VizBrief
               </Link>
-              <span className="text-stone-300" aria-hidden>
+              <span className="text-white/20" aria-hidden>
                 ·
               </span>
               <Link
                 href="/create"
-                className="text-sm font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
               >
                 Try It Free →
               </Link>
