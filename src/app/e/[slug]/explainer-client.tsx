@@ -6,7 +6,7 @@ import type { ExplainerData } from "@/lib/schemas/base";
 import { ExplainerViewer } from "./viewer";
 import { ExplainerFooter } from "./footer";
 import { Breadcrumb, type BreadcrumbSegment } from "@/components/viewer/breadcrumb";
-import { ExploreProvider } from "@/components/viewer/explore-context";
+import { ExploreProvider, type ChildrenMap } from "@/components/viewer/explore-context";
 import { ExploreToggle } from "@/components/viewer/explore-toggle";
 
 interface ExplainerClientProps {
@@ -17,9 +17,11 @@ interface ExplainerClientProps {
   isDraft: boolean;
   /** Breadcrumb navigation chain — from root to current. If length < 2, no breadcrumb shown. */
   breadcrumbs?: BreadcrumbSegment[];
+  /** Map of nodeId → existing child explainer for explored-node indicators */
+  childrenMap?: ChildrenMap;
 }
 
-export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs = [] }: ExplainerClientProps) {
+export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs = [], childrenMap = {} }: ExplainerClientProps) {
   const diagramRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -44,7 +46,7 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
   }, [slug, isExporting]);
 
   return (
-    <ExploreProvider>
+    <ExploreProvider childrenMap={childrenMap}>
       {/* Breadcrumb navigation — sticky at top, only shows for deep dives */}
       <Breadcrumb segments={breadcrumbs} />
 

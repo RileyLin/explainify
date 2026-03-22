@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Eye } from "lucide-react";
 import { useExplore } from "@/components/viewer/explore-context";
 
 interface ExploreButtonProps {
@@ -19,11 +19,8 @@ interface ExploreButtonProps {
 
 /**
  * Amber "Explore ↗" button that appears on hover over any node.
- * Calls POST /api/v1/deep-dive and navigates to the new explainer.
- *
- * Desktop: only visible on group-hover (parent must have `group` class).
- * Mobile: always visible as icon-only button.
- * Hidden via CSS (not unmount) when explore mode is off to avoid React tree issues.
+ * If the node has already been explored (existing child in childrenMap),
+ * shows "View ↗" instead and links directly without generating.
  */
 export function ExploreButton({
   nodeId,
@@ -33,9 +30,12 @@ export function ExploreButton({
 }: ExploreButtonProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { exploreEnabled } = useExplore();
+  const { exploreEnabled, childrenMap } = useExplore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Check if this node was already explored
+  const existingChild = childrenMap[nodeId];
 
   // Extract slug from pathname /e/[slug]
   const slug = pathname.split("/").at(-1) ?? "";
@@ -43,7 +43,15 @@ export function ExploreButton({
   const handleExplore = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (isLoading || !slug || !exploreEnabled) return;
+      if (!exploreEnabled) return;
+
+      // If child already exists, navigate directly
+      if (existingChild) {
+        router.push(`/e/${existingChild.slug}`);
+        return;
+      }
+
+      if (isLoading || !slug) return;
       setIsLoading(true);
       setError(null);
 
@@ -68,7 +76,7 @@ export function ExploreButton({
         setTimeout(() => setError(null), 3000);
       }
     },
-    [isLoading, slug, nodeId, nodeTitle, nodeDescription, router, exploreEnabled],
+    [isLoading, slug, nodeId, nodeTitle, nodeDescription, router, exploreEnabled, existingChild],
   );
 
   // Hide via CSS instead of unmounting — prevents React tree mismatch crashes
@@ -105,6 +113,29 @@ export function ExploreButton({
               />
             ))}
           </motion.span>
+        ) : existingChild ? (
+          <motion.button
+            key="view"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleExplore}
+            title={`View deep dive: ${existingChild.title}`}
+            aria-label={`View ${nodeTitle} deep dive`}
+            className={[
+              "inline-flex items-center gap-1 rounded-full border font-medium transition-colors cursor-pointer",
+              "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/25 hover:bg-sky-500/20 hover:border-sky-500/40",
+              "opacity-0 group-hover:opacity-100",
+              "sm:px-2 sm:py-0.5 sm:text-[11px]",
+              "max-sm:opacity-100 max-sm:p-1 max-sm:text-[11px]",
+              className,
+            ].join(" ")}
+          >
+            <Eye size={11} className="shrink-0" />
+            <span className="hidden sm:inline">View</span>
+          </motion.button>
         ) : (
           <motion.button
             key="idle"

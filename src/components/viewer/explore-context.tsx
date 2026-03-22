@@ -2,14 +2,26 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
+/** Existing child explainer info */
+export interface ExistingChild {
+  slug: string;
+  title: string;
+}
+
+/** Map of nodeId → existing child explainer */
+export type ChildrenMap = Record<string, ExistingChild>;
+
 interface ExploreContextValue {
   exploreEnabled: boolean;
   toggleExplore: () => void;
+  /** Map of nodeId → existing child explainer for explored-node indicators */
+  childrenMap: ChildrenMap;
 }
 
 const ExploreContext = createContext<ExploreContextValue>({
   exploreEnabled: true,
   toggleExplore: () => {},
+  childrenMap: {},
 });
 
 export function useExplore() {
@@ -28,7 +40,13 @@ function getUrlExploreOverride(): string | null {
   return params.get("explore");
 }
 
-export function ExploreProvider({ children }: { children: ReactNode }) {
+interface ExploreProviderProps {
+  children: ReactNode;
+  /** Pre-fetched children map from server component */
+  childrenMap?: ChildrenMap;
+}
+
+export function ExploreProvider({ children, childrenMap = {} }: ExploreProviderProps) {
   const [enabled, setEnabled] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
@@ -64,17 +82,10 @@ export function ExploreProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // Avoid flash — default to true on server, hydrate on client
-  if (!hydrated) {
-    return (
-      <ExploreContext.Provider value={{ exploreEnabled: true, toggleExplore }}>
-        {children}
-      </ExploreContext.Provider>
-    );
-  }
+  const value = { exploreEnabled: hydrated ? enabled : true, toggleExplore, childrenMap };
 
   return (
-    <ExploreContext.Provider value={{ exploreEnabled: enabled, toggleExplore }}>
+    <ExploreContext.Provider value={value}>
       {children}
     </ExploreContext.Provider>
   );

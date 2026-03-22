@@ -5,6 +5,7 @@ import { ExplainerClient } from "./explainer-client";
 import { auth } from "@/lib/auth";
 import type { Metadata } from "next";
 import type { BreadcrumbSegment } from "@/components/viewer/breadcrumb";
+import type { ChildrenMap } from "@/components/viewer/explore-context";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -78,6 +79,33 @@ async function fetchBreadcrumbChain(
   return segments.reverse();
 }
 
+/**
+ * Fetch all child explainers for a given parent slug.
+ * Returns a map of source_node_id → { slug, title } for quick lookup.
+ */
+async function fetchChildrenMap(parentSlug: string): Promise<ChildrenMap> {
+  try {
+    const svc = getServiceClient();
+    const { data: children } = await svc
+      .from("explainers")
+      .select("source_node_id, slug, title")
+      .eq("parent_slug", parentSlug)
+      .not("source_node_id", "is", null)
+      .limit(50) as { data: { source_node_id: string; slug: string; title: string }[] | null };
+
+    if (!children) return {};
+
+    const map: ChildrenMap = {};
+    for (const child of children) {
+      // If multiple deep dives exist for same node, use the latest (last in array)
+      map[child.source_node_id] = { slug: child.slug, title: child.title };
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const result = await getExplainer(slug);
@@ -140,6 +168,9 @@ export default async function ExplainerPage({ params }: PageProps) {
     explainer.parent_slug ?? null,
   );
 
+  // Fetch existing children (for explored-node indicators)
+  const childrenMap = await fetchChildrenMap(slug);
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const pageUrl = `${appUrl}/e/${slug}`;
 
@@ -152,6 +183,7 @@ export default async function ExplainerPage({ params }: PageProps) {
         slug={slug}
         isDraft={isDraft}
         breadcrumbs={breadcrumbs}
+        childrenMap={childrenMap}
       />
     </div>
   );
