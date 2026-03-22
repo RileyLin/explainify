@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowUpRight } from "lucide-react";
+import { useExplore } from "@/components/viewer/explore-context";
 
 interface ExploreButtonProps {
   /** The node ID that was clicked */
@@ -31,8 +32,12 @@ export function ExploreButton({
 }: ExploreButtonProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { exploreEnabled } = useExplore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Hidden when explore mode is off (unless currently loading)
+  if (!exploreEnabled && !isLoading) return null;
 
   // Extract slug from pathname /e/[slug]
   const slug = pathname.split("/").at(-1) ?? "";

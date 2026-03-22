@@ -6,6 +6,8 @@ import type { ExplainerData } from "@/lib/schemas/base";
 import { ExplainerViewer } from "./viewer";
 import { ExplainerFooter } from "./footer";
 import { Breadcrumb, type BreadcrumbSegment } from "@/components/viewer/breadcrumb";
+import { ExploreProvider } from "@/components/viewer/explore-context";
+import { ExploreToggle } from "@/components/viewer/explore-toggle";
 
 interface ExplainerClientProps {
   data: ExplainerData;
@@ -42,7 +44,7 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
   }, [slug, isExporting]);
 
   return (
-    <>
+    <ExploreProvider>
       {/* Breadcrumb navigation — sticky at top, only shows for deep dives */}
       <Breadcrumb segments={breadcrumbs} />
 
@@ -58,6 +60,10 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
         </div>
       )}
       <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Explore mode toggle — top right of viewer */}
+        <div className="flex justify-end mb-3">
+          <ExploreToggle />
+        </div>
         <ExplainerViewer data={data} diagramRef={diagramRef} />
         <ExplainerFooter
           url={url}
@@ -66,6 +72,6 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
           onDownloadPng={handleDownloadPng}
         />
       </div>
-    </>
+    </ExploreProvider>
   );
 }
