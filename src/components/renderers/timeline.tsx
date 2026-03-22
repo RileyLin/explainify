@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Clock, Tag } from "lucide-react";
 import type { TimelineData, TimelineEvent } from "@/lib/schemas/timeline";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
+import { ExploreButton } from "./explore-button";
 
 interface TimelineProps {
   data: TimelineData;
@@ -117,7 +118,7 @@ function TimelineInner({ data }: TimelineProps) {
 
               {/* Content */}
               <div
-                className={`flex-1 ${isCompact ? "pb-2" : isSpread ? "pb-10" : "pb-6"} rounded-xl transition-colors cursor-pointer`}
+                className={`group relative flex-1 ${isCompact ? "pb-2" : isSpread ? "pb-10" : "pb-6"} rounded-xl transition-colors cursor-pointer`}
                 onClick={() => toggleExpand(event.id)}
               >
                 {/* Date/Period badge */}
@@ -130,14 +131,21 @@ function TimelineInner({ data }: TimelineProps) {
 
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold text-foreground">{event.title}</h3>
-                  {event.details && !isCompact && (
-                    <motion.div
-                      animate={{ rotate: expandedId === event.id ? 180 : 0 }}
-                      className="text-muted-foreground shrink-0 mt-1"
-                    >
-                      <ChevronDown size={16} />
-                    </motion.div>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                    <ExploreButton
+                      nodeId={event.id}
+                      nodeTitle={event.title}
+                      nodeDescription={event.description}
+                    />
+                    {event.details && !isCompact && (
+                      <motion.div
+                        animate={{ rotate: expandedId === event.id ? 180 : 0 }}
+                        className="text-muted-foreground"
+                      >
+                        <ChevronDown size={16} />
+                      </motion.div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Description hidden in compact mode */}

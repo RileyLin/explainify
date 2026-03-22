@@ -26,6 +26,7 @@ import type { FlowAnimatorData, FlowNode as FlowNodeType } from "@/lib/schemas/f
 import { useAnimationSpeed } from "@/components/editor/animation-speed";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
+import { ExploreButton } from "./explore-button";
 import dagre from "dagre";
 
 // ── Layer color helper ─────────────────────────────────────────────
@@ -458,7 +459,7 @@ function CustomFlowNode({ data }: NodeProps) {
               scale: { duration: 0.4, delay: (nodeData.nodeIndex ?? 0) * 0.08 },
               boxShadow: { duration: 3, repeat: Infinity, ease: "easeInOut", delay: heartbeatDelay } }
       }
-      className="cursor-pointer relative overflow-hidden"
+      className="group cursor-pointer relative overflow-visible"
       style={{
         width: nodeWidth,
         minHeight: nodeHeight,
@@ -493,6 +494,19 @@ function CustomFlowNode({ data }: NodeProps) {
           {badge}
         </div>
       )}
+
+      {/* Explore button — top-right corner, above badge on non-minimal */}
+      <div
+        className="absolute z-20 pointer-events-auto"
+        style={{ top: isMinimal ? -14 : -14, right: isMinimal ? 0 : 0 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ExploreButton
+          nodeId={nodeData.id ?? ""}
+          nodeTitle={nodeData.label ?? ""}
+          nodeDescription={nodeData.description ?? ""}
+        />
+      </div>
 
       <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 4, height: 4 }} />
 

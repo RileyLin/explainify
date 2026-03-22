@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, RotateCcw, ChevronLeft, CheckCircle2, HelpCircle } from "lucide-react";
 import type { DecisionTreeData, DecisionNode, DecisionEdge } from "@/lib/schemas/decision";
+import { ExploreButton } from "./explore-button";
 
 interface DecisionTreeProps {
   data: DecisionTreeData;
@@ -86,7 +87,7 @@ export function DecisionTree({ data }: DecisionTreeProps) {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -30 }}
           transition={{ duration: 0.25 }}
-          className={`rounded-xl border p-6 space-y-4 ${
+          className={`group rounded-xl border p-6 space-y-4 ${
             currentNode.isLeaf
               ? "border-emerald-500/30 bg-emerald-500/5"
               : "border-border bg-card"
@@ -105,13 +106,22 @@ export function DecisionTree({ data }: DecisionTreeProps) {
                 <HelpCircle size={20} className="text-blue-400" />
               )}
             </div>
-            <div>
-              {currentNode.question && (
-                <h3 className="text-lg font-semibold text-foreground">{currentNode.question}</h3>
-              )}
-              {currentNode.answer && (
-                <h3 className="text-lg font-semibold text-emerald-400">{currentNode.answer}</h3>
-              )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  {currentNode.question && (
+                    <h3 className="text-lg font-semibold text-foreground">{currentNode.question}</h3>
+                  )}
+                  {currentNode.answer && (
+                    <h3 className="text-lg font-semibold text-emerald-400">{currentNode.answer}</h3>
+                  )}
+                </div>
+                <ExploreButton
+                  nodeId={currentNode.id}
+                  nodeTitle={currentNode.question ?? currentNode.answer ?? currentNode.id}
+                  nodeDescription={currentNode.description}
+                />
+              </div>
               <p className="text-sm text-muted-foreground mt-1">{currentNode.description}</p>
             </div>
           </div>

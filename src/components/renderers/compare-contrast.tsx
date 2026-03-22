@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from "lucide-react";
 import type { CompareContrastData } from "@/lib/schemas/compare";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
+import { ExploreButton } from "./explore-button";
 
 interface CompareContrastProps {
   data: CompareContrastData;
@@ -95,10 +96,17 @@ function CompareContrastInner({ data }: CompareContrastProps) {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.1 }}
-                  className={`rounded-xl border ${color.border} ${color.bg} p-5 space-y-4`}
+                  className={`group rounded-xl border ${color.border} ${color.bg} p-5 space-y-4`}
                 >
                   <div>
-                    <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className={`text-lg font-semibold ${color.text}`}>{item.name}</h3>
+                      <ExploreButton
+                        nodeId={item.id}
+                        nodeTitle={item.name}
+                        nodeDescription={item.description}
+                      />
+                    </div>
                     <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                   </div>
 

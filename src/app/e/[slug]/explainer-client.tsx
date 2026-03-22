@@ -5,6 +5,7 @@ import { toPng } from "html-to-image";
 import type { ExplainerData } from "@/lib/schemas/base";
 import { ExplainerViewer } from "./viewer";
 import { ExplainerFooter } from "./footer";
+import { Breadcrumb, type BreadcrumbSegment } from "@/components/viewer/breadcrumb";
 
 interface ExplainerClientProps {
   data: ExplainerData;
@@ -12,9 +13,11 @@ interface ExplainerClientProps {
   title: string;
   slug: string;
   isDraft: boolean;
+  /** Breadcrumb navigation chain — from root to current. If length < 2, no breadcrumb shown. */
+  breadcrumbs?: BreadcrumbSegment[];
 }
 
-export function ExplainerClient({ data, url, title, slug, isDraft }: ExplainerClientProps) {
+export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs = [] }: ExplainerClientProps) {
   const diagramRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -40,6 +43,9 @@ export function ExplainerClient({ data, url, title, slug, isDraft }: ExplainerCl
 
   return (
     <>
+      {/* Breadcrumb navigation — sticky at top, only shows for deep dives */}
+      <Breadcrumb segments={breadcrumbs} />
+
       {isDraft && (
         <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2 text-center">
           <span className="text-xs font-medium text-amber-600 dark:text-amber-400">

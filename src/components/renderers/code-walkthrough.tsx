@@ -5,6 +5,7 @@ import { createHighlighter, type Highlighter } from "shiki";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, FileCode } from "lucide-react";
 import type { CodeWalkthroughData, CodeAnnotation } from "@/lib/schemas/code";
+import { ExploreButton } from "./explore-button";
 
 // ── Shiki highlighter cache ─────────────────────────────────────────
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -157,11 +158,18 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Code panel */}
-        <div className="relative rounded-xl border border-border overflow-hidden bg-[#0d1117]">
+        <div className="group relative rounded-xl border border-border overflow-hidden bg-[#0d1117]">
           {activeBlock.filename && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground">
-              <FileCode size={12} />
-              {activeBlock.filename}
+            <div className="flex items-center justify-between gap-2 px-4 py-2 bg-muted/50 border-b border-border text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <FileCode size={12} />
+                {activeBlock.filename}
+              </div>
+              <ExploreButton
+                nodeId={activeBlock.id}
+                nodeTitle={activeBlock.filename ?? activeBlock.id}
+                nodeDescription={activeAnnotation?.label ?? data.meta.summary}
+              />
             </div>
           )}
           <div ref={codeRef} className="overflow-auto max-h-[500px] relative">
@@ -222,6 +230,16 @@ export function CodeWalkthrough({ data }: { data: CodeWalkthroughData }) {
             >
               <ChevronRight size={16} />
             </button>
+            {!activeBlock.filename && (
+              <>
+                <div className="w-px h-4 bg-border mx-1" />
+                <ExploreButton
+                  nodeId={activeBlock.id}
+                  nodeTitle={activeAnnotation?.label ?? activeBlock.id}
+                  nodeDescription={activeAnnotation?.explanation ?? data.meta.summary}
+                />
+              </>
+            )}
           </div>
 
           {/* Explanation */}

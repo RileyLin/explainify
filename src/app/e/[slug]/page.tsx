@@ -4,6 +4,7 @@ import { ExplainerDataSchema, type ExplainerData } from "@/lib/schemas/base";
 import { ExplainerClient } from "./explainer-client";
 import { auth } from "@/lib/auth";
 import type { Metadata } from "next";
+import type { BreadcrumbSegment } from "@/components/viewer/breadcrumb";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -34,6 +35,47 @@ async function getExplainer(slug: string, userId?: string) {
   }
 
   return null;
+}
+
+/**
+ * Fetch parent chain for breadcrumb navigation.
+ * Walks up the parent_slug chain until there's no more parent.
+ * Returns segments in root-first order: [root, ..., current]
+ * Cap at 5 levels to prevent infinite loops / performance issues.
+ */
+async function fetchBreadcrumbChain(
+  currentSlug: string,
+  currentTitle: string,
+  parentSlug: string | null | undefined,
+): Promise<BreadcrumbSegment[]> {
+  if (!parentSlug) {
+    return [{ label: currentTitle, slug: currentSlug }];
+  }
+
+  const svc = getServiceClient();
+  const segments: BreadcrumbSegment[] = [{ label: currentTitle, slug: currentSlug }];
+  let nextSlug: string | null = parentSlug;
+  const visited = new Set<string>([currentSlug]);
+
+  // Walk up the chain (cap at 5 levels to avoid runaway queries)
+  for (let i = 0; i < 5 && nextSlug; i++) {
+    if (visited.has(nextSlug)) break; // cycle guard
+    visited.add(nextSlug);
+
+    const { data: parentRow } = await svc
+      .from("explainers")
+      .select("slug, title, parent_slug")
+      .eq("slug", nextSlug)
+      .single() as { data: { slug: string; title: string; parent_slug: string | null } | null };
+
+    if (!parentRow) break;
+
+    segments.push({ label: parentRow.title, slug: parentRow.slug });
+    nextSlug = parentRow.parent_slug ?? null;
+  }
+
+  // Reverse so root comes first
+  return segments.reverse();
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -91,6 +133,13 @@ export default async function ExplainerPage({ params }: PageProps) {
     }
   }
 
+  // Build breadcrumb chain if this is a deep dive
+  const breadcrumbs = await fetchBreadcrumbChain(
+    slug,
+    explainer.title,
+    explainer.parent_slug ?? null,
+  );
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const pageUrl = `${appUrl}/e/${slug}`;
 
@@ -102,6 +151,7 @@ export default async function ExplainerPage({ params }: PageProps) {
         title={explainer.title}
         slug={slug}
         isDraft={isDraft}
+        breadcrumbs={breadcrumbs}
       />
     </div>
   );

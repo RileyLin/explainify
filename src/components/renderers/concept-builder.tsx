@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, RotateCcw, Plus } from "lucide-react";
 import * as LucideIcons from "lucide-react";
 import type { ConceptBuilderData, ConceptLayer } from "@/lib/schemas/concept";
+import { ExploreButton } from "./explore-button";
 
 function getIcon(name?: string) {
   if (!name) return null;
@@ -26,7 +27,7 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
       exit={{ opacity: 0, y: -20, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       className={`
-        relative border-2 rounded-xl p-5 overflow-hidden
+        group relative border-2 rounded-xl p-5 overflow-hidden
         ${isLatest
           ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 shadow-lg shadow-blue-500/10"
           : "border-border bg-card"
@@ -59,6 +60,12 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
                 {layer.visualLabel}
               </span>
             )}
+            <ExploreButton
+              nodeId={layer.id}
+              nodeTitle={layer.title}
+              nodeDescription={layer.description}
+              className="ml-auto"
+            />
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">{layer.description}</p>
           {layer.details && (

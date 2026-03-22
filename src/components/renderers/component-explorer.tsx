@@ -17,6 +17,7 @@ import { X } from "lucide-react";
 import type { ComponentExplorerData, ExplorerComponent } from "@/lib/schemas/explorer";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
+import { ExploreButton } from "./explore-button";
 
 import "@xyflow/react/dist/style.css";
 
@@ -50,6 +51,7 @@ function getCategoryColor(
 interface ExplorerNodeData {
   label: string;
   description: string;
+  nodeId: string;
   color: string;
   categoryName?: string;
   selected: boolean;
@@ -59,7 +61,7 @@ interface ExplorerNodeData {
 function ExplorerNode({ data }: { data: ExplorerNodeData }) {
   return (
     <div
-      className={`px-4 py-3 rounded-xl border-2 bg-background min-w-[140px] max-w-[200px] transition-all ${
+      className={`group px-4 py-3 rounded-xl border-2 bg-background min-w-[140px] max-w-[200px] transition-all relative overflow-visible ${
         data.selected
           ? "shadow-lg shadow-blue-500/20"
           : data.highlighted
@@ -83,7 +85,16 @@ function ExplorerNode({ data }: { data: ExplorerNodeData }) {
           {data.categoryName}
         </div>
       )}
-      <div className="text-sm font-semibold text-foreground truncate">{data.label}</div>
+      <div className="flex items-start justify-between gap-1">
+        <div className="text-sm font-semibold text-foreground truncate">{data.label}</div>
+        <div onClick={(e) => e.stopPropagation()} className="shrink-0 -mt-0.5">
+          <ExploreButton
+            nodeId={data.nodeId}
+            nodeTitle={data.label}
+            nodeDescription={data.description}
+          />
+        </div>
+      </div>
       <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{data.description}</div>
       <Handle type="source" position={Position.Bottom} className="!bg-border !w-2 !h-2" />
     </div>
@@ -166,6 +177,7 @@ function ComponentExplorerInner({ data }: ComponentExplorerProps) {
           data: {
             label: comp.name,
             description: settings.showDescriptions ? comp.description : "",
+            nodeId: comp.id,
             color,
             categoryName: cat?.name,
             selected: selectedId === comp.id,

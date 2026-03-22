@@ -59,4 +59,6 @@ export interface ExplainerRow {
   views: number;
   is_public: boolean;
   user_id: string | null;
+  parent_slug: string | null;
+  source_node_id: string | null;
 }
