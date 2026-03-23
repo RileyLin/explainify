@@ -44,14 +44,21 @@ interface ExploreProviderProps {
   children: ReactNode;
   /** Pre-fetched children map from server component */
   childrenMap?: ChildrenMap;
+  /** Override initial explore state (e.g. false for landing page demos) */
+  initialEnabled?: boolean;
 }
 
-export function ExploreProvider({ children, childrenMap = {} }: ExploreProviderProps) {
-  const [enabled, setEnabled] = useState(true);
+export function ExploreProvider({ children, childrenMap = {}, initialEnabled }: ExploreProviderProps) {
+  const [enabled, setEnabled] = useState(initialEnabled ?? true);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from URL param → localStorage on mount
+  // Skip if initialEnabled was explicitly provided (e.g. landing page demo)
   useEffect(() => {
+    if (initialEnabled !== undefined) {
+      setHydrated(true);
+      return;
+    }
     const urlOverride = getUrlExploreOverride();
 
     if (urlOverride === "false") {

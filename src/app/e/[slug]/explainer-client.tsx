@@ -80,11 +80,7 @@ export function ExplainerClient({ data, url, title, slug, isDraft, breadcrumbs =
         </div>
       )}
       <div className="max-w-5xl mx-auto px-6 py-8">
-        {/* Explore mode toggle — top right of viewer */}
-        <div className="flex justify-end mb-3">
-          <ExploreToggle />
-        </div>
-        <ExplainerViewer data={data} diagramRef={diagramRef} />
+        <ExplainerViewer data={data} diagramRef={diagramRef} exploreToggle={<ExploreToggle />} />
         <ExplainerFooter
           url={url}
           title={title}

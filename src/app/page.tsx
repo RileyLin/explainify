@@ -7,6 +7,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { FlowAnimator } from "@/components/renderers/flow-animator";
 import { WaitlistCapture } from "@/components/waitlist/waitlist-capture";
 import type { FlowAnimatorData } from "@/lib/schemas/flow";
+import { ExploreProvider } from "@/components/viewer/explore-context";
 
 // ── Hard-coded demo data ────────────────────────────────────────────
 const HERO_DEMO_DATA: FlowAnimatorData = {
@@ -71,9 +72,11 @@ function AutoPlayingDemo() {
 
 function HeroDemo() {
   return (
-    <ReactFlowProvider>
-      <AutoPlayingDemo />
-    </ReactFlowProvider>
+    <ExploreProvider initialEnabled={false}>
+      <ReactFlowProvider>
+        <AutoPlayingDemo />
+      </ReactFlowProvider>
+    </ExploreProvider>
   );
 }
 

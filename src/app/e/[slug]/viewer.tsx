@@ -17,9 +17,10 @@ import {
 interface ExplainerViewerProps {
   data: ExplainerData;
   diagramRef?: React.RefObject<HTMLDivElement | null>;
+  exploreToggle?: React.ReactNode;
 }
 
-export function ExplainerViewer({ data, diagramRef }: ExplainerViewerProps) {
+export function ExplainerViewer({ data, diagramRef, exploreToggle }: ExplainerViewerProps) {
   let content: React.ReactNode;
   switch (data.template) {
     case "flow-animator":
@@ -54,5 +55,14 @@ export function ExplainerViewer({ data, diagramRef }: ExplainerViewerProps) {
         </div>
       );
   }
-  return <div ref={diagramRef}>{content}</div>;
+  return (
+    <div ref={diagramRef}>
+      {exploreToggle && (
+        <div className="flex justify-end mb-2 pr-1">
+          {exploreToggle}
+        </div>
+      )}
+      {content}
+    </div>
+  );
 }
