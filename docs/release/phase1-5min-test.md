@@ -32,16 +32,17 @@ Base URL: `<PREVIEW_URL>` (feature-branch Vercel Preview — **not** production)
 ## 4. SEO / legal (1 min)
 1. Open `/explain/blockchain` and `/explain/quantum-physics` — pre-rendered
    explainer pages should load with content.
-2. Open `/privacy` and `/terms`. **Known flagged item:** the support/privacy
-   contact `support@explainify.dev` is not yet a deliverable mailbox (no MX
-   record). This is a deliberately-flagged preview defect gating production
-   promotion — it needs an owner decision (real mailbox, configure MX, or a
-   verified GitHub-repo contact). Do not treat it as a pass.
+2. Open `/privacy` and `/terms`. **Resolved:** the public support/privacy
+   contact is now `admin@driftworks.dev` (owner decision, msg 40fcc97e), a
+   deliverable mailbox — `driftworks.dev` has an MX record (`smtp.google.com`) —
+   applied across pricing/privacy/terms with the undeliverable
+   `support@explainify.dev` fully removed. Confirm the pages show the new
+   address and the `mailto:` links point to it.
 
 ## 5. Decision
 - If the generate flow and pages look right on desktop and mobile, the local
-  release candidate is good; the only open item before production is the
-  support/privacy contact.
+  release candidate is good. The previously-flagged support/privacy contact is
+  now resolved (`admin@driftworks.dev`, deliverable MX).
 - Production deploy waits for your explicit approval after this test.
 
 ---
