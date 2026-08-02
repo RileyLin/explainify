@@ -124,7 +124,7 @@ export default function PricingPage() {
         {/* FAQ note */}
         <div className="text-center mt-12 text-sm text-muted-foreground">
           <p>Cancel anytime. No long-term contracts.</p>
-          <p className="mt-1">Questions? Reach out at support@explainify.dev</p>
+          <p className="mt-1">Questions? Reach out at admin@driftworks.dev</p>
         </div>
       </div>
     </div>

@@ -62,7 +62,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">6. Free Tier & Pro Subscriptions</h2>
             <p>
-              Free tier users receive 5 explainers per month. Pro subscribers receive unlimited explainers at $9/month, billed monthly. Subscriptions can be cancelled at any time. Refunds are handled on a case-by-case basis — contact support@explainify.dev.
+              Free tier users receive 5 explainers per month. Pro subscribers receive unlimited explainers at $9/month, billed monthly. Subscriptions can be cancelled at any time. Refunds are handled on a case-by-case basis — contact admin@driftworks.dev.
             </p>
           </section>
 
@@ -90,7 +90,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">10. Contact</h2>
             <p>
-              Questions? Email us at <a href="mailto:support@explainify.dev" className="text-blue-400 hover:underline">support@explainify.dev</a>
+              Questions? Email us at <a href="mailto:admin@driftworks.dev" className="text-blue-400 hover:underline">admin@driftworks.dev</a>
             </p>
           </section>
         </div>

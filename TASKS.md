@@ -46,7 +46,7 @@ implied by the credential-free quality baseline:
 - [ ] Configure and validate GitHub and Google OAuth applications
 - [ ] Configure Stripe products, prices, webhook delivery, and customer portal
 - [ ] Run browser-level visual checks across desktop and mobile viewports
-- [ ] Confirm the production `NEXT_PUBLIC_APP_URL` and support mailbox
+- [ ] Confirm the production `NEXT_PUBLIC_APP_URL`
 
 ## Phase 2: Agent Comprehension Spike
 

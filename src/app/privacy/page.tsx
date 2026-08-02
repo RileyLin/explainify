@@ -68,7 +68,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">6. Data Retention</h2>
             <p>
-              Account data is retained as long as your account is active. Published explainers are retained indefinitely unless you delete them from your dashboard. You may request deletion of your account and all associated data by emailing support@explainify.dev.
+              Account data is retained as long as your account is active. Published explainers are retained indefinitely unless you delete them from your dashboard. You may request deletion of your account and all associated data by emailing admin@driftworks.dev.
             </p>
           </section>
 
@@ -82,7 +82,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">8. Your Rights</h2>
             <p>
-              You may request access to, correction of, or deletion of your personal data at any time by contacting <a href="mailto:support@explainify.dev" className="text-blue-400 hover:underline">support@explainify.dev</a>. EU/EEA users have additional rights under GDPR.
+              You may request access to, correction of, or deletion of your personal data at any time by contacting <a href="mailto:admin@driftworks.dev" className="text-blue-400 hover:underline">admin@driftworks.dev</a>. EU/EEA users have additional rights under GDPR.
             </p>
           </section>
 
@@ -96,7 +96,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">10. Contact</h2>
             <p>
-              Privacy questions: <a href="mailto:support@explainify.dev" className="text-blue-400 hover:underline">support@explainify.dev</a>
+              Privacy questions: <a href="mailto:admin@driftworks.dev" className="text-blue-400 hover:underline">admin@driftworks.dev</a>
               <br />Driftworks, Inc — Seattle, WA
             </p>
           </section>
