@@ -214,7 +214,7 @@ OPENAI_API_KEY=                   # Required for OpenAI provider
 AWS_ACCESS_KEY_ID=                # Required for Bedrock provider
 AWS_SECRET_ACCESS_KEY=
 AWS_REGION=us-west-2
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6-v1
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6
 
 # Database (Supabase)
 NEXT_PUBLIC_SUPABASE_URL=

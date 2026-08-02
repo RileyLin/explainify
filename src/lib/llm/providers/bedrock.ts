@@ -4,7 +4,10 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import type { LLMProvider, LLMResponse, GenerateOptions } from "./types";
 
-const DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6-v1";
+// Bedrock cross-region inference-profile ID. Must NOT carry a fake version
+// suffix (e.g. a trailing "-v1"); such a value returns HTTP 400
+// "The provided model identifier is invalid." See bedrock.test.ts.
+export const DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6";
 const DEFAULT_REGION = "us-west-2";
 
 export class BedrockProvider implements LLMProvider {
