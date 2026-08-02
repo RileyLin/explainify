@@ -55,7 +55,7 @@ interface RunCapsule {
   repository: {
     origin: string;
     revision: string;
-    dirty: false;
+    dirty: boolean;
   };
   environment: {
     provider: "aws" | "gcp" | "azure" | "local" | "other";
@@ -83,7 +83,7 @@ interface RunCapsule {
   deployedResources: Array<{
     providerType: string;
     logicalRole: string;
-    identifierHash: string;
+    identifierToken: string;
     evidence: string[];
   }>;
   verification: Array<{
@@ -95,10 +95,18 @@ interface RunCapsule {
     scope: string;
     evidence: string[];
   }>;
+  pricingBasis?: {
+    currency: string;
+    effectiveAt: string;
+    source: string;
+    snapshotPath: string;
+    snapshotSha256: string;
+  };
   provenance: {
     requestSha256: string;
     capsuleSha256: string;
     captureMethod: "agent_receipts" | "provider_verified";
+    resourceTokenMethod: "hmac-sha256-private-map-v1";
     publication: "local_only";
   };
 }
@@ -107,10 +115,11 @@ interface RunCapsule {
 Rules:
 
 - No raw cloud credentials, account IDs, resource secrets, or unredacted environment values.
+- `repository.dirty` must reflect the captured tree. A dirty tree is accepted only as explicitly non-reproducible, with the diff/status included as evidence; it can never be presented as an immutable run.
 - Commands are captured with timestamps, exit codes, and bounded output receipts.
-- Resource identifiers are redacted or hashed unless the user explicitly keeps the artifact private.
+- Resource identifiers use opaque aliases backed by HMAC-SHA256 with a random per-artifact key. The publishable capsule keeps a truncated 16-byte token; raw identifiers, the key, and the alias map stay only in a separate local private receipt.
 - Metrics name their time window, load profile, sample count, and unit.
-- Cost claims name currency, pricing source, time window, and included/excluded resources.
+- Cost claims name currency, time window, and included/excluded resources. They also require a frozen rate-card snapshot (or immutable export) plus SHA-256; without that pricing basis, cost is labeled `inferred` and cannot be independently recomputed.
 - An agent statement is a note, not an observed fact, until linked to execution or provider evidence.
 - A failed or partial run still produces a capsule with explicit failure state.
 
@@ -138,6 +147,7 @@ interface ComparativeComprehensionArtifact {
   schemaVersion: 1;
   question: string;
   capsules: string[];
+  evidenceLevel: "receipt_attested" | "provider_verified";
   equivalence: Array<{
     dimension: string;
     status: "equivalent" | "different" | "unknown";
@@ -175,6 +185,7 @@ interface ComparativeComprehensionArtifact {
 Hard rules:
 
 - Every observed comparison claim links to evidence from every side it compares.
+- V0.1 artifacts visibly label equivalence and conclusions as `receipt_attested, not provider-verified`. Only V0.2 connector receipts may set `provider_verified`.
 - Missing evidence produces `unknown` or `not_comparable`, not a winner.
 - The artifact must show confounders before presenting a recommendation.
 - Different region, workload, dataset, code revision, load, test duration, metric window, or pricing basis is a material comparability difference.
@@ -278,15 +289,20 @@ The first comparative benchmark should include:
 9. Equivalent managed services with materially different operational models.
 10. A case where evidence is insufficient and the correct result is `not_comparable`.
 
+Before Phase 2D evaluation, all 10 cases must be materialized as frozen run-capsule fixtures in Git. A manifest records fixture paths, immutable source revisions, and SHA-256 values. Builder and independent evaluator must use the same frozen bytes; prose-only scenarios are not an acceptable benchmark.
+
 ## Phase 2D Acceptance
 
 - Two real run capsules are generated from one pinned workload and repo revision.
+- A dirty-tree fixture is represented and explicitly rejected as reproducible evidence rather than silently dropped.
 - Every command, test, metric, and resource claim links to a capsule receipt.
 - Equivalence checks identify code, config, workload, region, time window, and metric basis.
+- V0.1 equivalence is visibly marked `receipt_attested, not provider-verified`.
 - Every observed comparative claim contains evidence from both sides.
 - The artifact names confounders before recommending a direction.
 - A deliberately mismatched benchmark is rejected as `not_comparable`.
 - No raw credential, account identifier, secret, or private resource name appears.
+- Resource aliases use the private-map HMAC contract; cost comparisons include a frozen pricing snapshot/hash or remain `inferred`.
+- All 10 comparative benchmark fixtures and their hashes are committed and independently reproducible.
 - Output remains local unless the user explicitly invokes a separate publish action.
 - A human can explain what ran, what differed, and why the recommendation is conditional after five minutes.
-
