@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — VizBrief",
-  description: "VizBrief Terms of Service",
+  title: "Terms of Service — Explainify",
+  description: "Explainify Terms of Service",
 };
 
 export default function TermsPage() {
@@ -11,7 +11,7 @@ export default function TermsPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 inline-block">
-          ← Back to VizBrief
+          ← Back to Explainify
         </Link>
         <h1 className="text-3xl font-bold text-foreground mb-2">Terms of Service</h1>
         <p className="text-sm text-muted-foreground mb-10">Last updated: March 2026</p>
@@ -20,14 +20,14 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using VizBrief (&quot;the Service&quot;), operated by Driftworks, Inc, you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.
+              By accessing or using Explainify (&quot;the Service&quot;), operated by Driftworks, Inc, you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.
             </p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">2. Description of Service</h2>
             <p>
-              VizBrief is an AI-powered tool that transforms technical documentation, code, and complex content into interactive visual diagrams and explainers. The Service is provided as-is and may be updated or changed at any time.
+              Explainify is an AI-powered tool that transforms technical documentation, code, and complex content into interactive visual diagrams and explainers. The Service is provided as-is and may be updated or changed at any time.
             </p>
           </section>
 
@@ -44,7 +44,7 @@ export default function TermsPage() {
               You retain ownership of the content you submit. By submitting content, you grant Driftworks, Inc a limited license to process and display it as part of the Service. You are responsible for ensuring you have the right to submit any content you provide.
             </p>
             <p className="mt-3">
-              The VizBrief platform, interface, and generated explainer templates are the intellectual property of Driftworks, Inc.
+              The Explainify platform, interface, and generated explainer templates are the intellectual property of Driftworks, Inc.
             </p>
           </section>
 
@@ -62,7 +62,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">6. Free Tier & Pro Subscriptions</h2>
             <p>
-              Free tier users receive 5 explainers per month. Pro subscribers receive unlimited explainers at $9/month, billed monthly. Subscriptions can be cancelled at any time. Refunds are handled on a case-by-case basis — contact support@vizbrief.com.
+              Free tier users receive 5 explainers per month. Pro subscribers receive unlimited explainers at $9/month, billed monthly. Subscriptions can be cancelled at any time. Refunds are handled on a case-by-case basis — contact support@explainify.dev.
             </p>
           </section>
 
@@ -90,7 +90,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-foreground mb-3">10. Contact</h2>
             <p>
-              Questions? Email us at <a href="mailto:support@vizbrief.com" className="text-blue-400 hover:underline">support@vizbrief.com</a>
+              Questions? Email us at <a href="mailto:support@explainify.dev" className="text-blue-400 hover:underline">support@explainify.dev</a>
             </p>
           </section>
         </div>

@@ -117,20 +117,20 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const pageUrl = `${appUrl}/e/${slug}`;
 
   return {
-    title: `${explainer.title} — VizBrief`,
-    description: explainer.summary || "Interactive explainer powered by VizBrief",
+    title: `${explainer.title} — Explainify`,
+    description: explainer.summary || "Interactive explainer powered by Explainify",
     openGraph: {
       title: explainer.title,
-      description: explainer.summary || "Interactive explainer powered by VizBrief",
+      description: explainer.summary || "Interactive explainer powered by Explainify",
       url: pageUrl,
-      siteName: "VizBrief",
+      siteName: "Explainify",
       images: [{ url: ogImageUrl, width: 1200, height: 630, alt: explainer.title }],
       type: "article",
     },
     twitter: {
       card: "summary_large_image",
       title: explainer.title,
-      description: explainer.summary || "Interactive explainer powered by VizBrief",
+      description: explainer.summary || "Interactive explainer powered by Explainify",
       images: [ogImageUrl],
     },
   };

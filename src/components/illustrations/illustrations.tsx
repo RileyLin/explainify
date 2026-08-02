@@ -1,4 +1,4 @@
-// All 25 topic SVG illustrations for VizBrief node cards
+// All 25 topic SVG illustrations for Explainify node cards
 // viewBox="0 0 160 90", width="140" height="80"
 // Design: dark indigo brand — transparent bg, renders on dark cards
 

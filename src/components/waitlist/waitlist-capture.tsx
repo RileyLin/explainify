@@ -71,7 +71,7 @@ export function WaitlistCapture({ variant = "section" }: { variant?: "section" |
           Get early access
         </h2>
         <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-          Join the waitlist for VizBrief Pro — unlimited explainers, no watermark, private links, and custom branding.
+          Join the waitlist for Explainify Pro — unlimited explainers, no watermark, private links, and custom branding.
         </p>
 
         {state === "success" ? (

@@ -191,7 +191,7 @@ export function LennysLibraryClient({
               }}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-              Powered by VizBrief
+              Powered by Explainify
             </div>
           </div>
         </div>

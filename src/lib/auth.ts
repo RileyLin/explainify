@@ -4,7 +4,7 @@ import Google from "next-auth/providers/google";
 import type { NextAuthConfig } from "next-auth";
 
 /**
- * NextAuth.js v5 configuration for VizBrief.
+ * NextAuth.js v5 configuration for Explainify.
  * 
  * Uses JWT strategy (no database adapter) to keep things simple.
  * User data is synced to Supabase `users` table via callbacks.

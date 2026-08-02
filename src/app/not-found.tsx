@@ -7,7 +7,7 @@ export default function NotFound() {
       <div className="text-center max-w-md">
         <div className="inline-flex items-center gap-2 mb-8">
           <Sparkles size={24} className="text-blue-500" />
-          <span className="font-bold text-xl text-foreground">VizBrief</span>
+          <span className="font-bold text-xl text-foreground">Explainify</span>
         </div>
         <h1 className="text-7xl font-bold text-foreground mb-4">404</h1>
         <p className="text-lg text-muted-foreground mb-2">Page not found</p>

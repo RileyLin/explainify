@@ -508,7 +508,7 @@ export function ShowcaseClient() {
             transition={{ duration: 0.45, delay: 0.1, ease: "easeOut" }}
             className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-5"
           >
-            Lenny&apos;s Data Challenge · VizBrief
+            Lenny&apos;s Data Challenge · Explainify
           </motion.p>
 
           {/* Headline — left-aligned, asymmetric, editorial */}
@@ -866,7 +866,7 @@ export function ShowcaseClient() {
 
             <FadeIn delay={0.1} className="mt-5 space-y-4">
               <p className="text-white/50 leading-relaxed text-base">
-                This is a proof of concept for VizBrief&apos;s{" "}
+                This is a proof of concept for Explainify&apos;s{" "}
                 <span className="font-semibold text-white/80">Knowledge Source</span>{" "}
                 feature — a system for connecting entire content libraries to visual
                 explainers with infinite deep dive.
@@ -901,7 +901,7 @@ export function ShowcaseClient() {
                     "0 4px 24px rgba(99,102,241,0.35)";
                 }}
               >
-                Try VizBrief
+                Try Explainify
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
@@ -953,7 +953,7 @@ export function ShowcaseClient() {
                 <span className="font-semibold text-white/70">Riley Lin</span>
               </p>
               <p className="text-xs text-white/25 mt-0.5">
-                April 2026 · VizBrief
+                April 2026 · Explainify
               </p>
             </div>
 
@@ -972,7 +972,7 @@ export function ShowcaseClient() {
                 href="/"
                 className="text-sm text-white/40 hover:text-white/70 transition-colors font-medium"
               >
-                VizBrief
+                Explainify
               </Link>
               <span className="text-white/20" aria-hidden>
                 ·

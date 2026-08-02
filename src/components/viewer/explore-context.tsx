@@ -34,7 +34,8 @@ export function useExplore() {
   return useContext(ExploreContext);
 }
 
-const STORAGE_KEY = "vizbrief-explore-mode";
+const STORAGE_KEY = "explainify-explore-mode";
+const LEGACY_STORAGE_KEY = "vizbrief-explore-mode";
 const CHANGE_EVENT = "explainify:explore-mode-change";
 
 /**
@@ -52,7 +53,14 @@ function readStoredExploreState(): boolean {
   if (urlOverride === "false") return false;
   if (urlOverride === "true") return true;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    let stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === null) {
+      stored = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (stored !== null) {
+        localStorage.setItem(STORAGE_KEY, stored);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     return stored === null ? true : stored === "true";
   } catch {
     return true;

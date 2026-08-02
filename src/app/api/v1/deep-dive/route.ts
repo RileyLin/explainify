@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
       if (insertError.code === "23505") {
         const retrySlug = generateSlug(10);
         await supabase.from("explainers").insert({ ...insertData, slug: retrySlug });
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://explainify.dev";
 
         // Fire-and-forget for retry slug path
         if (process.env.ENABLE_IMAGE_GEN === "true") {
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
       throw new Error(`Failed to save deep dive: ${insertError.message}`);
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vizbrief.driftworks.dev";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://explainify.dev";
 
     // Fire-and-forget: generate node images asynchronously (does not block response)
     if (process.env.ENABLE_IMAGE_GEN === "true") {

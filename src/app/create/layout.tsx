@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Create Explainer — VizBrief",
+  title: "Create Explainer — Explainify",
   description: "Paste any technical doc, code, or architecture spec and get an interactive visual explainer in seconds.",
 };
 

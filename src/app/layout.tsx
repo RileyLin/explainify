@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VizBrief — Paste complexity. Get clarity.",
+  title: "Explainify — Paste complexity. Get clarity.",
   description: "AI transforms your technical docs into beautiful, interactive visual briefs in seconds.",
 };
 

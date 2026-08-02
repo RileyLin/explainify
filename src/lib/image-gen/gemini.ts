@@ -1,7 +1,7 @@
 /**
  * Gemini image generation client.
  * Uses gemini-2.5-flash-image (Nano Banana) via REST API.
- * Returns PNG buffers matching VizBrief's dark brand aesthetic.
+ * Returns PNG buffers matching Explainify's dark brand aesthetic.
  */
 
 import type { ImageGenRequest } from "./types";

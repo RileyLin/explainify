@@ -17,7 +17,7 @@ function SignInContent() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-3">
             <Sparkles className="text-blue-500" size={28} />
-            <span className="font-bold text-2xl text-foreground">VizBrief</span>
+            <span className="font-bold text-2xl text-foreground">Explainify</span>
           </div>
           <p className="text-muted-foreground text-sm">Sign in to save and publish your visual briefs</p>
         </div>
@@ -54,7 +54,7 @@ function SignInContent() {
 
         {/* Back link */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          <Link href="/" className="hover:text-foreground transition-colors">← Back to VizBrief</Link>
+          <Link href="/" className="hover:text-foreground transition-colors">← Back to Explainify</Link>
         </p>
       </div>
     </div>

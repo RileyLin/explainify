@@ -40,8 +40,8 @@ export function Breadcrumb({ segments }: BreadcrumbProps) {
         <Link
           href="/"
           className="shrink-0 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
-          title="Back to VizBrief"
-          aria-label="VizBrief home"
+          title="Back to Explainify"
+          aria-label="Explainify home"
         >
           <Home size={13} />
         </Link>

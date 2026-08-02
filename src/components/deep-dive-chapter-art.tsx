@@ -28,7 +28,7 @@ interface DeepDiveChapterArtProps {
  * - depth=1: 240px height, more abstract/wide feel
  * - depth=2+: 160px height, more focused/zoomed feel
  *
- * Design: VizBrief dark brand (navy/charcoal) with indigo/blue/cyan accents.
+ * Design: Explainify dark brand (navy/charcoal) with indigo/blue/cyan accents.
  * Feels like a book chapter illustration, not a stock photo banner.
  */
 export function DeepDiveChapterArt({

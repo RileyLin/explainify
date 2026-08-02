@@ -321,14 +321,14 @@ const HOW_IT_WORKS_STEPS = [
         <p className="text-xs font-medium text-muted-foreground">🎉 Your explainer is live!</p>
         <div className="flex items-center gap-2">
           <div className="flex-1 px-3 py-2 rounded-lg text-xs font-mono truncate bg-muted text-muted-foreground border border-border">
-            vizbrief.com/e/api-gateway-design-x7k
+            explainify.dev/e/api-gateway-design-x7k
           </div>
           <div className="px-3 py-2 rounded-lg text-xs font-medium shrink-0" style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac" }}>
             Copy
           </div>
         </div>
         <div className="text-xs text-muted-foreground">
-          {'<iframe src="vizbrief.com/e/..." />'}
+          {'<iframe src="explainify.dev/e/..." />'}
         </div>
       </div>
     ),
@@ -629,7 +629,7 @@ function Footer() {
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">
-          VizBrief · Driftworks, Inc
+          Explainify · Driftworks, Inc
         </span>
         <a
           href="https://github.com/RileyLin/explainify"

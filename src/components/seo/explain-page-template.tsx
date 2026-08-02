@@ -16,12 +16,12 @@ interface ExplainPageProps {
 
 export function generateExplainMetadata(props: ExplainPageProps): Metadata {
   return {
-    title: `Explain ${props.topic} Simply — VizBrief`,
-    description: `${props.subheadline} Paste any ${props.topic} doc or concept into VizBrief and get an interactive visual diagram in seconds.`,
+    title: `Explain ${props.topic} Simply — Explainify`,
+    description: `${props.subheadline} Paste any ${props.topic} doc or concept into Explainify and get an interactive visual diagram in seconds.`,
     openGraph: {
-      title: `Explain ${props.topic} Simply — VizBrief`,
+      title: `Explain ${props.topic} Simply — Explainify`,
       description: props.description,
-      url: `https://vizbrief.driftworks.dev/explain/${props.slug}`,
+      url: `https://explainify.dev/explain/${props.slug}`,
     },
   };
 }
@@ -66,7 +66,7 @@ export function ExplainPageTemplate(props: ExplainPageProps) {
       {/* Who it's for */}
       <div className="max-w-3xl mx-auto px-6 py-12 border-t border-border">
         <h2 className="text-2xl font-bold text-foreground mb-6">
-          Who uses VizBrief for {topic}?
+          Who uses Explainify for {topic}?
         </h2>
         <ul className="space-y-3">
           {useCases.map((uc, i) => (
@@ -84,7 +84,7 @@ export function ExplainPageTemplate(props: ExplainPageProps) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {[
             { step: "01", title: "Paste your content", desc: `Copy any ${topic} explanation, textbook section, or your own notes` },
-            { step: "02", title: "AI analyzes & maps", desc: "VizBrief identifies the key concepts and builds an interactive flow diagram" },
+            { step: "02", title: "AI analyzes & maps", desc: "Explainify identifies the key concepts and builds an interactive flow diagram" },
             { step: "03", title: "Share & embed", desc: "Get a shareable link or embed it in Notion, slides, or your site" },
           ].map((s) => (
             <div key={s.step} className="p-5 rounded-xl border border-border bg-card">
@@ -148,7 +148,7 @@ export function ExplainPageTemplate(props: ExplainPageProps) {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity">
             <Sparkles size={16} className="text-blue-500" />
-            <span className="font-bold text-sm">VizBrief</span>
+            <span className="font-bold text-sm">Explainify</span>
           </Link>
           <div className="flex gap-4 text-sm text-muted-foreground">
             <Link href="/create" className="hover:text-foreground transition-colors">Create</Link>

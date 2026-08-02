@@ -1,9 +1,9 @@
-# VizBrief Deep Dive Feature — Implementation Plan
+# Explainify Deep Dive Feature — Implementation Plan
 
 ## Tickets: RIL-79, RIL-80, RIL-81
 
 ## Overview
-Add "fractal deep dive" to VizBrief: clicking any node generates a deeper explainer on that sub-topic.
+Add "fractal deep dive" to Explainify: clicking any node generates a deeper explainer on that sub-topic.
 Three main pieces: API + migration (RIL-79), Explore buttons on all 7 renderers (RIL-80), breadcrumb navigation (RIL-81).
 
 ---

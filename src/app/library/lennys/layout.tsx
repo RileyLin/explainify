@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Lenny's Visual Library — VizBrief",
+  title: "Lenny's Visual Library — Explainify",
   description:
     "Explore 638 podcasts and newsletters from Lenny's Podcast & Newsletter, visualized as interactive explainers.",
   openGraph: {
@@ -9,19 +9,19 @@ export const metadata: Metadata = {
     description:
       "638 podcasts and newsletters, visualized. Explore every topic from product strategy to engineering leadership.",
     type: "website",
-    url: "https://vizbrief.com/library/lennys",
+    url: "https://explainify.dev/library/lennys",
     images: [
       {
         url: "/og-lennys-library.png",
         width: 1200,
         height: 630,
-        alt: "Lenny's Visual Library on VizBrief",
+        alt: "Lenny's Visual Library on Explainify",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Lenny's Visual Library — VizBrief",
+    title: "Lenny's Visual Library — Explainify",
     description:
       "638 podcasts and newsletters from Lenny's, visualized as interactive explainers.",
   },
