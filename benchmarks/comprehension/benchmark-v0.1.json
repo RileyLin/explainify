@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 1,
+  "name": "Explainify Comprehension Benchmark",
+  "version": "0.1",
+  "fixtureBundle": {
+    "path": "benchmarks/comprehension/fixtures-v0.1.json",
+    "sha256": "1103d057b5602b92d3992c87584d4e4ad0a3953f513eb05228c74585c4f670f5"
+  },
+  "rubric": {
+    "evidenceFidelity": 35,
+    "humanComprehension": 25,
+    "reviewPrioritization": 15,
+    "rendererFit": 10,
+    "progressiveReadability": 10,
+    "privacySafety": 5
+  },
+  "hardFailures": [
+    "secret_disclosure",
+    "material_observed_claim_without_evidence",
+    "incorrect_behavior_or_topology",
+    "publication_without_consent",
+    "unsupported_merge_safety_claim"
+  ],
+  "scoringProtocol": {
+    "fixtureFreeze": "Resolve immutable git commits and verify the SHA-256 of local documents and the synthetic fixture bundle before evaluation.",
+    "hardFailurePass": "Scan the artifact and manifest first. Any hard failure makes the case score zero.",
+    "evidenceFidelity": "Award equal points for each mustInclude fact only when the fact is correct and its claim links to the exact supporting source locator. Deduct the full section for any incorrect observed claim.",
+    "humanComprehension": "A reviewer who has not seen the inputs answers: objective, outcome, why, current system, review-first item, and unknowns. Award 25 points times correct answers divided by 6.",
+    "reviewPrioritization": "Award 5 points each when the artifact puts the highest-risk behavior, weakest evidence, and required next verification in reviewFirst.",
+    "rendererFit": "Award 5 points for using a preferred view when evidence supports it and 5 points for refusing any view whose topology cannot be verified.",
+    "progressiveReadability": "Award 4 points for a self-sufficient 30-second brief, 3 for a five-minute story, and 3 for direct evidence navigation.",
+    "privacySafety": "Award only when publication is local_only, the secret scan passes, and source excerpts stay within the fixture.",
+    "reproducibility": "The evaluator records per-check pass/fail and evidence locator. A second evaluator must be able to recompute the same score within 5 points."
+  },
+  "cases": [
+    {
+      "id": "C01",
+      "phase": "spike",
+      "category": "coding_session",
+      "fixture": {
+        "kind": "git_commit",
+        "repository": "RileyLin/explainify",
+        "base": "ba9f824",
+        "head": "f8ef527"
+      },
+      "question": "Why did 19 renderer tests fail, what changed, and did production renderer behavior change?",
+      "audience": "engineering_reviewer",
+      "mustInclude": [
+        "missing ReactFlow mock exports",
+        "missing Next navigation test context",
+        "async Shiki state handled with act",
+        "89 of 89 tests pass",
+        "no production source files changed"
+      ],
+      "mustNotClaim": [
+        "a product renderer bug was fixed",
+        "the change is safe to merge"
+      ],
+      "preferredViews": [
+        "workflow",
+        "code_walkthrough"
+      ]
+    },
+    {
+      "id": "C02",
+      "phase": "spike",
+      "category": "coding_session",
+      "fixture": {
+        "kind": "git_commit",
+        "repository": "RileyLin/explainify",
+        "base": "f8ef527",
+        "head": "ac0d7e7"
+      },
+      "question": "What did the lint cleanup reveal beyond type annotation changes, and what should a reviewer inspect first?",
+      "audience": "senior_engineer",
+      "mustInclude": [
+        "lint reached zero errors without new suppressions",
+        "renderer registry now maps templates to concrete data types",
+        "Molecule uses MoleculeData",
+        "ExploreProvider hydration uses useSyncExternalStore",
+        "tests and typecheck pass"
+      ],
+      "mustNotClaim": [
+        "all warnings were eliminated",
+        "hydration behavior is proven in every browser"
+      ],
+      "preferredViews": [
+        "architecture_delta",
+        "code_walkthrough"
+      ]
+    },
+    {
+      "id": "C03",
+      "phase": "spike",
+      "category": "coding_session",
+      "fixture": {
+        "kind": "git_commit",
+        "repository": "RileyLin/explainify",
+        "base": "ac0d7e7",
+        "head": "552186b"
+      },
+      "question": "How did configuration handling change, which runtime paths are affected, and what are the failure semantics now?",
+      "audience": "service_owner",
+      "mustInclude": [
+        "Stripe and Supabase clients initialize lazily",
+        "missing runtime configuration returns structured 503",
+        "clean build requires no credentials",
+        "environment documentation was reconciled",
+        "four new configuration tests were added"
+      ],
+      "mustNotClaim": [
+        "external integrations work without configuration",
+        "configuration names or values are secrets"
+      ],
+      "preferredViews": [
+        "architecture_delta",
+        "sequence"
+      ]
+    },
+    {
+      "id": "C04",
+      "phase": "spike",
+      "category": "multi_change_handoff",
+      "fixture": {
+        "kind": "commit_range_and_task_notes",
+        "repository": "RileyLin/explainify",
+        "base": "ba9f824",
+        "head": "552186b",
+        "notes": "Stabilize WP-A, WP-B, and WP-D review receipts"
+      },
+      "question": "Give a five-minute handoff of the Stabilize work so far and identify the remaining gates.",
+      "audience": "product_owner",
+      "mustInclude": [
+        "test gate is green",
+        "lint gate is green",
+        "clean build gate is green",
+        "security and brand documentation remain",
+        "each completed gate has independent review evidence"
+      ],
+      "mustNotClaim": [
+        "Phase 1 is complete",
+        "security vulnerabilities are resolved"
+      ],
+      "preferredViews": [
+        "timeline",
+        "architecture_delta"
+      ]
+    },
+    {
+      "id": "C05",
+      "phase": "spike",
+      "category": "long_document",
+      "fixture": {
+        "kind": "document",
+        "source": "benchmarks/comprehension/archify-vs-explainify-strategy.md",
+        "sha256": "e0411135b60aa7019fe5bf7b8f8f7a89218c6569cd88ea2e7fa1d46f29799782"
+      },
+      "question": "What product decision was recommended, why, and what evidence would reverse it?",
+      "audience": "founder",
+      "mustInclude": [
+        "integrate and narrow rather than clone or abandon",
+        "Archify owns verified technical maps",
+        "Explainify owns comprehension and publishing",
+        "three-day adapter spike",
+        "five-user validation"
+      ],
+      "mustNotClaim": [
+        "the final pivot decision is already proven",
+        "GitHub stars establish product-market fit"
+      ],
+      "preferredViews": [
+        "comparison",
+        "decision_tree"
+      ]
+    },
+    {
+      "id": "C06",
+      "phase": "spike",
+      "category": "security_upgrade",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C06"
+      },
+      "question": "Which vulnerabilities were removed, what dependencies moved, and what compatibility surfaces need review?",
+      "audience": "security_reviewer",
+      "mustInclude": [
+        "before and after audit counts",
+        "direct and transitive dependency distinction",
+        "auth compatibility evidence",
+        "test and build receipts"
+      ],
+      "mustNotClaim": [
+        "zero security risk",
+        "audit count alone proves runtime safety"
+      ],
+      "preferredViews": [
+        "architecture_delta",
+        "comparison"
+      ]
+    },
+    {
+      "id": "C07",
+      "phase": "full",
+      "category": "partial_session",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C07"
+      },
+      "question": "What was completed, what failed, and what exact state should the next agent resume from?",
+      "audience": "next_agent",
+      "mustInclude": [
+        "last verified checkpoint",
+        "failed attempt",
+        "uncommitted or unknown state",
+        "next safe action"
+      ],
+      "mustNotClaim": [
+        "unfinished work is complete",
+        "unverified working tree state"
+      ],
+      "preferredViews": [
+        "timeline",
+        "workflow"
+      ]
+    },
+    {
+      "id": "C08",
+      "phase": "full",
+      "category": "rollback",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C08"
+      },
+      "question": "Why was the attempted change rolled back and what remains true after the rollback?",
+      "audience": "maintainer",
+      "mustInclude": [
+        "attempted behavior",
+        "failure evidence",
+        "rollback commit",
+        "current behavior"
+      ],
+      "mustNotClaim": [
+        "rolled-back behavior still exists",
+        "root cause is known without evidence"
+      ],
+      "preferredViews": [
+        "architecture_delta",
+        "timeline"
+      ]
+    },
+    {
+      "id": "C09",
+      "phase": "full",
+      "category": "api_contract",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C09"
+      },
+      "question": "What changed in the API contract and which consumers can break?",
+      "audience": "api_consumer",
+      "mustInclude": [
+        "request changes",
+        "response changes",
+        "status code changes",
+        "migration action"
+      ],
+      "mustNotClaim": [
+        "consumer compatibility without consumer evidence"
+      ],
+      "preferredViews": [
+        "sequence",
+        "comparison"
+      ]
+    },
+    {
+      "id": "C10",
+      "phase": "full",
+      "category": "database_migration",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C10"
+      },
+      "question": "What data shape changes, how is it rolled out, and what is the rollback boundary?",
+      "audience": "service_owner",
+      "mustInclude": [
+        "schema before and after",
+        "backfill",
+        "compatibility window",
+        "rollback limit"
+      ],
+      "mustNotClaim": [
+        "rollback is possible after destructive migration without evidence"
+      ],
+      "preferredViews": [
+        "dataflow",
+        "timeline"
+      ]
+    },
+    {
+      "id": "C11",
+      "phase": "full",
+      "category": "incident",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C11"
+      },
+      "question": "What happened, what evidence supports the root cause, and what mitigation remains temporary?",
+      "audience": "incident_commander",
+      "mustInclude": [
+        "symptom",
+        "timeline",
+        "root cause evidence",
+        "mitigation",
+        "follow-up"
+      ],
+      "mustNotClaim": [
+        "correlation is causation",
+        "incident is fully resolved without verification"
+      ],
+      "preferredViews": [
+        "sequence",
+        "timeline"
+      ]
+    },
+    {
+      "id": "C12",
+      "phase": "full",
+      "category": "performance",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C12"
+      },
+      "question": "What performance path changed and what do the measurements actually establish?",
+      "audience": "performance_reviewer",
+      "mustInclude": [
+        "baseline",
+        "changed path",
+        "measurement conditions",
+        "tradeoffs"
+      ],
+      "mustNotClaim": [
+        "production improvement from local benchmark alone"
+      ],
+      "preferredViews": [
+        "sequence",
+        "comparison"
+      ]
+    },
+    {
+      "id": "C13",
+      "phase": "full",
+      "category": "frontend_behavior",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C13"
+      },
+      "question": "What user interaction changed and how was accessibility preserved?",
+      "audience": "frontend_reviewer",
+      "mustInclude": [
+        "interaction before and after",
+        "keyboard behavior",
+        "focus behavior",
+        "viewport checks"
+      ],
+      "mustNotClaim": [
+        "visual quality without visual inspection"
+      ],
+      "preferredViews": [
+        "workflow",
+        "comparison"
+      ]
+    },
+    {
+      "id": "C14",
+      "phase": "full",
+      "category": "architecture_delta",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C14"
+      },
+      "question": "How did the runtime architecture change when one service was split?",
+      "audience": "architect",
+      "mustInclude": [
+        "components added and removed",
+        "relationships rerouted",
+        "ownership or boundary changes",
+        "evidence revision"
+      ],
+      "mustNotClaim": [
+        "runtime impact not present in evidence"
+      ],
+      "preferredViews": [
+        "architecture_delta"
+      ]
+    },
+    {
+      "id": "C15",
+      "phase": "full",
+      "category": "repository_orientation",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C15"
+      },
+      "question": "What is the primary runtime path and where should a new engineer start reading?",
+      "audience": "new_engineer",
+      "mustInclude": [
+        "entrypoint",
+        "primary runtime path",
+        "external dependencies",
+        "recommended reading order"
+      ],
+      "mustNotClaim": [
+        "complete repository coverage",
+        "unverified runtime behavior"
+      ],
+      "preferredViews": [
+        "architecture",
+        "code_walkthrough"
+      ]
+    },
+    {
+      "id": "C16",
+      "phase": "full",
+      "category": "multi_agent_handoff",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C16"
+      },
+      "question": "How do the parallel work streams combine, and where are their integration risks?",
+      "audience": "delivery_lead",
+      "mustInclude": [
+        "work stream ownership",
+        "shared files or contracts",
+        "dependency order",
+        "independent review status"
+      ],
+      "mustNotClaim": [
+        "integration succeeded before combined verification"
+      ],
+      "preferredViews": [
+        "workflow",
+        "architecture_delta"
+      ]
+    },
+    {
+      "id": "C17",
+      "phase": "full",
+      "category": "rfc",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C17"
+      },
+      "question": "What decision is proposed, what alternatives were rejected, and what remains open?",
+      "audience": "decision_maker",
+      "mustInclude": [
+        "decision",
+        "constraints",
+        "alternatives",
+        "tradeoffs",
+        "open questions"
+      ],
+      "mustNotClaim": [
+        "proposal is approved"
+      ],
+      "preferredViews": [
+        "decision_tree",
+        "comparison"
+      ]
+    },
+    {
+      "id": "C18",
+      "phase": "full",
+      "category": "api_documentation",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C18"
+      },
+      "question": "How does a client complete the primary API flow and recover from failure?",
+      "audience": "integrator",
+      "mustInclude": [
+        "authentication",
+        "happy path",
+        "error path",
+        "retry boundary",
+        "example request"
+      ],
+      "mustNotClaim": [
+        "undocumented retry semantics"
+      ],
+      "preferredViews": [
+        "sequence",
+        "code_walkthrough"
+      ]
+    },
+    {
+      "id": "C19",
+      "phase": "full",
+      "category": "postmortem",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C19"
+      },
+      "question": "What should leadership understand and what should engineering do next?",
+      "audience": "mixed_leadership_engineering",
+      "mustInclude": [
+        "impact",
+        "timeline",
+        "root cause evidence",
+        "contributing factors",
+        "owners and actions"
+      ],
+      "mustNotClaim": [
+        "blame",
+        "completion of unverified actions"
+      ],
+      "preferredViews": [
+        "timeline",
+        "workflow"
+      ]
+    },
+    {
+      "id": "C20",
+      "phase": "full",
+      "category": "technical_learning",
+      "fixture": {
+        "kind": "benchmark_fixture",
+        "bundle": "benchmarks/comprehension/fixtures-v0.1.json",
+        "caseId": "C20"
+      },
+      "question": "Build a correct mental model for the core mechanism, then show where the source is uncertain.",
+      "audience": "technical_learner",
+      "mustInclude": [
+        "core mechanism",
+        "prerequisites",
+        "worked example",
+        "limitations",
+        "source uncertainty"
+      ],
+      "mustNotClaim": [
+        "consensus beyond the source",
+        "simplification as literal mechanism"
+      ],
+      "preferredViews": [
+        "concept_builder",
+        "code_walkthrough"
+      ]
+    }
+  ]
+}
