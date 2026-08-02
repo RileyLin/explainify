@@ -1,4 +1,6 @@
 import type { LLMProvider } from "./types";
+import { BedrockProvider } from "./bedrock";
+import { OpenAIProvider } from "./openai";
 
 export type { LLMProvider, LLMResponse, GenerateOptions } from "./types";
 
@@ -21,12 +23,10 @@ export function getProvider(name?: string): LLMProvider {
 
   switch (providerName) {
     case "openai": {
-      const { OpenAIProvider } = require("./openai");
       provider = new OpenAIProvider();
       break;
     }
     case "bedrock": {
-      const { BedrockProvider } = require("./bedrock");
       provider = new BedrockProvider();
       break;
     }
@@ -34,10 +34,8 @@ export function getProvider(name?: string): LLMProvider {
     default: {
       // Auto-detect based on available env vars
       if (process.env.OPENAI_API_KEY) {
-        const { OpenAIProvider } = require("./openai");
         provider = new OpenAIProvider();
       } else {
-        const { BedrockProvider } = require("./bedrock");
         provider = new BedrockProvider();
       }
       break;

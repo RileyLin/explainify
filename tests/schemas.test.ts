@@ -335,8 +335,8 @@ describe("ComponentExplorerDataSchema", () => {
   });
 
   it("accepts missing categories", () => {
-    const noCategories = { ...validExplorer };
-    delete (noCategories as any).categories;
+    const noCategories: Partial<typeof validExplorer> = { ...validExplorer };
+    delete noCategories.categories;
     const result = ComponentExplorerDataSchema.parse(noCategories);
     expect(result.categories).toBeUndefined();
   });

@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 /** Existing child explainer info */
 export interface ExistingChild {
@@ -29,6 +35,7 @@ export function useExplore() {
 }
 
 const STORAGE_KEY = "vizbrief-explore-mode";
+const CHANGE_EVENT = "explainify:explore-mode-change";
 
 /**
  * Reads ?explore= param from the URL without useSearchParams
@@ -40,6 +47,27 @@ function getUrlExploreOverride(): string | null {
   return params.get("explore");
 }
 
+function readStoredExploreState(): boolean {
+  const urlOverride = getUrlExploreOverride();
+  if (urlOverride === "false") return false;
+  if (urlOverride === "true") return true;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored === null ? true : stored === "true";
+  } catch {
+    return true;
+  }
+}
+
+function subscribeToStoredExploreState(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
+
 interface ExploreProviderProps {
   children: ReactNode;
   /** Pre-fetched children map from server component */
@@ -49,47 +77,29 @@ interface ExploreProviderProps {
 }
 
 export function ExploreProvider({ children, childrenMap = {}, initialEnabled }: ExploreProviderProps) {
-  const [enabled, setEnabled] = useState(initialEnabled ?? true);
-  const [hydrated, setHydrated] = useState(false);
-
-  // Hydrate from URL param → localStorage on mount
-  // Skip if initialEnabled was explicitly provided (e.g. landing page demo)
-  useEffect(() => {
-    if (initialEnabled !== undefined) {
-      setHydrated(true);
-      return;
-    }
-    const urlOverride = getUrlExploreOverride();
-
-    if (urlOverride === "false") {
-      setEnabled(false);
-    } else if (urlOverride === "true") {
-      setEnabled(true);
-    } else {
-      // No URL override — use localStorage
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored !== null) setEnabled(stored === "true");
-      } catch {
-        // localStorage unavailable
-      }
-    }
-    setHydrated(true);
-  }, []);
+  const storedEnabled = useSyncExternalStore(
+    subscribeToStoredExploreState,
+    readStoredExploreState,
+    () => true,
+  );
+  const [explicitEnabled, setExplicitEnabled] = useState(initialEnabled ?? true);
+  const enabled = initialEnabled === undefined ? storedEnabled : explicitEnabled;
 
   const toggleExplore = () => {
-    setEnabled((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(STORAGE_KEY, String(next));
-      } catch {
-        // localStorage unavailable
-      }
-      return next;
-    });
+    if (initialEnabled !== undefined) {
+      setExplicitEnabled((current) => !current);
+      return;
+    }
+    const next = !storedEnabled;
+    try {
+      localStorage.setItem(STORAGE_KEY, String(next));
+      window.dispatchEvent(new Event(CHANGE_EVENT));
+    } catch {
+      // localStorage unavailable
+    }
   };
 
-  const value = { exploreEnabled: hydrated ? enabled : true, toggleExplore, childrenMap };
+  const value = { exploreEnabled: enabled, toggleExplore, childrenMap };
 
   return (
     <ExploreContext.Provider value={value}>

@@ -1,6 +1,6 @@
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
-import type { FlowAnimatorData } from "@/lib/schemas/flow";
+import type { FlowAnimatorData, MoleculeData } from "@/lib/schemas/flow";
 import type { CodeWalkthroughData } from "@/lib/schemas/code";
 import type { ConceptBuilderData } from "@/lib/schemas/concept";
 import type { CompareContrastData } from "@/lib/schemas/compare";
@@ -15,7 +15,7 @@ export const FlowAnimator = dynamic<{ data: FlowAnimatorData }>(
   { ssr: false, loading }
 );
 
-export const MoleculeRenderer = dynamic<{ data: FlowAnimatorData }>(
+export const MoleculeRenderer = dynamic<{ data: MoleculeData }>(
   () => import("./molecule").then((m) => m.MoleculeRenderer),
   { ssr: false, loading }
 );
@@ -50,27 +50,35 @@ export const ComponentExplorer = dynamic<{ data: ComponentExplorerData }>(
   { ssr: false, loading }
 );
 
-export type TemplateType =
-  | "flow-animator"
-  | "molecule"
-  | "code-walkthrough"
-  | "concept-builder"
-  | "compare-contrast"
-  | "decision-tree"
-  | "timeline"
-  | "component-explorer";
+interface RendererDataMap {
+  "flow-animator": FlowAnimatorData;
+  molecule: MoleculeData;
+  "code-walkthrough": CodeWalkthroughData;
+  "concept-builder": ConceptBuilderData;
+  "compare-contrast": CompareContrastData;
+  "decision-tree": DecisionTreeData;
+  timeline: TimelineData;
+  "component-explorer": ComponentExplorerData;
+}
 
-export const rendererMap: Record<TemplateType, ComponentType<{ data: any }>> = {
-  "flow-animator": FlowAnimator as ComponentType<{ data: any }>,
-  "molecule": MoleculeRenderer as ComponentType<{ data: any }>,
-  "code-walkthrough": CodeWalkthrough as ComponentType<{ data: any }>,
-  "concept-builder": ConceptBuilder as ComponentType<{ data: any }>,
-  "compare-contrast": CompareContrast as ComponentType<{ data: any }>,
-  "decision-tree": DecisionTree as ComponentType<{ data: any }>,
-  "timeline": TimelineRenderer as ComponentType<{ data: any }>,
-  "component-explorer": ComponentExplorer as ComponentType<{ data: any }>,
+export type TemplateType = keyof RendererDataMap;
+type RendererMap = {
+  [Template in TemplateType]: ComponentType<{ data: RendererDataMap[Template] }>;
 };
 
-export function getRenderer(template: TemplateType): ComponentType<{ data: any }> {
+export const rendererMap: RendererMap = {
+  "flow-animator": FlowAnimator,
+  molecule: MoleculeRenderer,
+  "code-walkthrough": CodeWalkthrough,
+  "concept-builder": ConceptBuilder,
+  "compare-contrast": CompareContrast,
+  "decision-tree": DecisionTree,
+  timeline: TimelineRenderer,
+  "component-explorer": ComponentExplorer,
+};
+
+export function getRenderer<Template extends TemplateType>(
+  template: Template,
+): RendererMap[Template] {
   return rendererMap[template];
 }

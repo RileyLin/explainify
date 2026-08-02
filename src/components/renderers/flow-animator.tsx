@@ -825,7 +825,7 @@ function FlowAnimatorInner({ data, autoPlay = false, hideControls = false }: { d
         return next;
       });
     },
-    [stepOrder, data.nodes, dedupedConnections, dagrePositions, setCenter]
+    [stepOrder, data.nodes, dedupedConnections, dagrePositions, setCenter, autoPlay]
   );
 
   // ── Autoplay ────────────────────────────────────────────────────

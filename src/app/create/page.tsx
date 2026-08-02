@@ -285,7 +285,7 @@ export default function CreatePage() {
       case "flow-animator":
         return <FlowAnimator data={result} />;
       case "molecule":
-        return <MoleculeRenderer data={result as any} />;
+        return <MoleculeRenderer data={result} />;
       case "code-walkthrough":
         return <CodeWalkthrough data={result} />;
       case "concept-builder":

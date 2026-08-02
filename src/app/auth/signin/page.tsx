@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense } from "react";
 import { Github, Chrome, Sparkles } from "lucide-react";
 
@@ -45,15 +46,15 @@ function SignInContent() {
 
           <p className="text-center text-xs text-muted-foreground mt-6">
             By signing in, you agree to our{" "}
-            <a href="/terms" className="underline hover:text-foreground">Terms</a>
+            <Link href="/terms" className="underline hover:text-foreground">Terms</Link>
             {" "}and{" "}
-            <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>.
+            <Link href="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
           </p>
         </div>
 
         {/* Back link */}
         <p className="text-center text-sm text-muted-foreground mt-6">
-          <a href="/" className="hover:text-foreground transition-colors">← Back to VizBrief</a>
+          <Link href="/" className="hover:text-foreground transition-colors">← Back to VizBrief</Link>
         </p>
       </div>
     </div>

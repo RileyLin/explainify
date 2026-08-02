@@ -71,8 +71,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Wait for the viewer to render animations
     await page.waitForTimeout(2000);
 
-    let screenshotBuffer: Buffer;
-
     if (frame) {
       await page.evaluate(() => {
         document.body.style.padding = "32px";
@@ -81,7 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    screenshotBuffer = await page.screenshot({
+    const screenshotBuffer = await page.screenshot({
       type: "png",
       clip: { x: 0, y: 0, width: 1200, height: 630 },
     });

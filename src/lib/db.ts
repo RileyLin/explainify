@@ -25,7 +25,8 @@ export function getSupabase(): SupabaseClient {
 /** @deprecated Use getSupabase() instead — this will throw if env vars are missing */
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
-    return (getSupabase() as any)[prop];
+    const client = getSupabase();
+    return Reflect.get(client, prop, client);
   },
 });
 

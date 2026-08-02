@@ -4,7 +4,7 @@ import React, { useState, useMemo, useId, useRef, useCallback, useEffect } from 
 import { motion, AnimatePresence } from "motion/react";
 import { X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import * as LucideIcons from "lucide-react";
-import type { FlowAnimatorData, FlowNode } from "@/lib/schemas/flow";
+import type { MoleculeData, FlowNode } from "@/lib/schemas/flow";
 import { DiagramSettingsProvider, useDiagramSettings } from "@/components/editor/diagram-settings";
 import { SettingsBar } from "@/components/editor/settings-bar";
 
@@ -124,7 +124,7 @@ interface NodePosition { x: number; y: number }
 
 function computeLayout(
   nodes: FlowNode[],
-  connections: FlowAnimatorData["connections"],
+  connections: MoleculeData["connections"],
   densityMultiplier = 1.0
 ): Map<string, NodePosition> {
   const positions = new Map<string, NodePosition>();
@@ -524,7 +524,7 @@ function MoleculeNode({
 }
 
 // ── Inner Molecule (reads DiagramSettings context) ─────────────────
-function MoleculeRendererInner({ data }: { data: FlowAnimatorData }) {
+function MoleculeRendererInner({ data }: { data: MoleculeData }) {
   const { settings } = useDiagramSettings();
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [pulsingNodes, setPulsingNodes] = useState<Set<string>>(new Set());
@@ -562,11 +562,6 @@ function MoleculeRendererInner({ data }: { data: FlowAnimatorData }) {
 
   useEffect(() => { setViewBox(bounds); }, [bounds]);
 
-  const fitView = useCallback(() => {
-    setSelectedNode(null);
-    animateViewBox(bounds);
-  }, [bounds]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const animateViewBox = useCallback((target: typeof bounds) => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     const start = performance.now();
@@ -591,6 +586,11 @@ function MoleculeRendererInner({ data }: { data: FlowAnimatorData }) {
       return from;
     });
   }, []);
+
+  const fitView = useCallback(() => {
+    setSelectedNode(null);
+    animateViewBox(bounds);
+  }, [animateViewBox, bounds]);
 
   useEffect(() => () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); }, []);
 
@@ -790,7 +790,7 @@ function MoleculeRendererInner({ data }: { data: FlowAnimatorData }) {
 }
 
 // ── Main MoleculeRenderer ──────────────────────────────────────────
-export function MoleculeRenderer({ data }: { data: FlowAnimatorData }) {
+export function MoleculeRenderer({ data }: { data: MoleculeData }) {
   return (
     <div>
       {/* Header */}

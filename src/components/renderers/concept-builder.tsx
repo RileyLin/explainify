@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createElement, useState, type ComponentType, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, RotateCcw, Plus } from "lucide-react";
 import * as LucideIcons from "lucide-react";
@@ -8,19 +8,25 @@ import type { ConceptBuilderData, ConceptLayer } from "@/lib/schemas/concept";
 import { ExploreButton } from "./explore-button";
 import { DynamicIllustration } from "@/components/illustrations";
 
-function getIcon(name?: string) {
+function getIcon(name?: string): ComponentType<{ className?: string; size?: number }> | null {
   if (!name) return null;
   const pascalName = name
     .split("-")
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join("") as keyof typeof LucideIcons;
   const Icon = LucideIcons[pascalName];
-  if (typeof Icon === "function") return Icon as React.ComponentType<{ className?: string; size?: number }>;
+  if (Icon && (typeof Icon === "function" || typeof Icon === "object")) {
+    return Icon as ComponentType<{ className?: string; size?: number }>;
+  }
   return null;
 }
 
+function ConceptIcon({ name, fallback }: { name?: string; fallback: ReactNode }) {
+  const Icon = getIcon(name);
+  return Icon ? createElement(Icon, { size: 16 }) : fallback;
+}
+
 function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: number; isLatest: boolean }) {
-  const Icon = getIcon(layer.icon);
   return (
     <motion.div
       initial={{ opacity: 0, y: 30, scale: 0.95, rotateX: 4 }}
@@ -85,7 +91,7 @@ function LayerCard({ layer, index, isLatest }: { layer: ConceptLayer; index: num
             ${isLatest ? "bg-indigo-500 text-white" : "bg-muted text-muted-foreground"}
           `}
         >
-          {Icon ? <Icon size={16} /> : index + 1}
+          <ConceptIcon name={layer.icon} fallback={index + 1} />
         </motion.div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-3">
