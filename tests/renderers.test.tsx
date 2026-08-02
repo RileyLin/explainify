@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { describe, it, expect, vi } from "vitest";
+import { act, render, screen } from "@testing-library/react";
 import {
   sampleFlowData,
   sampleCodeData,
@@ -12,13 +13,16 @@ import {
 
 // Mock ReactFlow since it requires browser layout APIs
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ children }: any) => <div data-testid="react-flow">{children}</div>,
-  ReactFlowProvider: ({ children }: any) => <div>{children}</div>,
+  ReactFlow: ({ children }: { children?: ReactNode }) => (
+    <div data-testid="react-flow">{children}</div>
+  ),
+  ReactFlowProvider: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   Background: () => null,
+  BackgroundVariant: { Lines: "lines", Dots: "dots", Cross: "cross" },
   Controls: () => null,
   MiniMap: () => null,
   Handle: () => null,
-  Position: { Top: "top", Bottom: "bottom" },
+  Position: { Top: "top", Right: "right", Bottom: "bottom", Left: "left" },
   useReactFlow: () => ({ fitView: vi.fn(), setCenter: vi.fn() }),
 }));
 
@@ -53,14 +57,18 @@ describe("FlowAnimator", () => {
 });
 
 describe("CodeWalkthrough", () => {
-  it("renders title and summary", () => {
-    render(<CodeWalkthrough data={sampleCodeData} />);
+  it("renders title and summary", async () => {
+    await act(async () => {
+      render(<CodeWalkthrough data={sampleCodeData} />);
+    });
     expect(screen.getByText("React useState Hook")).toBeInTheDocument();
     expect(screen.getByText("Understanding state management in React")).toBeInTheDocument();
   });
 
-  it("renders step counter", () => {
-    render(<CodeWalkthrough data={sampleCodeData} />);
+  it("renders step counter", async () => {
+    await act(async () => {
+      render(<CodeWalkthrough data={sampleCodeData} />);
+    });
     expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
   });
 });
