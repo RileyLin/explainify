@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { configurationErrorPayload } from "@/lib/config";
+import { getServiceClient } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,6 +11,7 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const supabase = getServiceClient();
 
     const { error } = await supabase
       .from("waitlist")
@@ -41,6 +38,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    const configError = configurationErrorPayload(err);
+    if (configError) {
+      return NextResponse.json(configError, { status: 503 });
+    }
     console.error("Waitlist error:", err);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, PRO_PRICE_ID } from "@/lib/stripe";
+import { getStripe, PRO_PRICE_ID } from "@/lib/stripe";
 import { auth } from "@/lib/auth";
 import { getServiceClient } from "@/lib/db";
+import { configurationErrorPayload } from "@/lib/config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id;
     const email = session.user.email;
     const supabase = getServiceClient();
+    const stripe = getStripe();
 
     // Check if user already has a Stripe customer ID
     const { data: user } = await supabase
@@ -78,6 +80,10 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   } catch (error) {
+    const configError = configurationErrorPayload(error);
+    if (configError) {
+      return NextResponse.json(configError, { status: 503 });
+    }
     console.error("Stripe checkout error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

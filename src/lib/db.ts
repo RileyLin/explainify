@@ -1,8 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+import { requireEnv } from "@/lib/config";
 
 /**
  * Public Supabase client (uses anon key, respects RLS).
@@ -11,12 +8,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
  */
 let _supabase: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local"
-    );
-  }
   if (!_supabase) {
+    const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     _supabase = createClient(supabaseUrl, supabaseAnonKey);
   }
   return _supabase;
@@ -36,12 +30,9 @@ export const supabase = new Proxy({} as SupabaseClient, {
  */
 let _serviceClient: SupabaseClient | null = null;
 export function getServiceClient(): SupabaseClient {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error(
-      "Supabase service role is not configured. Set SUPABASE_SERVICE_ROLE_KEY in .env.local"
-    );
-  }
   if (!_serviceClient) {
+    const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const supabaseServiceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
     _serviceClient = createClient(supabaseUrl, supabaseServiceKey);
   }
   return _serviceClient;

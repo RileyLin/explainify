@@ -41,10 +41,28 @@ Technical knowledge is trapped in walls of text. Docs, architecture specs, API r
 ```bash
 git clone https://github.com/RileyLin/explainify.git
 cd explainify
-npm install
-cp .env.example .env.local   # Fill in your keys
-npm run dev                   # http://localhost:3000
+npm ci
+npm test
+npm run build
+npm run dev                  # http://localhost:3000
 ```
+
+The test suite and production build require no credentials. Copy
+`.env.example` to `.env.local` only for runtime integrations:
+
+| Capability | Configuration |
+|---|---|
+| Generate with OpenAI | `LLM_PROVIDER=openai`, `OPENAI_API_KEY`; optional `LLM_MODEL` |
+| Generate with Bedrock | `LLM_PROVIDER=bedrock`, AWS credentials/profile, optional `AWS_REGION` and `BEDROCK_MODEL_ID` |
+| Publish, accounts, waitlist | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` |
+| GitHub/Google sign-in | `NEXTAUTH_SECRET` plus the matching provider client ID and secret |
+| Stripe subscriptions | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| Generated images | `ENABLE_IMAGE_GEN=true`, `GEMINI_API_KEY` |
+| SVG enrichment | `ENABLE_SVG_ENRICHMENT=true`, `OPENAI_API_KEY` |
+| PNG export | Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` |
+
+Missing optional runtime configuration produces a controlled API error; it does
+not prevent a clean build. Never commit `.env.local` or real credentials.
 
 ## How It Works (Architecture)
 
