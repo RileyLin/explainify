@@ -23,6 +23,12 @@ export function SiteFooter() {
             Pricing
           </Link>
           <Link
+            href="/workstream"
+            className="text-sm transition-colors text-muted-foreground hover:text-foreground"
+          >
+            Workstream
+          </Link>
+          <Link
             href="/privacy"
             className="text-sm transition-colors text-muted-foreground hover:text-foreground"
           >
