@@ -193,6 +193,10 @@ export function CompareRunsClient() {
       )}
 
       <p className="mt-10 text-sm">
+        <Link href="/compare-runs/demo" className="text-blue-500 hover:underline">
+          See what it refuses to fake →
+        </Link>
+        <span className="mx-2 text-muted-foreground">·</span>
         <Link href="/workstream" className="text-blue-500 hover:underline">
           Open a Workstream checkpoint →
         </Link>
