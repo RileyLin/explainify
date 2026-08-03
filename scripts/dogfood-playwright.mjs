@@ -26,6 +26,10 @@ const PAGES = [
 const VIEWPORTS = [
   { kind: "desktop", width: 1440, height: 900 },
   { kind: "mobile", width: 390, height: 844 },
+  // 320px is the narrowest widely-supported mobile width. The prior gate only
+  // checked 390px and missed a header overflow where the Sign In button was
+  // clipped outside a 320px viewport (task #17 REVISE).
+  { kind: "mobile-narrow", width: 320, height: 640 },
 ];
 
 const results = [];
@@ -56,6 +60,30 @@ try {
       });
       const hasOverflow = overflow.scrollWidth > overflow.clientWidth + 1;
 
+      // Header clip check: every interactive control in the sticky header must
+      // fit inside the viewport. A control can be clipped (right edge past the
+      // viewport) even when page scrollWidth looks fine, so assert per-element.
+      // (task #17 320px Sign In clip.)
+      const headerClip = await page.evaluate((vw) => {
+        const header = document.querySelector("header");
+        if (!header) return { checked: 0, clipped: [] };
+        const controls = header.querySelectorAll("a, button");
+        const clipped = [];
+        for (const el of controls) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue; // not rendered
+          if (r.right > vw + 1 || r.left < -1) {
+            clipped.push({
+              text: (el.getAttribute("aria-label") || el.innerText || "").trim().slice(0, 24),
+              right: Math.round(r.right),
+              left: Math.round(r.left),
+            });
+          }
+        }
+        return { checked: controls.length, clipped };
+      }, vp.width);
+      const hasHeaderClip = headerClip.clipped.length > 0;
+
       const bodyText = await page.evaluate(() => document.body.innerText || "");
       const brandPresent = /Explainify/i.test(bodyText) ||
         (await page.title()).match(/Explainify/i) !== null;
@@ -69,6 +97,7 @@ try {
         consoleErrors.length === 0 &&
         pageErrors.length === 0 &&
         !hasOverflow &&
+        !hasHeaderClip &&
         brandPresent &&
         !legacyBrand;
 
@@ -79,6 +108,8 @@ try {
         consoleErrors: consoleErrors.length,
         pageErrors: pageErrors.length,
         hasOverflow,
+        hasHeaderClip,
+        clippedControls: headerClip.clipped,
         brandPresent,
         legacyBrand,
         shot,

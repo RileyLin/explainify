@@ -44,10 +44,14 @@ export function SignInButton() {
     return (
       <button
         onClick={() => signIn()}
+        aria-label="Sign In"
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
       >
         <LogIn size={16} />
-        Sign In
+        {/* Below 360px the label is hidden to keep the header inside the
+            viewport (task #17 320px overflow fix). The button keeps an
+            aria-label so the icon-only control stays accessibly named. */}
+        <span className="max-[359px]:hidden">Sign In</span>
       </button>
     );
   }
