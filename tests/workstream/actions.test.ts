@@ -1,106 +1,72 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { preflightAction, generateBriefAction, correctBriefAction } from "@/app/workstream/actions";
-import { EXAMPLE_BUNDLE_JSON } from "@/app/workstream/example-bundle";
+import { validatePackageAction } from "@/app/workstream/actions";
 import { LOCAL_WORKSTREAMS_ENV } from "@/lib/workstream/local-mode";
 
-// PM constraint 1 (task #22): the hosted server must fail closed — a bundle POST is
-// rejected without processing. These tests exercise the real server actions in both
-// modes so the guarantee is enforced at the surface a bundle actually reaches.
-describe("workstream server actions — hosted mode fails closed", () => {
-  const original = process.env[LOCAL_WORKSTREAMS_ENV];
+const FIXTURES = path.resolve(__dirname, "fixtures");
+const EXPLAINIFY_PACKAGE = readFileSync(path.join(FIXTURES, "explainify-package.json"), "utf8");
+const PORTABLE_PACKAGE = readFileSync(path.join(FIXTURES, "portable-package.json"), "utf8");
 
+// PM constraint 1 (task #22): the hosted server must fail closed — a checkpoint package is
+// rejected without processing. These tests exercise the real server action in both modes so the
+// guarantee is enforced at the surface a package actually reaches.
+describe("workstream server action — hosted mode fails closed", () => {
+  const original = process.env[LOCAL_WORKSTREAMS_ENV];
   afterEach(() => {
     if (original === undefined) delete process.env[LOCAL_WORKSTREAMS_ENV];
     else process.env[LOCAL_WORKSTREAMS_ENV] = original;
   });
 
-  function hosted() {
+  it("refuses a package in hosted mode without validating it", async () => {
     delete process.env[LOCAL_WORKSTREAMS_ENV];
-  }
-
-  it("preflight refuses a bundle in hosted mode", async () => {
-    hosted();
-    const r = await preflightAction(EXAMPLE_BUNDLE_JSON);
+    const r = await validatePackageAction(EXPLAINIFY_PACKAGE);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/local-first/i);
-    // No coverage was computed — the bundle was never processed.
-    expect(r.coverage).toBeUndefined();
-  });
-
-  it("generate refuses a bundle in hosted mode", async () => {
-    hosted();
-    const r = await generateBriefAction(EXAMPLE_BUNDLE_JSON);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/local-first/i);
-    expect(r.brief).toBeUndefined();
-  });
-
-  it("correction refuses a bundle in hosted mode", async () => {
-    hosted();
-    const r = await correctBriefAction(EXAMPLE_BUNDLE_JSON, {
-      correctionKind: "stale",
-      note: "test",
-      submittedAt: "2026-08-03T00:00:00Z",
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/local-first/i);
-    expect(r.corrected).toBeUndefined();
+    if (!r.ok) expect(r.error).toMatch(/local-first/i);
+    // No coverage/pkg was computed — the package was never processed.
+    expect((r as { coverage?: unknown }).coverage).toBeUndefined();
   });
 });
 
-describe("workstream server actions — local mode processes the bundle", () => {
+describe("workstream server action — local mode validates the package", () => {
   const original = process.env[LOCAL_WORKSTREAMS_ENV];
   afterEach(() => {
     if (original === undefined) delete process.env[LOCAL_WORKSTREAMS_ENV];
     else process.env[LOCAL_WORKSTREAMS_ENV] = original;
   });
 
-  it("preflight reports coverage and honest exclusions for the example bundle", async () => {
+  it("opens the real Explainify checkpoint with honest partial coverage", async () => {
     process.env[LOCAL_WORKSTREAMS_ENV] = "1";
-    const r = await preflightAction(EXAMPLE_BUNDLE_JSON);
+    const r = await validatePackageAction(EXPLAINIFY_PACKAGE);
     expect(r.ok).toBe(true);
+    if (!r.ok) return;
     expect(r.workstreamId).toBe("explainify-phase2");
-    expect(r.coverage?.requested).toBe(16);
-    expect(r.coverage?.scanned).toBe(14);
-    expect(r.coverage?.uncovered).toBe(2);
-    expect(r.coverage?.fullyCovered).toBe(false);
-    // The two uncaptured sources must be surfaced, not hidden.
-    expect(r.exclusions?.map((e) => e.id).sort()).toEqual(
+    expect(r.pkg.checkpointId).toBe("checkpoint-7a3c1d543879");
+    expect(r.coverage.requested).toBe(16);
+    expect(r.coverage.scanned).toBe(14);
+    expect(r.coverage.uncovered).toBe(2);
+    expect(r.coverage.fullyCovered).toBe(false);
+    expect(r.exclusions.map((e) => e.id).sort()).toEqual(
       ["t15-seeded-omission-loadprofile", "t17-owner-dm-thread"].sort(),
     );
   });
 
-  it("generate produces the proven checkpoint with a passing secret scan", async () => {
+  it("opens a structurally different portable checkpoint (no Explainify-specific ids)", async () => {
     process.env[LOCAL_WORKSTREAMS_ENV] = "1";
-    const r = await generateBriefAction(EXAMPLE_BUNDLE_JSON);
+    const r = await validatePackageAction(PORTABLE_PACKAGE);
     expect(r.ok).toBe(true);
-    expect(r.brief?.checkpointId).toBe("checkpoint-7a3c1d543879");
-    expect(r.brief?.receipt.publication).toBe("local_only");
-    expect(r.brief?.receipt.secretScan).toBe("pass");
-    expect(r.brief?.currentOutcome.status).toBe("observed");
-    expect(r.brief?.currentOutcome.evidence.length).toBeGreaterThan(0);
+    if (!r.ok) return;
+    expect(r.workstreamId).toBe("acme-migration");
+    expect(r.coverage.requested).toBe(3);
+    expect(r.coverage.scanned).toBe(2);
+    expect(r.coverage.excluded).toBe(1);
   });
 
   it("rejects invalid JSON with a clear error and no processing", async () => {
     process.env[LOCAL_WORKSTREAMS_ENV] = "1";
-    const r = await preflightAction("{ not json ");
+    const r = await validatePackageAction("{ not json ");
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/not valid JSON/i);
-  });
-
-  it("correction produces an immutable linked successor checkpoint", async () => {
-    process.env[LOCAL_WORKSTREAMS_ENV] = "1";
-    const r = await correctBriefAction(EXAMPLE_BUNDLE_JSON, {
-      correctionKind: "stale",
-      note: "The Preview-protection decision reads as stale; verify against the excluded owner DM.",
-      submittedAt: "2026-08-03T00:00:00Z",
-      originalClaimId: "decision-public-contact",
-    });
-    expect(r.ok).toBe(true);
-    expect(r.verified).toBe(true);
-    expect(r.corrected?.checkpointId).not.toBe(r.original?.checkpointId);
-    expect(r.corrected?.correctionOf).toBe(r.original?.checkpointId);
-    expect(r.correctionReceipt?.correctionKind).toBe("stale");
+    if (!r.ok) expect(r.error).toMatch(/not valid JSON/i);
   });
 });

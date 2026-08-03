@@ -150,12 +150,3 @@ export interface ApplyCorrectionResult {
   corrected: WorkstreamBrief;
   correctionReceipt: CorrectionReceipt;
 }
-
-/** A saved workstream checkpoint, persisted locally so it can be reopened/exported. */
-export interface SavedCheckpoint {
-  savedAt: string;
-  bundle: unknown;
-  brief: WorkstreamBrief;
-  coverageReceipt: CoverageReceipt;
-  correctionReceipt?: CorrectionReceipt;
-}

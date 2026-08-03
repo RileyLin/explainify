@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "workstreamId": "explainify-phase2",
+  "freshnessCursor": "2026-08-02T08:57:44Z",
+  "note": "Frozen bounded evidence bundle for the Explainify Phase 2 workstream (tasks #12/#13/#15/#17). Content strings are verbatim recorded evidence; sha256 and manifest hashes are computed by tools/workstream-brief/freeze.mjs and must not be hand-edited.",
+  "sources": [
+    {
+      "id": "t12-task-state",
+      "kind": "raft_task_state",
+      "locator": "#raft_cloud task #12 msg=16b86a0a",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "task #12 [done] Explainify Phase 2B: build local-first Archify adapter and agent-callable spike -> @codex-builder (by @product-manager)"
+    },
+    {
+      "id": "t12-commit-spike",
+      "kind": "git_commit",
+      "locator": "git show b3f8312",
+      "revision": "b3f8312bd0e12c6ad95662bfcd120e91dac12721",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "b3f8312 feat: add local comprehension checkpoint spike; 11 files changed, 719 insertions(+), 2 deletions(-). Local-first explainify.create_checkpoint, pinned Archify v2.12.0 adapter, git-backed evidence spans, local HTML/manifest/receipt."
+    },
+    {
+      "id": "t12-commit-c01fix",
+      "kind": "git_commit",
+      "locator": "git show e244ad1",
+      "revision": "e244ad109efcf092310884937e9b9f67afdc8d09",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "e244ad1 fix: align C01 renderer score with shared topology. One-line rendererFit 10->5 in benchmarkEvaluation so C01 self-score is reproducible against the byte-identical Archify topology."
+    },
+    {
+      "id": "t13-task-state",
+      "kind": "raft_task_state",
+      "locator": "#raft_cloud task #13 msg=1931579e",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "task #13 [done] Explainify Phase 2C: independently evaluate comprehension benchmark and product gate -> @claude-builder (by @product-manager)"
+    },
+    {
+      "id": "t13-review-finding",
+      "kind": "decision",
+      "locator": "#raft_cloud review13-report.md",
+      "evidenceLevel": "independently_verified",
+      "evidenceLabel": "independently verified",
+      "captured": true,
+      "content": "Independent product gate (claude-builder): GO conditional on one fix - C01 rendererFit 10 was not reproducible against identical topology (variance >5pt breach). codex applied the fix at e244ad1; re-verified all 6 scores 95, variance <=5. #12/#13 marked done."
+    },
+    {
+      "id": "t15-task-state",
+      "kind": "raft_task_state",
+      "locator": "#raft_cloud task #15 msg=172be51e",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "task #15 [done] Explainify Phase 2D: capture and compare verifiable AWS/GCP agent runs -> @codex-builder (by @product-manager)"
+    },
+    {
+      "id": "t15-commit-spike",
+      "kind": "git_commit",
+      "locator": "git show 896bb23",
+      "revision": "896bb2325447cb8a36ec39da27b1a628993e35f2",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "896bb23 feat: add comparative run evidence spike; 14 files changed, 6176 insertions(+), 1 deletion(-). 10 frozen comparative cases, HMAC private-map, dirty/tamper gates, receipt-attested comparison artifact, local-only."
+    },
+    {
+      "id": "t15-review-go",
+      "kind": "decision",
+      "locator": "#raft_cloud:172be51e msg=af8298ad",
+      "evidenceLevel": "independently_verified",
+      "evidenceLabel": "independently verified",
+      "captured": true,
+      "content": "Independent adversarial review (claude-builder): GO. On immutable commit 896bb23: test:comparative 7/7, spike:comparative 10/10 + real receipt pair, vitest 96/96, tsc 0, eslint 0, audit 0; 3 frozen hashes recomputed and matched; 7/7 adversarial probes held; private-maps 0600, zero canary leak, no network calls. PM accepted GO and marked #15 done."
+    },
+    {
+      "id": "t15-test-receipt",
+      "kind": "test_receipt",
+      "locator": "npm run test:comparative @896bb23",
+      "revision": "896bb2325447cb8a36ec39da27b1a628993e35f2",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "node --test tools/comprehension/comparative/__tests__/*.test.mjs => tests 7, pass 7, fail 0."
+    },
+    {
+      "id": "t17-task-state",
+      "kind": "raft_task_state",
+      "locator": "#raft_cloud task #17 msg=4357a8b8",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "task #17 [in_review] Explainify release gate: integrate Stabilize, dogfood critical flows, and ship a testable preview -> @claude-builder (by @product-manager)"
+    },
+    {
+      "id": "t17-commit-modelfix",
+      "kind": "git_span",
+      "locator": "src/lib/llm/providers/bedrock.ts:11",
+      "revision": "9e23b1163e7e8a66a6a462e5b79953fc0e712c9e",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "export const DEFAULT_MODEL = \"us.anthropic.claude-sonnet-4-6\"; // fixed from invalid \"-v1\" suffix that returned Bedrock HTTP 400. Guarded by tests/lib/llm/bedrock.test.ts."
+    },
+    {
+      "id": "t17-test-receipt",
+      "kind": "test_receipt",
+      "locator": "npm run test @release/phase1-gate",
+      "revision": "2d0fe44b9fd1def03df22ceb79929ff6bcd5a8fa",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "vitest run => 101/101 tests pass on combined release revision; lint 0 errors/16 warnings; tsc exit 0; npm audit --omit=dev 0 vulnerabilities; clean-env build 24/24."
+    },
+    {
+      "id": "t17-deploy-status",
+      "kind": "deployment_receipt",
+      "locator": "GitHub Deployments API deployment 5711428986",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "release/phase1-gate @ 2d0fe44 pushed; Vercel Preview deployment status=success; origin/main untouched at ba9f824 (Production safe). Preview URL responds 200 but is behind Vercel deployment-protection SSO wall."
+    },
+    {
+      "id": "t17-blocker-decision",
+      "kind": "decision",
+      "locator": "#raft_cloud:4357a8b8 msg=64479e94",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": true,
+      "content": "OPEN BLOCKER / owner decision needed: Preview is gated behind Vercel SSO deployment protection; Riley must disable protection, issue a bypass token, or run the 5-minute test script. Separately support@explainify.dev has no MX record so the public contact is undeliverable - a production-gating decision for Riley. #17 stays in_review until resolved."
+    },
+    {
+      "id": "t17-owner-dm-thread",
+      "kind": "raft_message",
+      "locator": "dm:@riley-lin (owner private thread)",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": false,
+      "exclusionReason": "policy",
+      "content": "EXCLUDED BY POLICY: owner direct messages and private channels are out of the frozen bundle per contract. This entry records the exclusion so coverage is honest; its content is intentionally not captured."
+    },
+    {
+      "id": "t15-seeded-omission-loadprofile",
+      "kind": "command_receipt",
+      "locator": "benchmarks/comparative load-profile parity note (seeded omission)",
+      "evidenceLevel": "receipt_attested",
+      "evidenceLabel": "receipt-attested, not independently verified",
+      "captured": false,
+      "exclusionReason": "unavailable",
+      "content": "SEEDED OMISSION (WP-A fixture): a real but intentionally un-scanned source. If any brief presents complete coverage or a green trust state without surfacing this uncaptured item, WP-E gate 6 fails. Content withheld to prove omission detection."
+    }
+  ]
+}

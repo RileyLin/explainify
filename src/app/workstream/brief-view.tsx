@@ -1,13 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type {
-  WorkstreamBrief,
-  CoverageReceipt,
-  Claim,
-  DecisionNeeded,
-  SavedCheckpoint,
-} from "@/lib/workstream/types";
+import type { Claim, DecisionNeeded } from "@/lib/workstream/types";
+import type { WorkstreamCheckpointPackage } from "@/lib/workstream/package";
 
 // Product view of a Workstream Brief. Maps the proven render.mjs section order and
 // trust semantics into React: first-viewport outcome + counts, always-visible
@@ -156,27 +151,28 @@ function Count({ n, label, warn }: { n: number; label: string; warn?: boolean })
 }
 
 export function BriefView({
-  brief,
-  coverage,
-  rawBundle,
+  pkg,
   onBack,
 }: {
-  brief: WorkstreamBrief;
-  coverage: CoverageReceipt;
-  rawBundle: string;
+  pkg: WorkstreamCheckpointPackage;
   onBack: () => void;
 }) {
+  const { brief, coverageReceipt: coverage } = pkg;
   const [openRaw, setOpenRaw] = useState<string | null>(null);
   const uncovered = coverage.requestedSourceCount - coverage.scannedSourceCount;
 
+  // The raw-source escape hatch joins the frozen manifest metadata (locator, captured,
+  // exclusionReason) with the verbatim rawSources content the hashes were computed over.
   const bundleSources = useMemo(() => {
-    try {
-      const parsed = JSON.parse(rawBundle) as { sources?: Array<Record<string, unknown>> };
-      return parsed.sources || [];
-    } catch {
-      return [];
-    }
-  }, [rawBundle]);
+    const contentById = new Map(pkg.rawSources.map((s) => [s.id, s.content]));
+    return pkg.manifest.sources.map((m) => ({
+      id: m.id,
+      locator: m.locator,
+      captured: m.captured,
+      exclusionReason: m.exclusionReason,
+      content: contentById.get(m.id) ?? "",
+    }));
+  }, [pkg]);
 
   function openRawSource(id: string) {
     setOpenRaw(id);
@@ -187,13 +183,8 @@ export function BriefView({
   }
 
   function exportCheckpoint() {
-    const checkpoint: SavedCheckpoint = {
-      savedAt: new Date().toISOString(),
-      bundle: safeParse(rawBundle),
-      brief,
-      coverageReceipt: coverage,
-    };
-    const blob = new Blob([JSON.stringify(checkpoint, null, 2)], { type: "application/json" });
+    // Export the full, self-contained checkpoint package so it can be reopened/validated later.
+    const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -302,13 +293,11 @@ export function BriefView({
         </p>
         <div className="mt-3 space-y-3">
           {bundleSources.map((s) => {
-            const id = String(s.id);
-            const captured = s.captured === true;
-            const isOpen = openRaw === id;
+            const isOpen = openRaw === s.id;
             return (
               <article
-                key={id}
-                id={`raw-${id}`}
+                key={s.id}
+                id={`raw-${s.id}`}
                 className="rounded-lg p-3"
                 style={{
                   border: "1px solid var(--border)",
@@ -316,21 +305,21 @@ export function BriefView({
                 }}
               >
                 <h3 className="text-sm font-semibold text-foreground">
-                  <code>{id}</code>{" "}
-                  {!captured && (
+                  <code>{s.id}</code>{" "}
+                  {!s.captured && (
                     <span className="text-xs font-normal" style={{ color: "#b1841c" }}>
-                      · uncaptured{s.exclusionReason ? ` · ${String(s.exclusionReason)}` : ""}
+                      · uncaptured{s.exclusionReason ? ` · ${s.exclusionReason}` : ""}
                     </span>
                   )}
                 </h3>
                 <p className="mt-1 text-xs">
-                  <code className="break-all text-muted-foreground">{String(s.locator ?? "")}</code>
+                  <code className="break-all text-muted-foreground">{s.locator}</code>
                 </p>
                 <pre
                   className="mt-2 overflow-x-auto whitespace-pre-wrap rounded bg-background p-2 text-xs text-foreground"
                   style={{ border: "1px solid var(--border)" }}
                 >
-                  {String(s.content ?? "")}
+                  {s.content}
                 </pre>
               </article>
             );
@@ -384,10 +373,3 @@ function DecisionList({ decisions }: { decisions: DecisionNeeded[] }) {
   );
 }
 
-function safeParse(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}

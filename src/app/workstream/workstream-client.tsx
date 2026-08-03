@@ -2,21 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { preflightAction, generateBriefAction } from "./actions";
-import { EXAMPLE_BUNDLE_JSON } from "./example-bundle";
-import type { PreflightResult, BriefResult } from "@/lib/workstream/engine";
-import type { WorkstreamBrief, CoverageReceipt } from "@/lib/workstream/types";
+import { validatePackageAction } from "./actions";
+import { EXAMPLE_PACKAGE_JSON } from "./example-package";
+import type { ValidatePackageResult, WorkstreamCheckpointPackage } from "@/lib/workstream/package";
 import { BriefView } from "./brief-view";
 
-type Step = "import" | "preflight" | "brief";
+type Step = "import" | "view";
 
 export function WorkstreamClient() {
   const [raw, setRaw] = useState("");
   const [step, setStep] = useState<Step>("import");
   const [busy, setBusy] = useState(false);
-  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
-  const [brief, setBrief] = useState<WorkstreamBrief | null>(null);
-  const [coverage, setCoverage] = useState<CoverageReceipt | null>(null);
+  const [result, setResult] = useState<ValidatePackageResult | null>(null);
+  const [pkg, setPkg] = useState<WorkstreamCheckpointPackage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -26,31 +24,18 @@ export function WorkstreamClient() {
     setError(null);
   }
 
-  async function runPreflight() {
+  async function runValidate() {
     setBusy(true);
     setError(null);
     try {
-      const result = await preflightAction(raw);
-      setPreflight(result);
-      setStep("preflight");
-      if (!result.ok) setError(result.error || "Preflight failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runGenerate() {
-    setBusy(true);
-    setError(null);
-    try {
-      const result: BriefResult = await generateBriefAction(raw);
-      if (!result.ok || !result.brief || !result.coverageReceipt) {
-        setError(result.error || "Could not generate the brief.");
-        return;
+      const r = await validatePackageAction(raw);
+      setResult(r);
+      if (r.ok) {
+        setPkg(r.pkg);
+        setStep("view");
+      } else {
+        setError(r.error || "Package did not validate.");
       }
-      setBrief(result.brief);
-      setCoverage(result.coverageReceipt);
-      setStep("brief");
     } finally {
       setBusy(false);
     }
@@ -58,107 +43,97 @@ export function WorkstreamClient() {
 
   function reset() {
     setStep("import");
-    setBrief(null);
-    setCoverage(null);
-    setPreflight(null);
+    setPkg(null);
+    setResult(null);
     setError(null);
   }
 
-  if (step === "brief" && brief && coverage) {
-    return (
-      <BriefView
-        brief={brief}
-        coverage={coverage}
-        rawBundle={raw}
-        onBack={reset}
-      />
-    );
+  if (step === "view" && pkg && result?.ok) {
+    return <BriefView pkg={pkg} onBack={reset} />;
   }
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-12">
       <p className="text-xs font-semibold uppercase tracking-wide text-blue-500">
-        Local-first · your bundle stays on this machine
+        Local-first · your checkpoint stays on this machine
       </p>
-      <h1 className="mt-2 text-3xl font-bold text-foreground">Workstream Brief</h1>
+      <h1 className="mt-2 text-3xl font-bold text-foreground">Open a Workstream checkpoint</h1>
       <p className="mt-3 text-muted-foreground">
-        Import an evidence bundle and get a trusted, coverage-honest brief of what
-        autonomous agents did — the objective, what changed, what to review first,
-        verification state, and the open blocker or decision — without replaying task
-        threads. Every observed claim opens its immutable evidence; unknowns and
+        Import a Workstream checkpoint package and get a trusted, coverage-honest brief of what
+        autonomous agents did — the objective, what changed, what to review first, verification
+        state, and the open blocker or decision — without replaying task threads. Every hash is
+        recomputed from the package&rsquo;s own raw sources before anything renders; a tampered
+        package is refused. Every observed claim opens its immutable evidence; unknowns and
         uncaptured sources are shown, not hidden.
       </p>
+      <p className="mt-3 rounded-lg p-3 text-sm text-muted-foreground" style={{ border: "1px solid var(--border)" }}>
+        This is a checkpoint <strong>reader</strong>, not a generator. A checkpoint package is a
+        self-contained artifact (brief + frozen manifest + coverage receipt + raw-source excerpts)
+        produced by the Workstream Brief engine. Generating a brief from arbitrary raw evidence is a
+        separate capability and is intentionally not exposed here.
+      </p>
 
-      <StepBar step={step} />
-
-      {step === "import" && (
-        <section className="mt-6">
-          <label htmlFor="bundle" className="block text-sm font-medium text-foreground">
-            Paste an evidence bundle (JSON)
+      <section className="mt-6">
+        <label htmlFor="pkg" className="block text-sm font-medium text-foreground">
+          Paste a checkpoint package (JSON)
+        </label>
+        <textarea
+          id="pkg"
+          value={raw}
+          onChange={(e) => {
+            setRaw(e.target.value);
+            setError(null);
+          }}
+          spellCheck={false}
+          placeholder='{ "packageVersion": 1, "workstreamId": "...", "checkpointId": "...", "brief": { ... }, "manifest": { ... }, "coverageReceipt": { ... }, "rawSources": [ ... ] }'
+          className="mt-2 h-64 w-full rounded-lg bg-background p-3 font-mono text-xs text-foreground"
+          style={{ border: "1px solid var(--border)" }}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label
+            className="cursor-pointer rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+            style={{ border: "1px solid var(--border)" }}
+          >
+            Upload .json
+            <input type="file" accept="application/json,.json" onChange={onFile} className="hidden" />
           </label>
-          <textarea
-            id="bundle"
-            value={raw}
-            onChange={(e) => {
-              setRaw(e.target.value);
+          <button
+            type="button"
+            onClick={() => {
+              setRaw(EXAMPLE_PACKAGE_JSON);
               setError(null);
             }}
-            spellCheck={false}
-            placeholder='{ "schemaVersion": 1, "workstreamId": "...", "freshnessCursor": "...", "sources": [ ... ] }'
-            className="mt-2 h-64 w-full rounded-lg bg-background p-3 font-mono text-xs text-foreground"
+            className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
             style={{ border: "1px solid var(--border)" }}
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <label
-              className="cursor-pointer rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
-              style={{ border: "1px solid var(--border)" }}
-            >
-              Upload .json
-              <input type="file" accept="application/json,.json" onChange={onFile} className="hidden" />
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                setRaw(EXAMPLE_BUNDLE_JSON);
-                setError(null);
-              }}
-              className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
-              style={{ border: "1px solid var(--border)" }}
-            >
-              Load example bundle
-            </button>
-            <button
-              type="button"
-              disabled={!raw.trim() || busy}
-              onClick={runPreflight}
-              className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
-            >
-              {busy ? "Checking…" : "Preflight →"}
-            </button>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Nothing is uploaded to a hosted service. The bundle is processed in your
-            local Explainify process and never persisted server-side.
-          </p>
-        </section>
-      )}
-
-      {step === "preflight" && preflight && (
-        <PreflightPanel
-          preflight={preflight}
-          busy={busy}
-          onGenerate={runGenerate}
-          onBack={() => setStep("import")}
-        />
-      )}
+          >
+            Load example checkpoint
+          </button>
+          <button
+            type="button"
+            disabled={!raw.trim() || busy}
+            onClick={runValidate}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          >
+            {busy ? "Validating…" : "Open checkpoint →"}
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Nothing is uploaded to a hosted service. The package is validated in your local Explainify
+          process and never persisted server-side.
+        </p>
+      </section>
 
       {error && (
         <div
           className="mt-6 rounded-lg p-4 text-sm"
           style={{ border: "1px solid var(--border)", background: "rgba(180,60,60,0.08)" }}
         >
-          <strong className="text-foreground">Validation failed.</strong>
+          <strong className="text-foreground">Package did not validate.</strong>
           <p className="mt-1 text-muted-foreground">{error}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            A checkpoint is refused if any hash fails to recompute from its own raw sources, so a
+            tampered or incomplete package never renders as trusted.
+          </p>
         </div>
       )}
 
@@ -168,157 +143,5 @@ export function WorkstreamClient() {
         </Link>
       </p>
     </main>
-  );
-}
-
-function StepBar({ step }: { step: Step }) {
-  const steps: Array<{ key: Step; label: string }> = [
-    { key: "import", label: "1 · Import" },
-    { key: "preflight", label: "2 · Preflight" },
-    { key: "brief", label: "3 · Brief" },
-  ];
-  const activeIndex = steps.findIndex((s) => s.key === step);
-  return (
-    <ol className="mt-6 flex gap-2 text-xs">
-      {steps.map((s, i) => (
-        <li
-          key={s.key}
-          className={`rounded-full px-3 py-1 ${
-            i <= activeIndex
-              ? "bg-blue-600 text-white"
-              : "text-muted-foreground"
-          }`}
-          style={i > activeIndex ? { border: "1px solid var(--border)" } : undefined}
-        >
-          {s.label}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function PreflightPanel({
-  preflight,
-  busy,
-  onGenerate,
-  onBack,
-}: {
-  preflight: PreflightResult;
-  busy: boolean;
-  onGenerate: () => void;
-  onBack: () => void;
-}) {
-  if (!preflight.ok || !preflight.coverage) {
-    return (
-      <section className="mt-6">
-        <div
-          className="rounded-lg p-4 text-sm"
-          style={{ border: "1px solid var(--border)", background: "rgba(180,60,60,0.08)" }}
-        >
-          <strong className="text-foreground">Bundle did not validate.</strong>
-          <p className="mt-1 text-muted-foreground">{preflight.error}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
-          style={{ border: "1px solid var(--border)" }}
-        >
-          ← Edit bundle
-        </button>
-      </section>
-    );
-  }
-
-  const c = preflight.coverage;
-  return (
-    <section className="mt-6">
-      <div
-        className="rounded-xl p-5"
-        style={{
-          border: "1px solid var(--border)",
-          borderLeft: `4px solid ${c.fullyCovered ? "#087b69" : "#b1841c"}`,
-          background: c.fullyCovered ? undefined : "rgba(177,132,28,0.08)",
-        }}
-      >
-        <h2 className="text-lg font-semibold text-foreground">
-          Preflight · {preflight.workstreamId}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Fresh through <code className="text-foreground">{preflight.freshnessCursor}</code>
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Stat n={c.scanned} label={`of ${c.requested} scanned`} />
-          <Stat n={c.excluded} label="policy-excluded" warn={c.excluded > 0} />
-          <Stat n={c.unavailable} label="unavailable" warn={c.unavailable > 0} />
-          <Stat n={c.unsupported} label="unsupported" warn={c.unsupported > 0} />
-          <Stat n={c.uncovered} label="uncovered" warn={c.uncovered > 0} />
-        </div>
-        {!c.fullyCovered && (
-          <p className="mt-3 text-sm" style={{ color: "#b1841c" }}>
-            Coverage is partial — this brief cannot be treated as complete. The
-            uncaptured sources below are surfaced honestly rather than hidden.
-          </p>
-        )}
-      </div>
-
-      {preflight.exclusions && preflight.exclusions.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold text-foreground">Uncaptured sources</h3>
-          <ul className="mt-2 space-y-2">
-            {preflight.exclusions.map((ex) => (
-              <li
-                key={ex.id}
-                className="rounded-lg p-3 text-xs"
-                style={{ border: "1px solid var(--border)" }}
-              >
-                <span
-                  className="mr-2 rounded px-1.5 py-0.5 font-semibold uppercase"
-                  style={{ background: "rgba(177,132,28,0.15)", color: "#b1841c" }}
-                >
-                  {ex.reason}
-                </span>
-                <code className="text-foreground">{ex.id}</code>
-                <span className="text-muted-foreground"> · {ex.kind} · {ex.locator}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="mt-5 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
-          style={{ border: "1px solid var(--border)" }}
-        >
-          ← Edit bundle
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onGenerate}
-          className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
-        >
-          {busy ? "Generating…" : "Generate trusted brief →"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function Stat({ n, label, warn }: { n: number; label: string; warn?: boolean }) {
-  return (
-    <div
-      className="rounded-lg px-3 py-2"
-      style={{
-        border: "1px solid var(--border)",
-        background: warn ? "rgba(177,132,28,0.08)" : undefined,
-      }}
-    >
-      <div className="text-xl font-bold text-foreground">{n}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-    </div>
   );
 }
