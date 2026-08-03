@@ -49,7 +49,17 @@ export function WorkstreamClient() {
   }
 
   if (step === "view" && pkg && result?.ok) {
-    return <BriefView pkg={pkg} onBack={reset} />;
+    return (
+      <BriefView
+        pkg={pkg}
+        onBack={reset}
+        onOpenCorrected={(successor) => {
+          // The successor is already validated (the server action self-validated it before
+          // returning), so open it directly in place of re-uploading.
+          setPkg(successor);
+        }}
+      />
+    );
   }
 
   return (

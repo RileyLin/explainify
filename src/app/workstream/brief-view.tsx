@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Claim, DecisionNeeded } from "@/lib/workstream/types";
+import type { Claim, CorrectionKind, DecisionNeeded } from "@/lib/workstream/types";
 import type { WorkstreamCheckpointPackage } from "@/lib/workstream/package";
+import { applyCorrectionAction } from "./actions";
 
 // Product view of a Workstream Brief. Maps the proven render.mjs section order and
 // trust semantics into React: first-viewport outcome + counts, always-visible
@@ -153,13 +154,31 @@ function Count({ n, label, warn }: { n: number; label: string; warn?: boolean })
 export function BriefView({
   pkg,
   onBack,
+  onOpenCorrected,
 }: {
   pkg: WorkstreamCheckpointPackage;
   onBack: () => void;
+  onOpenCorrected?: (successor: WorkstreamCheckpointPackage) => void;
 }) {
   const { brief, coverageReceipt: coverage } = pkg;
   const [openRaw, setOpenRaw] = useState<string | null>(null);
   const uncovered = coverage.requestedSourceCount - coverage.scannedSourceCount;
+
+  // Every claim/decision id, so a correction can target an existing item (the engine rejects any
+  // other target).
+  const targetIds = useMemo(() => {
+    const ids = [
+      brief.currentOutcome.id,
+      ...brief.sinceLastLooked.map((c) => c.id),
+      ...brief.reviewFirst.map((c) => c.id),
+      ...brief.verification.map((c) => c.id),
+      ...brief.risks.map((c) => c.id),
+      ...brief.blockers.map((c) => c.id),
+      ...brief.unknowns.map((c) => c.id),
+      ...brief.decisionsNeeded.map((d) => d.id),
+    ];
+    return ids;
+  }, [brief]);
 
   // The raw-source escape hatch joins the frozen manifest metadata (locator, captured,
   // exclusionReason) with the verbatim rawSources content the hashes were computed over.
@@ -210,6 +229,16 @@ export function BriefView({
         </p>
         <h1 className="mt-1 text-2xl font-bold text-foreground">{brief.workstreamId}</h1>
         <p className="mt-2 text-muted-foreground">{brief.objective}</p>
+        {brief.correctionOf && (
+          <p
+            className="mt-3 rounded-lg px-3 py-2 text-xs"
+            style={{ border: "1px solid var(--border)", background: "rgba(59,130,246,0.06)" }}
+          >
+            Corrected checkpoint · corrects{" "}
+            <code className="text-foreground">{brief.correctionOf}</code>. The immutable original is
+            bound inside this package and re-verified on open.
+          </p>
+        )}
       </header>
 
       <Band title="Current outcome">
@@ -327,6 +356,9 @@ export function BriefView({
         </div>
       </section>
 
+      {/* Correction — produce an immutable linked successor checkpoint */}
+      <CorrectionPanel pkg={pkg} targetIds={targetIds} onOpenCorrected={onOpenCorrected} />
+
       {/* Checkpoint receipt + export */}
       <section className="mt-4 rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
@@ -351,6 +383,208 @@ export function BriefView({
         </button>
       </section>
     </main>
+  );
+}
+
+const CORRECTION_KINDS: CorrectionKind[] = ["wrong", "missing", "stale", "misleading"];
+
+// Correction panel: select an existing claim, describe the correction, optionally attach a new
+// captured source, and mint a linked, immutable successor. The successor is produced by the
+// local-mode-gated server action (guard-before-parse); it embeds the byte-immutable original and
+// self-validates before it is returned, so a correction can never keep a green badge without
+// resolving, captured evidence. This UI never edits a claim in place.
+function CorrectionPanel({
+  pkg,
+  targetIds,
+  onOpenCorrected,
+}: {
+  pkg: WorkstreamCheckpointPackage;
+  targetIds: string[];
+  onOpenCorrected?: (successor: WorkstreamCheckpointPackage) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [targetClaimId, setTargetClaimId] = useState(targetIds[0] ?? "");
+  const [kind, setKind] = useState<CorrectionKind>("stale");
+  const [note, setNote] = useState("");
+  const [correctedText, setCorrectedText] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [made, setMade] = useState<{ json: string; checkpointId: string; downgraded: boolean } | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    setMade(null);
+    try {
+      // submittedAt is caller-supplied — the engine has no clock. Use the client wall-clock here.
+      const submittedAt = new Date().toISOString();
+      const r = await applyCorrectionAction(JSON.stringify(pkg), {
+        correctionKind: kind,
+        note: note.trim(),
+        submittedAt,
+        targetClaimId,
+        correctedText: correctedText.trim() || undefined,
+        // This UI does not ingest new raw sources; a correction here reclassifies/annotates. New
+        // captured evidence is added via the (Phase A) capture path, keeping raw-ID capture local.
+        intendedStatus: reason.trim() ? "inferred" : "unknown",
+        reason: reason.trim() || undefined,
+      });
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setMade({ json: r.packageJson, checkpointId: r.checkpointId, downgraded: r.downgraded });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function download() {
+    if (!made) return;
+    const blob = new Blob([made.json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${made.checkpointId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="mt-4 rounded-xl p-5" style={{ border: "1px solid var(--border)" }}>
+      <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Correction</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Record a correction against an existing claim. This never edits the original — it mints a
+        new, linked checkpoint that embeds the byte-immutable original. A claim can only stay{" "}
+        <em>observed</em> if its evidence still resolves and is captured; otherwise it is shown as an
+        honest unknown/inferred with a reason.
+      </p>
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-3 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+          style={{ border: "1px solid var(--border)" }}
+        >
+          Start a correction
+        </button>
+      )}
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-3">
+            <label className="text-xs text-muted-foreground">
+              Claim
+              <select
+                value={targetClaimId}
+                onChange={(e) => setTargetClaimId(e.target.value)}
+                className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                {targetIds.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-muted-foreground">
+              Kind
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as CorrectionKind)}
+                className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                {CORRECTION_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-xs text-muted-foreground">
+            Note (required)
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Why this claim is being corrected"
+              className="mt-1 block w-full rounded-lg bg-background p-2 text-xs text-foreground"
+              style={{ border: "1px solid var(--border)" }}
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Corrected text (optional)
+            <input
+              value={correctedText}
+              onChange={(e) => setCorrectedText(e.target.value)}
+              placeholder="Replacement claim text"
+              className="mt-1 block w-full rounded-lg bg-background p-2 text-xs text-foreground"
+              style={{ border: "1px solid var(--border)" }}
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Reason (shown when the claim becomes inferred; leave blank for a plain unknown)
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why the corrected claim is inferred rather than observed"
+              className="mt-1 block w-full rounded-lg bg-background p-2 text-xs text-foreground"
+              style={{ border: "1px solid var(--border)" }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!note.trim() || busy}
+            onClick={submit}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          >
+            {busy ? "Applying…" : "Apply correction →"}
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className="mt-3 text-sm" style={{ color: "#a42537" }}>
+          Correction refused: {error}
+        </p>
+      )}
+      {made && (
+        <div
+          className="mt-3 rounded-lg p-3 text-sm"
+          style={{ border: "1px solid var(--border)", background: "rgba(59,130,246,0.06)" }}
+        >
+          <p className="text-foreground">
+            New checkpoint <code>{made.checkpointId}</code> minted and verified.
+          </p>
+          {made.downgraded && (
+            <p className="mt-1 text-xs" style={{ color: "#b1841c" }}>
+              The corrected claim could not remain observed without captured evidence, so it was
+              recorded as an honest non-observed claim.
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={download}
+              className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              Export corrected checkpoint (.json)
+            </button>
+            {onOpenCorrected && (
+              <button
+                type="button"
+                onClick={() => onOpenCorrected(JSON.parse(made.json) as WorkstreamCheckpointPackage)}
+                className="rounded-lg px-3 py-1.5 text-xs text-blue-500 hover:underline"
+              >
+                Open corrected brief →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

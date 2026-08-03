@@ -77,7 +77,14 @@ export interface WorkstreamCheckpointPackage {
   manifest: WorkstreamManifest;
   coverageReceipt: CoverageReceipt;
   rawSources: RawSource[];
+  // Correction lineage (present only on a corrected successor package). A correction carries BOTH
+  // the successor (this package's brief/manifest/coverage/rawSources) AND the byte-immutable
+  // original it corrects (`previousPackage`), bound by a correction receipt. `previousCheckpointId`
+  // mirrors `brief.correctionOf` at the package header. The reader verifies the whole chain by
+  // re-validating the embedded original and checking the receipt binds the two (see step 5).
   correctionReceipt?: CorrectionReceipt;
+  previousCheckpointId?: string;
+  previousPackage?: WorkstreamCheckpointPackage;
 }
 
 export interface PackageCoverage {
@@ -333,43 +340,93 @@ export function validatePackage(input: unknown): ValidatePackageResult {
       fail("brief receipt unsupportedObservedClaimCount does not match the claims (tampered receipt)");
     }
 
-    // 5) Correction receipt handling. PM finding #3: a bare correctionReceipt cannot prove a
-    //    correction. verifyChain(pkg.brief, receipt) mistakes THIS brief for the original and, with
-    //    no corrected brief supplied, returns true for a receipt that merely *claims* an arbitrary
-    //    successor — a false positive. Sound verification requires BOTH the immutable original and
-    //    the successor bound together (previousCheckpointId + old/new semantic and manifest hashes,
-    //    verified with both sides). A single-brief WorkstreamCheckpointPackage cannot carry both, so
-    //    the current contract cannot attest a correction chain at all.
-    //
-    //    Therefore, until the correction/export slice extends the package to carry a verifiable
-    //    original snapshot, we FAIL CLOSED on any correctionReceipt rather than return a misleading
-    //    correctionVerified:true. We still validate what is checkable so the error is precise: the
-    //    receipt must be internally consistent (hash recomputes) and must bind THIS brief as the
-    //    successor (correctionOf + correctedCheckpointId + correctedSemanticBriefSha256). Whatever
-    //    the outcome, correctionVerified is never set true here.
-    const correctionVerified: boolean | null = null;
-    if (pkg.correctionReceipt) {
+    // 5) Correction chain. A corrected successor package carries BOTH sides: this package's own
+    //    (already-validated) brief/manifest/coverage AND the byte-immutable original it corrects,
+    //    embedded as `previousPackage` and bound by a `correctionReceipt`. Sound verification (PM
+    //    finding #3) requires proving the chain end-to-end from CONTENT, never trusting a stored
+    //    flag:
+    //      - the receipt hash recomputes from its core;
+    //      - the embedded original RE-VALIDATES fully on its own (its checkpointId recomputes from
+    //        its own raw sources → byte-immutability is proven, not asserted). It is validated
+    //        recursively, so a tampered original fails closed exactly like a top-level package;
+    //      - the header lineage agrees: previousCheckpointId == brief.correctionOf ==
+    //        receipt.originalCheckpointId == original.checkpointId;
+    //      - the receipt binds THIS package as the successor: correctedCheckpointId +
+    //        correctedSemanticBriefSha256 + successorBundleSha256 all reference this brief/manifest;
+    //      - a cited originalClaimId, if present, exists in the original brief.
+    //    Only when every check passes is correctionVerified true. Any correctionReceipt WITHOUT an
+    //    embedded, re-validating original still fails closed (a bare receipt can claim an arbitrary
+    //    successor). Badge honesty for the successor's own claims is already enforced by step 4 —
+    //    an observed corrected claim must carry captured, exactly-bound evidence, so a correction
+    //    cannot keep a green badge without resolving evidence.
+    let correctionVerified: boolean | null = null;
+    if (pkg.correctionReceipt || pkg.previousPackage || pkg.previousCheckpointId) {
       const receipt = pkg.correctionReceipt;
+      if (!receipt) fail("correction lineage present but correctionReceipt is missing");
+      if (!pkg.previousPackage) {
+        fail(
+          "correction receipt requires the byte-immutable original bound in the package " +
+            "(previousPackage); a bare receipt cannot attest a correction chain",
+        );
+      }
       const { correctionReceiptSha256, ...core } = receipt;
       if (hash(stable(core)) !== correctionReceiptSha256) {
         fail("correction receipt hash does not recompute (tampered correction receipt)");
       }
-      const thisIsSuccessor =
-        receipt.correctedCheckpointId === pkg.brief.checkpointId &&
-        pkg.brief.correctionOf === receipt.originalCheckpointId &&
-        receipt.correctedSemanticBriefSha256 === pkg.brief.receipt.semanticBriefSha256;
-      if (!thisIsSuccessor) {
+      // Re-validate the embedded original end-to-end. Its own checkpointId recomputes from its raw
+      // sources, so any mutation of the "immutable" original is caught here (fails closed).
+      const originalResult = validatePackage(pkg.previousPackage);
+      if (!originalResult.ok) {
+        fail(`embedded original package does not validate: ${originalResult.error}`);
+      }
+      const original = pkg.previousPackage;
+      const lineage = [
+        pkg.previousCheckpointId,
+        pkg.brief.correctionOf,
+        receipt.originalCheckpointId,
+        original.brief.checkpointId,
+      ];
+      if (new Set(lineage).size !== 1) {
         fail(
-          "correction receipt does not bind this package as the corrected successor " +
-            "(correctedCheckpointId / correctionOf / correctedSemanticBriefSha256 must reference this brief)",
+          "correction lineage disagrees (previousCheckpointId / brief.correctionOf / " +
+            "receipt.originalCheckpointId / original.checkpointId must all reference the same original)",
         );
       }
-      // Well-formed successor receipt, but the original snapshot is not carried by this package
-      // contract, so the chain cannot be verified end-to-end. Fail closed rather than overclaim.
-      fail(
-        "correction verification requires the immutable original to be bound in the package; " +
-          "the single-brief contract cannot attest a correction chain (pending the correction/export slice)",
-      );
+      // The receipt must bind THIS package as the corrected successor.
+      if (
+        receipt.correctedCheckpointId !== pkg.brief.checkpointId ||
+        receipt.correctedSemanticBriefSha256 !== pkg.brief.receipt.semanticBriefSha256 ||
+        receipt.successorBundleSha256 !== pkg.manifest.bundleSha256
+      ) {
+        fail(
+          "correction receipt does not bind this package as the corrected successor " +
+            "(correctedCheckpointId / correctedSemanticBriefSha256 / successorBundleSha256)",
+        );
+      }
+      // A distinct successor: a correction must actually change something.
+      if (original.brief.checkpointId === pkg.brief.checkpointId) {
+        fail("corrected checkpoint id must differ from the original");
+      }
+      // A cited claim must exist in the original brief.
+      if (receipt.originalClaimId) {
+        const originalClaimIds = new Set(
+          [
+            original.brief.currentOutcome,
+            ...original.brief.sinceLastLooked,
+            ...original.brief.reviewFirst,
+            ...original.brief.verification,
+            ...original.brief.risks,
+            ...original.brief.blockers,
+            ...original.brief.unknowns,
+          ]
+            .map((c) => c.id)
+            .concat(original.brief.decisionsNeeded.map((d) => d.id)),
+        );
+        if (!originalClaimIds.has(receipt.originalClaimId)) {
+          fail(`correction cites originalClaimId ${receipt.originalClaimId} absent from the original checkpoint`);
+        }
+      }
+      correctionVerified = true;
     }
 
     // 6) Secret scan the full package (defense in depth; the engine already scanned on mint).
