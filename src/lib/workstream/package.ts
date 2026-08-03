@@ -580,12 +580,17 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
       //      (e.g. `objective`) is a disallowed change. Removing the claim GROUPS avoids re-flagging
       //      the target we already validated, and the id-set check above already proved no
       //      claim/decision was added or removed.
+      // NOTE: freshnessCursor is deliberately NOT mutable across a correction (final review
+      // finding). A mutate-one-claim correction that added no whole-brief-covering evidence must
+      // not advance currency; leaving the cursor in briefResidue forces the successor's cursor to
+      // equal the parent's. Combined with step 3b (brief/manifest/coverage cursors must agree
+      // within a package) and the parent re-validating, the manifest/coverage cursors are pinned
+      // too. A caller that sets freshnessCursor: "2099-..." with zero new sources fails closed.
       const CORRECTION_MUTABLE_FIELDS = new Set([
         "checkpointId",
         "correctionOf",
         "correctionOfPackageSha256",
         "correctionReceiptPaths",
-        "freshnessCursor",
         "receipt",
       ]);
       const CLAIM_GROUP_FIELDS = new Set([

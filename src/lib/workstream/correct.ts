@@ -72,7 +72,11 @@ export interface PackageCorrectionInput {
   newSources?: CorrectionSourceInput[]; // evidence to ingest into the successor bundle
   citeSourceIds?: string[]; // sources (existing or newly ingested) the corrected claim cites
   reason?: string; // explicit reason recorded when the claim is unknown/inferred
-  freshnessCursor?: string; // optionally advance the cursor (defaults to the original's)
+  // freshnessCursor is intentionally NOT accepted (final review finding). A mutate-one-claim
+  // correction ALWAYS inherits the parent's freshness cursor verbatim. Advancing whole-brief
+  // currency overstates every untouched claim, so it belongs to a newly generated / re-evaluated
+  // checkpoint with evidence covering the whole brief — never to a correction that changed one
+  // claim and added no covering evidence. A caller that supplies one is rejected (see below).
 }
 
 export type ApplyPackageCorrectionResult =
@@ -165,6 +169,16 @@ export function applyPackageCorrection(
     if (!input.note || !input.note.trim()) fail("correction note is required");
     if (!input.submittedAt) fail("submittedAt is required (ISO timestamp, caller-supplied)");
     if (!input.targetClaimId) fail("targetClaimId is required");
+    // A correction may NOT advance the freshness cursor (final review finding). The field was
+    // dropped from the typed input, but reject it defensively so a caller casting through `any`
+    // cannot smuggle a future cursor — the successor always inherits the parent's cursor verbatim.
+    if ((input as { freshnessCursor?: unknown }).freshnessCursor !== undefined) {
+      fail(
+        "freshnessCursor may not be supplied to a correction: a mutate-one-claim correction inherits " +
+          "the parent's freshness. Advancing currency requires a newly generated checkpoint whose " +
+          "evidence covers the whole brief.",
+      );
+    }
 
     // 2) Build the successor bundle: the original sources + any newly-ingested sources. Duplicate
     //    ids are rejected so a correction cannot silently overwrite a frozen source.
@@ -174,7 +188,8 @@ export function applyPackageCorrection(
     for (const s of newSources) {
       if (existingIds.has(s.id)) fail(`new evidence source ${s.id} collides with an existing source id`);
     }
-    const freshnessCursor = input.freshnessCursor ?? original.manifest.freshnessCursor;
+    // Always inherit the parent's freshness cursor verbatim — a correction never advances currency.
+    const freshnessCursor = original.manifest.freshnessCursor;
     const successorBundle = {
       schemaVersion: 1,
       workstreamId: original.manifest.workstreamId,
