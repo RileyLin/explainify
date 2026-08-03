@@ -18,7 +18,21 @@ import {
   type PackageCorrectionInput,
 } from "@/lib/workstream/correct";
 
+// Reject an oversized raw payload BEFORE JSON.parse (re-review finding #2), so a multi-megabyte
+// string can never be parsed into memory. The ceiling is generous relative to the reader's own
+// MAX_PACKAGE_BYTES (256 KiB canonical) — a valid package serialized with indentation is larger
+// than its canonical form — but still bounds the parse. Measured in encoded UTF-8 bytes.
+const MAX_RAW_ACTION_BYTES = 1_048_576; // 1 MiB
+
+function rawByteLength(raw: string): number {
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(raw).length;
+  return unescape(encodeURIComponent(raw)).length;
+}
+
 function parseJson(raw: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  if (rawByteLength(raw) > MAX_RAW_ACTION_BYTES) {
+    return { ok: false, error: `Package exceeds the maximum accepted size of ${MAX_RAW_ACTION_BYTES} bytes.` };
+  }
   try {
     return { ok: true, value: JSON.parse(raw) };
   } catch (e) {
@@ -57,7 +71,7 @@ export type CorrectionActionResult =
  * Apply a correction to a validated checkpoint package and return the new successor package as
  * JSON, ready to download/export or re-open. Guards local mode BEFORE parsing any input, so a
  * private package can never be processed on the hosted server. The correction mutates one claim in
- * the immutable original (never regenerates a brief), embeds the byte-immutable original, and
+ * the original (never regenerates a brief), embeds the original bound by its canonical content hash, and
  * self-validates the full chain before returning. `downgraded` is true when an intended-observed
  * badge was forced to a non-observed status for lack of captured evidence.
  */

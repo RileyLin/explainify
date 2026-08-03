@@ -78,7 +78,7 @@ export interface WorkstreamCheckpointPackage {
   coverageReceipt: CoverageReceipt;
   rawSources: RawSource[];
   // Correction lineage (present only on a corrected successor package). A correction carries BOTH
-  // the successor (this package's brief/manifest/coverage/rawSources) AND the byte-immutable
+  // the successor (this package's brief/manifest/coverage/rawSources) AND the canonical-content-immutable
   // original it corrects (`previousPackage`), bound by a correction receipt. `previousCheckpointId`
   // mirrors `brief.correctionOf` at the package header. The reader verifies the whole chain by
   // re-validating the embedded original and checking the receipt binds the two (see step 5).
@@ -118,6 +118,15 @@ const SUPPORTED_PACKAGE_VERSION = 1;
 const MAX_CORRECTION_DEPTH = 24;
 const MAX_PACKAGE_BYTES = 262_144; // 256 KiB canonical serialization for the whole nested package
 const MAX_SOURCES_PER_PACKAGE = 512;
+const MAX_SOURCE_BYTES = 65_536; // 64 KiB per raw source (re-review finding #2)
+
+// Encoded UTF-8 byte length — NOT String.length, which counts UTF-16 code units and undercounts
+// multi-byte content (a 255 KB UTF-8 source can sit under a 262,144 code-unit cap). Falls back to a
+// conservative code-unit count if TextEncoder is unavailable.
+function utf8Bytes(value: string): number {
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(value).length;
+  return unescape(encodeURIComponent(value)).length;
+}
 
 // A claim's status is a strict runtime enum (PM finding #3). Anything else (e.g. "verified") is
 // rejected, so unknown data can never slip through as a cosmetically-trusted claim.
@@ -244,10 +253,20 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
     if (!Array.isArray(pkg.manifest.sources) || pkg.manifest.sources.length > MAX_SOURCES_PER_PACKAGE) {
       fail(`package exceeds the maximum of ${MAX_SOURCES_PER_PACKAGE} manifest sources`);
     }
+    // Per-source byte cap (re-review finding #2): a single huge raw source is refused before any
+    // hashing work, measured in encoded UTF-8 bytes.
+    if (Array.isArray(pkg.rawSources)) {
+      for (const s of pkg.rawSources) {
+        if (typeof s?.content === "string" && utf8Bytes(s.content) > MAX_SOURCE_BYTES) {
+          fail(`raw source ${s.id} exceeds the maximum of ${MAX_SOURCE_BYTES} bytes`);
+        }
+      }
+    }
     if (depth === 0) {
-      // Bound the WHOLE nested package once at the root; combined with the depth cap this makes the
-      // total validation cost bounded regardless of how the chain is shaped.
-      const totalBytes = stable(pkg).length;
+      // Bound the WHOLE nested package once at the root, in ENCODED UTF-8 BYTES (not UTF-16 code
+      // units); combined with the depth cap this makes the total validation cost bounded regardless
+      // of how the chain is shaped.
+      const totalBytes = utf8Bytes(stable(pkg));
       if (totalBytes > MAX_PACKAGE_BYTES) {
         fail(`package (with its correction chain) exceeds the maximum size of ${MAX_PACKAGE_BYTES} bytes`);
       }
@@ -420,7 +439,7 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
     }
 
     // 5) Correction chain. A corrected successor package carries BOTH sides: this package's own
-    //    (already-validated) brief/manifest/coverage AND the byte-immutable original it corrects,
+    //    (already-validated) brief/manifest/coverage AND the canonical-content-immutable original it corrects,
     //    embedded as `previousPackage` and bound by a `correctionReceipt`. Sound verification (PM
     //    finding #3) requires proving the chain end-to-end from CONTENT, never trusting a stored
     //    flag:
@@ -444,7 +463,7 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
       if (!receipt) fail("correction lineage present but correctionReceipt is missing");
       if (!pkg.previousPackage) {
         fail(
-          "correction receipt requires the byte-immutable original bound in the package " +
+          "correction receipt requires the original bound in the package by its canonical content hash " +
             "(previousPackage); a bare receipt cannot attest a correction chain",
         );
       }
@@ -517,13 +536,14 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
         fail("corrected checkpoint id must differ from the original");
       }
 
-      // 5b) The exactly-ONE-target delta (independent review finding #2). A correction may change
-      //     exactly one claim/decision — the receipt's originalClaimId — and nothing else. Diff the
-      //     parent's semantic claims/decisions against the successor's by id: every id present in
-      //     both must be byte-identical EXCEPT the target, and the id set may not change (no added or
-      //     removed claims). This rejects no-op corrections (nothing changed) and multi-target
-      //     corrections (more than the target changed) with a real semantic diff, not the old
-      //     checkpointId comparison (which always differed because correctionOf changed).
+      // 5b) The WHOLE allowed delta (re-review finding #1). A correction may change EXACTLY one
+      //     claim — the receipt's originalClaimId — plus the lineage/freshness bookkeeping that a
+      //     correction is defined to update, and it may add ONLY the sources that the corrected
+      //     target (or the receipt) actually cites. Everything else — every other claim/decision,
+      //     the objective and any other semantic brief field, and every parent source (metadata AND
+      //     raw content) — must be canonically identical to the parent. The earlier check compared
+      //     only claims/decisions, so a changed `objective` or an unreferenced added source slipped
+      //     through with correctionVerified:true. We now diff the entire package.
       if (!receipt.originalClaimId) {
         fail("correction receipt must name the originalClaimId it targets");
       }
@@ -535,6 +555,7 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
       if (!successorItems.has(receipt.originalClaimId)) {
         fail(`correction target ${receipt.originalClaimId} is absent from the corrected successor`);
       }
+      // (i) Claim/decision id set may not change, and exactly the target claim may differ.
       const originalKeys = [...originalItems.keys()].sort();
       const successorKeys = [...successorItems.keys()].sort();
       if (stable(originalKeys) !== stable(successorKeys)) {
@@ -553,13 +574,75 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
             "(a correction may mutate only its single named target)",
         );
       }
+      // (ii) Every OTHER semantic brief field must be canonically identical. We compare the two
+      //      briefs with the target claim, all claim/decision groups, and the fields a correction is
+      //      allowed to update (lineage + freshness + receipt) removed; anything left that differs
+      //      (e.g. `objective`) is a disallowed change. Removing the claim GROUPS avoids re-flagging
+      //      the target we already validated, and the id-set check above already proved no
+      //      claim/decision was added or removed.
+      const CORRECTION_MUTABLE_FIELDS = new Set([
+        "checkpointId",
+        "correctionOf",
+        "correctionOfPackageSha256",
+        "correctionReceiptPaths",
+        "freshnessCursor",
+        "receipt",
+      ]);
+      const CLAIM_GROUP_FIELDS = new Set([
+        "currentOutcome",
+        "sinceLastLooked",
+        "reviewFirst",
+        "verification",
+        "risks",
+        "blockers",
+        "unknowns",
+        "decisionsNeeded",
+      ]);
+      function briefResidue(brief: WorkstreamBrief): Record<string, unknown> {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(brief as unknown as Record<string, unknown>)) {
+          if (CORRECTION_MUTABLE_FIELDS.has(k) || CLAIM_GROUP_FIELDS.has(k)) continue;
+          out[k] = v;
+        }
+        return out;
+      }
+      if (stable(briefResidue(original.brief)) !== stable(briefResidue(pkg.brief))) {
+        fail("correction changed a non-target brief field (only the named claim, lineage, and freshness may change)");
+      }
+
+      // (iii) Sources: every parent source must be UNCHANGED (manifest entry + raw content), and the
+      //       only sources the successor may ADD are exactly those newly cited by the corrected
+      //       target claim or the receipt evidence. No parent source may be removed or mutated, and
+      //       no unreferenced source may be added (the added-unreferenced-source attack).
+      const originalManifestById = new Map(original.manifest.sources.map((s) => [s.id, stable(s)]));
+      const originalRawById = new Map(original.rawSources.map((s) => [s.id, s.content]));
+      const successorManifestById = new Map(pkg.manifest.sources.map((s) => [s.id, stable(s)]));
+      const successorRawById = new Map(pkg.rawSources.map((s) => [s.id, s.content]));
+      for (const [id, entry] of originalManifestById) {
+        if (!successorManifestById.has(id)) fail(`correction removed parent source ${id} (sources are immutable)`);
+        if (successorManifestById.get(id) !== entry) fail(`correction mutated parent source ${id} (sources are immutable)`);
+        if (successorRawById.get(id) !== originalRawById.get(id)) {
+          fail(`correction mutated the raw content of parent source ${id} (sources are immutable)`);
+        }
+      }
+      const addedSourceIds = [...successorManifestById.keys()].filter((id) => !originalManifestById.has(id));
+      // The set of source ids legitimately introduced by the correction = cited-by-target ∪
+      // cited-by-receipt, restricted to ids the parent did not already have.
+      const target = successorItems.get(receipt.originalClaimId)!;
+      const targetEvidence = ((JSON.parse(target) as { evidence?: Array<{ sourceId: string }> }).evidence ?? []);
+      const referencedIds = new Set<string>();
+      for (const link of targetEvidence) referencedIds.add(link.sourceId);
+      for (const link of receipt.evidence) referencedIds.add(link.sourceId);
+      for (const id of addedSourceIds) {
+        if (!referencedIds.has(id)) {
+          fail(`correction added source ${id} that the corrected claim/receipt does not cite (unreferenced addition)`);
+        }
+      }
 
       // 5c) Bind the receipt's own evidence through the SAME rules as claim evidence, and require it
       //     to equal the corrected target's evidence (independent review finding #2). Otherwise the
       //     receipt could cite a ghost source or attest evidence unrelated to what actually changed.
       for (const link of receipt.evidence) bindLink(`correction receipt`, link);
-      const target = successorItems.get(receipt.originalClaimId)!;
-      const targetEvidence = (JSON.parse(target) as { evidence?: unknown }).evidence ?? [];
       if (stable(receipt.evidence) !== stable(targetEvidence)) {
         fail("correction receipt evidence does not match the corrected target claim's evidence");
       }

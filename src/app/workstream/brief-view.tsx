@@ -237,8 +237,8 @@ export function BriefView({
             style={{ border: "1px solid var(--border)", background: "rgba(59,130,246,0.06)" }}
           >
             Corrected checkpoint · corrects{" "}
-            <code className="text-foreground">{brief.correctionOf}</code>. The immutable original is
-            bound inside this package and re-verified on open.
+            <code className="text-foreground">{brief.correctionOf}</code>. The original is bound
+            inside this package by its canonical content hash and re-verified on open.
           </p>
         )}
       </header>
@@ -390,9 +390,24 @@ export function BriefView({
 
 const CORRECTION_KINDS: CorrectionKind[] = ["wrong", "missing", "stale", "misleading"];
 
+// Kinds the freeze engine accepts (VALID_KINDS in freeze.mjs). The new-evidence control offers only
+// these so a correction can never be refused for an invalid kind (re-review finding #3 — the old
+// free-text default "file" was rejected by the engine).
+const SOURCE_KINDS = [
+  "test_receipt",
+  "command_receipt",
+  "deployment_receipt",
+  "git_commit",
+  "git_span",
+  "raft_message",
+  "raft_task_state",
+  "decision",
+];
+
 // Correction panel: select an existing claim, describe the correction, optionally attach a new
 // captured source, and mint a linked, immutable successor. The successor is produced by the
-// local-mode-gated server action (guard-before-parse); it embeds the byte-immutable original and
+// local-mode-gated server action (guard-before-parse); it embeds the original (bound by its
+// canonical content hash) and
 // self-validates before it is returned, so a correction can never keep a green badge without
 // resolving, captured evidence. This UI never edits a claim in place.
 function CorrectionPanel({
@@ -426,7 +441,7 @@ function CorrectionPanel({
     content: string;
     evidenceLevel: string;
     evidenceLabel: string;
-  }>({ id: "", kind: "file", locator: "", content: "", evidenceLevel: "receipt_attested", evidenceLabel: "local capture" });
+  }>({ id: "", kind: "test_receipt", locator: "", content: "", evidenceLevel: "receipt_attested", evidenceLabel: "local capture" });
   const [wantObserved, setWantObserved] = useState(false);
 
   const hasNewEvidence = wantObserved && newSource.id.trim() && newSource.content.length > 0;
@@ -497,7 +512,8 @@ function CorrectionPanel({
       <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Correction</h2>
       <p className="mt-1 text-xs text-muted-foreground">
         Record a correction against an existing claim. This never edits the original — it mints a
-        new, linked checkpoint that embeds the byte-immutable original. A claim can only stay{" "}
+        new, linked checkpoint that embeds the original, bound by its canonical content hash. A
+        claim can only stay{" "}
         <em>observed</em> if its evidence still resolves and is captured; otherwise it is shown as an
         honest unknown/inferred with a reason.
       </p>
@@ -512,14 +528,14 @@ function CorrectionPanel({
         </button>
       )}
       {open && (
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 min-w-0 space-y-3">
           <div className="flex flex-wrap gap-3">
-            <label className="text-xs text-muted-foreground">
+            <label className="min-w-0 max-w-full text-xs text-muted-foreground">
               Claim
               <select
                 value={targetClaimId}
                 onChange={(e) => setTargetClaimId(e.target.value)}
-                className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                className="mt-1 block w-full max-w-full min-w-0 truncate rounded-lg bg-background p-2 text-xs text-foreground"
                 style={{ border: "1px solid var(--border)" }}
               >
                 {targetIds.map((id) => (
@@ -529,12 +545,12 @@ function CorrectionPanel({
                 ))}
               </select>
             </label>
-            <label className="text-xs text-muted-foreground">
+            <label className="min-w-0 max-w-full text-xs text-muted-foreground">
               Kind
               <select
                 value={kind}
                 onChange={(e) => setKind(e.target.value as CorrectionKind)}
-                className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                className="mt-1 block max-w-full min-w-0 rounded-lg bg-background p-2 text-xs text-foreground"
                 style={{ border: "1px solid var(--border)" }}
               >
                 {CORRECTION_KINDS.map((k) => (
@@ -596,42 +612,47 @@ function CorrectionPanel({
                   downgraded honestly.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <label className="text-[11px] text-muted-foreground">
+                  <label className="min-w-0 max-w-full text-[11px] text-muted-foreground">
                     Source id
                     <input
                       value={newSource.id}
                       onChange={(e) => setNewSource((s) => ({ ...s, id: e.target.value }))}
                       placeholder="e.g. rerun-2026-08-03"
-                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      className="mt-1 block max-w-full min-w-0 rounded-lg bg-background p-2 text-xs text-foreground"
                       style={{ border: "1px solid var(--border)" }}
                     />
                   </label>
                   <label className="text-[11px] text-muted-foreground">
                     Kind
-                    <input
+                    <select
                       value={newSource.kind}
                       onChange={(e) => setNewSource((s) => ({ ...s, kind: e.target.value }))}
-                      placeholder="file · test_receipt · command_receipt · …"
-                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      className="mt-1 block max-w-full min-w-0 rounded-lg bg-background p-2 text-xs text-foreground"
                       style={{ border: "1px solid var(--border)" }}
-                    />
+                    >
+                      {SOURCE_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                  <label className="text-[11px] text-muted-foreground">
+                  <label className="min-w-0 max-w-full text-[11px] text-muted-foreground">
                     Locator (provenance)
                     <input
                       value={newSource.locator}
                       onChange={(e) => setNewSource((s) => ({ ...s, locator: e.target.value }))}
                       placeholder="where this evidence came from"
-                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      className="mt-1 block max-w-full min-w-0 rounded-lg bg-background p-2 text-xs text-foreground"
                       style={{ border: "1px solid var(--border)" }}
                     />
                   </label>
-                  <label className="text-[11px] text-muted-foreground">
+                  <label className="min-w-0 max-w-full text-[11px] text-muted-foreground">
                     Evidence level
                     <select
                       value={newSource.evidenceLevel}
                       onChange={(e) => setNewSource((s) => ({ ...s, evidenceLevel: e.target.value }))}
-                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      className="mt-1 block max-w-full min-w-0 rounded-lg bg-background p-2 text-xs text-foreground"
                       style={{ border: "1px solid var(--border)" }}
                     >
                       <option value="receipt_attested">receipt-attested</option>

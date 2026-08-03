@@ -5,7 +5,10 @@
 // original package, MUTATES exactly one existing claim in a clone of its brief, ingests any new
 // evidence into the successor's raw sources, and re-freezes the manifest / coverage / hashes with
 // the SAME generic engine primitives the reader uses. The original package is treated as
-// byte-immutable: it is embedded verbatim in the successor as `previousPackage`.
+// immutable by CANONICAL CONTENT: it is embedded in the successor as `previousPackage` and bound by
+// its canonical content hash (correctionOfPackageSha256), so any change to its parsed content is
+// caught. Serialized whitespace/property order is NOT preserved — the binding is over canonical
+// content, which is stronger and portable across (de)serialization.
 //
 // Badge honesty (PM acceptance spec msg 80220692): the corrected claim's status is DERIVED, not
 // trusted. A claim may be `observed` only when every cited source resolves to a CAPTURED manifest
@@ -142,7 +145,7 @@ function findClaimGroups(brief: WorkstreamBrief): Claim[][] {
 
 /**
  * Apply a correction to a VALIDATED original package and return a new, self-validating successor
- * package that embeds the byte-immutable original. Never calls buildBrief. Never throws — a bad
+ * package that embeds the original bound by its canonical content hash. Never calls buildBrief. Never throws — a bad
  * correction returns { ok: false, error }.
  */
 export function applyPackageCorrection(
@@ -335,7 +338,7 @@ export function applyPackageCorrection(
       correctionReceiptSha256: hash(stable(receiptCore)),
     };
 
-    // 9) Assemble the successor package embedding the byte-immutable original.
+    // 9) Assemble the successor package embedding the original (bound by its canonical content hash).
     const successor: WorkstreamCheckpointPackage = {
       packageVersion: original.packageVersion,
       workstreamId: manifest.workstreamId,
