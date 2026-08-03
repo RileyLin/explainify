@@ -317,13 +317,14 @@ function isAwsGcpPair(left, right) {
   return providers.size === 2 && providers.has("aws") && providers.has("gcp");
 }
 
-// Pick the capsule with the strictly-lower measured value. On an exact TIE the choice must NOT depend
-// on which capsule is left/right (PM re-review: tied metrics made forward say aws and role-swapped
-// say gcp). Break the tie deterministically by provider name so the result is role-order-independent.
-function lowerBy(a, aValue, b, bValue) {
+// Compare two measured values for one dimension. Returns the capsule with the STRICTLY-lower value,
+// or null on an EXACT tie. A tie is evidence of equality — it supports NEITHER provider on that
+// dimension, so we must NOT invent a winner (PM re-review msg 296ea4bf: lexicographic tie-breaking
+// was role-stable but evidence-false). The caller represents a tied dimension explicitly.
+function lowerOrTie(a, aValue, b, bValue) {
   if (aValue < bValue) return a;
   if (bValue < aValue) return b;
-  return a.environment.provider <= b.environment.provider ? a : b;
+  return null;
 }
 
 function buildRecommendation(left, right, claims, confounders) {
@@ -359,13 +360,45 @@ function buildRecommendation(left, right, claims, confounders) {
   const rightMetric = verification(right, "metric");
   const leftCost = verification(left, "cost");
   const rightCost = verification(right, "cost");
-  const lowerLatency = lowerBy(left, leftMetric.value, right, rightMetric.value);
-  const lowerCost = lowerBy(left, leftCost.value, right, rightCost.value);
+  // Each dimension resolves to the strictly-lower provider or a TIE (null). A tie is equal evidence:
+  // it favors NEITHER provider, and the text must say so rather than inventing a winner (PM re-review
+  // msg d67b098e). Role order does not matter — lowerOrTie compares by value, not by side.
+  const lowerLatency = lowerOrTie(left, leftMetric.value, right, rightMetric.value);
+  const lowerCost = lowerOrTie(left, leftCost.value, right, rightCost.value);
+  // Both decision measures tied → no provider is supported. Equal latency AND equal cost is honest
+  // evidence of parity, not a winner; emit supported:false with neutral, provider-free text (both
+  // provider names appear in a fixed sorted order so forward/swapped read identically).
+  if (!lowerLatency && !lowerCost) {
+    const pair = [left.environment.provider, right.environment.provider].sort().join(" and ");
+    return {
+      supported: false,
+      text: `For this frozen workload only, the observed p95 latency and frozen-basis cost measures are tied between ${pair}, so no provider is supported on the measured evidence; provider verification and a longer run remain required before deciding.`,
+      confidence: "low",
+      supportingClaims: ["performance", "cost", "operations"],
+      decisionDependsOn: ["operational model", "provider verification"],
+      leftEvidence,
+      rightEvidence,
+    };
+  }
+  // At least one dimension has a strict winner. Describe EACH dimension truthfully: a tied dimension is
+  // stated as tied and never attributed to a provider; a strict dimension names its lower provider.
+  let text;
+  if (lowerLatency && lowerCost && lowerLatency.id === lowerCost.id) {
+    // Both strict and agree on the same provider.
+    text = `For this frozen workload only, ${lowerLatency.environment.provider} is supported when the decision prioritizes the observed latency and cost measures; provider verification and a longer run remain required before adoption.`;
+  } else if (lowerLatency && lowerCost) {
+    // Both strict but split across providers.
+    text = `For this frozen workload only, prefer ${lowerLatency.environment.provider} when p95 latency dominates, or ${lowerCost.environment.provider} when the frozen-basis cost estimate dominates; operational-model preference remains a separate criterion.`;
+  } else if (lowerLatency) {
+    // Latency has a strict winner; cost is tied — recommend only on latency and state cost is tied.
+    text = `For this frozen workload only, prefer ${lowerLatency.environment.provider} when p95 latency dominates; the frozen-basis cost estimate is tied between the two runs and favors neither provider. Provider verification and a longer run remain required before adoption.`;
+  } else {
+    // Cost has a strict winner; latency is tied — recommend only on cost and state latency is tied.
+    text = `For this frozen workload only, prefer ${lowerCost.environment.provider} when the frozen-basis cost estimate dominates; p95 latency is tied between the two runs and favors neither provider. Provider verification and a longer run remain required before adoption.`;
+  }
   return {
     supported: true,
-    text: lowerLatency.id === lowerCost.id
-      ? `For this frozen workload only, ${lowerLatency.environment.provider} is supported when the decision prioritizes the observed latency and cost measures; provider verification and a longer run remain required before adoption.`
-      : `For this frozen workload only, prefer ${lowerLatency.environment.provider} when p95 latency dominates, or ${lowerCost.environment.provider} when the frozen-basis cost estimate dominates; operational-model preference remains a separate criterion.`,
+    text,
     confidence: "medium",
     supportingClaims: ["performance", "cost", "operations"],
     decisionDependsOn: ["latency priority", "cost scope", "operational model", "provider verification"],

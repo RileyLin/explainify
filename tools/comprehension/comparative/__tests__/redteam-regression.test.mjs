@@ -32,6 +32,20 @@ function rehashArtifact(artifact) {
   return artifact;
 }
 
+// Overwrite one measured dimension (metric|cost) on a capsule and re-bind its receipt content/hash,
+// so the engine reads the new value from validated evidence. Mirrors the PM's final-re-review helper.
+function setMeasure(capsule, kind, value) {
+  const measure = capsule.verification.find((item) => item.kind === kind);
+  measure.value = value;
+  const receipt = capsule.receipts.find((item) => item.id === measure.evidence[0]);
+  receipt.content = `${kind}=${value}; ${measure.scope}`;
+  receipt.sha256 = sha256(receipt.content);
+}
+
+// A provider name must never be asserted as a supported/preferred winner. This is the exact prose the
+// PM's floor forbids on a tied dimension.
+const WINNER_PROSE = /(aws|gcp) is supported|prefer (aws|gcp) when p95 latency|prefer (aws|gcp) when the frozen-basis/i;
+
 // PM #1 (Blocker) — a run compared to itself must NEVER yield an observed provider recommendation.
 // Identical ids are refused before the source map can collapse.
 test("red-team #1a: a self-comparison is refused (never an observed provider winner)", async () => {
@@ -220,4 +234,85 @@ test("re-review #1c: legacy writeComparison reports supported:false + neutral te
   assert.equal(result.recommendationSupported, false);
   assert.equal(artifact.recommendation.supported, false);
   assert.doesNotMatch(artifact.recommendation.text, /aws is supported/i);
+});
+
+// ── PM final re-review of 848746c (msg d67b098e): a TIED dimension is equal evidence and must favor
+//    NEITHER provider. The comparator returns an explicit tie, never a lexicographic winner. These
+//    assert: both-tied → no provider winner; a one-dimension tie is never attributed to a provider;
+//    and every ordering is role-invariant. ──
+
+// PM final #1: p95 AND cost exactly tied → supported:false, no winner prose, and forward/swapped read
+// identically (the tie is not broken by provider name or by which side is left).
+test("final #1: both measures tied yields no provider winner (supported:false), role-invariant", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const entry = cases.find((candidate) => candidate.id === "C01");
+  const right = structuredClone(entry.right);
+  setMeasure(right, "metric", entry.left.verification.find((i) => i.kind === "metric").value);
+  setMeasure(right, "cost", entry.left.verification.find((i) => i.kind === "cost").value);
+  rehashCapsule(right);
+
+  const forward = compareCapsules(entry.left, right, "both tied");
+  const swapped = compareCapsules(right, entry.left, "both tied");
+
+  assert.equal(forward.artifact.recommendation.supported, false);
+  assert.equal(swapped.artifact.recommendation.supported, false);
+  // No provider is ever named as supported/preferred when both measures tie.
+  assert.doesNotMatch(forward.artifact.recommendation.text, WINNER_PROSE);
+  assert.doesNotMatch(swapped.artifact.recommendation.text, WINNER_PROSE);
+  assert.match(forward.artifact.recommendation.text, /tied/i);
+  // Role-invariant text.
+  assert.equal(forward.artifact.recommendation.text, swapped.artifact.recommendation.text);
+
+  const forwardPackage = comparisonToPackage(forward.artifact, forward.left, forward.right);
+  const swappedPackage = comparisonToPackage(swapped.artifact, swapped.left, swapped.right);
+  assert.equal(forwardPackage.brief.currentOutcome.status, "not_comparable");
+  assert.equal(swappedPackage.brief.currentOutcome.status, "not_comparable");
+  assert.doesNotMatch(forwardPackage.brief.currentOutcome.text, WINNER_PROSE);
+  assert.equal(
+    forwardPackage.brief.currentOutcome.text,
+    swappedPackage.brief.currentOutcome.text,
+  );
+});
+
+// PM final #2: latency tied, GCP strictly cheaper → recommend ONLY on cost, and NEVER claim latency
+// favors a provider ("prefer aws when p95 latency dominates" is the exact false-preference bug).
+test("final #2: latency tied + strict cheaper cost recommends only on cost, latency never attributed", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const entry = cases.find((candidate) => candidate.id === "C01");
+  const right = structuredClone(entry.right);
+  setMeasure(right, "metric", entry.left.verification.find((i) => i.kind === "metric").value);
+  setMeasure(right, "cost", 0.2); // GCP strictly cheaper
+  rehashCapsule(right);
+
+  const forward = compareCapsules(entry.left, right, "latency tied, gcp cheaper");
+  const swapped = compareCapsules(right, entry.left, "latency tied, gcp cheaper");
+
+  assert.equal(forward.artifact.recommendation.supported, true);
+  // Latency is tied → it must be stated as tied and never as a provider preference.
+  assert.match(forward.artifact.recommendation.text, /latency is tied/i);
+  assert.doesNotMatch(forward.artifact.recommendation.text, /prefer (aws|gcp) when p95 latency/i);
+  // Cost has a strict winner (GCP) → recommending on cost is legitimate.
+  assert.match(forward.artifact.recommendation.text, /prefer gcp when the frozen-basis cost/i);
+  // Role-invariant.
+  assert.equal(forward.artifact.recommendation.text, swapped.artifact.recommendation.text);
+});
+
+// PM final #3 (symmetric): cost tied, one provider strictly faster → recommend ONLY on latency, and
+// NEVER claim cost favors a provider.
+test("final #3: cost tied + strict faster latency recommends only on latency, cost never attributed", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const entry = cases.find((candidate) => candidate.id === "C01");
+  const right = structuredClone(entry.right);
+  setMeasure(right, "cost", entry.left.verification.find((i) => i.kind === "cost").value);
+  setMeasure(right, "metric", 999); // left (aws) strictly faster
+  rehashCapsule(right);
+
+  const forward = compareCapsules(entry.left, right, "cost tied, aws faster");
+  const swapped = compareCapsules(right, entry.left, "cost tied, aws faster");
+
+  assert.equal(forward.artifact.recommendation.supported, true);
+  assert.match(forward.artifact.recommendation.text, /latency is tied|cost estimate is tied/i);
+  assert.doesNotMatch(forward.artifact.recommendation.text, /prefer (aws|gcp) when the frozen-basis cost/i);
+  assert.match(forward.artifact.recommendation.text, /prefer aws when p95 latency/i);
+  assert.equal(forward.artifact.recommendation.text, swapped.artifact.recommendation.text);
 });
