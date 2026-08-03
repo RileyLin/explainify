@@ -29,6 +29,12 @@ export function SiteFooter() {
             Workstream
           </Link>
           <Link
+            href="/compare-runs"
+            className="text-sm transition-colors text-muted-foreground hover:text-foreground"
+          >
+            Compare Runs
+          </Link>
+          <Link
             href="/privacy"
             className="text-sm transition-colors text-muted-foreground hover:text-foreground"
           >
