@@ -620,40 +620,17 @@ function CTASection() {
   );
 }
 
-// ── Footer ──────────────────────────────────────────────────────────
-function Footer() {
-  return (
-    <footer
-      className="py-8 bg-background"
-      style={{ borderTop: "1px solid var(--border)" }}
-    >
-      <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">
-          Explainify · Driftworks, Inc
-        </span>
-        <a
-          href="https://github.com/RileyLin/explainify"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm transition-colors hover:text-slate-300 text-muted-foreground"
-        >
-          GitHub
-        </a>
-      </div>
-    </footer>
-  );
-}
-
 // ── Page ────────────────────────────────────────────────────────────
+// The site-wide footer (with Pricing/Privacy/Terms/GitHub) is rendered by the
+// root layout, so the homepage no longer defines its own footer.
 export default function HomePage() {
   return (
-    <div className="bg-background min-h-screen">
+    <div className="bg-background">
       <HeroSection />
       <HowItWorksSection />
       <TemplatesSection />
       <CTASection />
       <WaitlistCapture />
-      <Footer />
     </div>
   );
 }

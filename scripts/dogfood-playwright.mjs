@@ -94,6 +94,75 @@ try {
   await browser.close();
 }
 
+// ── Navigation discoverability (task #17 REVISE) ─────────────────────────
+// A direct-URL 200 is not enough: a normal user browsing from the homepage must
+// be able to FIND and CLICK entry points to Pricing / Privacy / Terms on both
+// desktop and mobile. Assert each link is visible from "/" and navigates to the
+// right route by clicking it (no typing the URL).
+const NAV_TARGETS = [
+  { name: "pricing", path: "/pricing", pattern: /\/pricing\/?$/ },
+  { name: "privacy", path: "/privacy", pattern: /\/privacy\/?$/ },
+  { name: "terms", path: "/terms", pattern: /\/terms\/?$/ },
+];
+
+const navResults = [];
+const navBrowser = await chromium.launch({ headless: true });
+try {
+  for (const vp of VIEWPORTS) {
+    for (const target of NAV_TARGETS) {
+      const context = await navBrowser.newContext({
+        viewport: { width: vp.width, height: vp.height },
+      });
+      const page = await context.newPage();
+      let visible = false;
+      let navigatedTo = null;
+      let error = null;
+      try {
+        await page.goto(BASE + "/", { waitUntil: "networkidle", timeout: 30000 });
+        // The link must be a real, visible, clickable element reachable from "/".
+        const link = page.locator(`a[href="${target.path}"]:visible`).first();
+        visible = (await link.count()) > 0 && (await link.isVisible());
+        if (visible) {
+          await link.click();
+          // Next.js <Link> does a client-side push, so waiting on "networkidle"
+          // races the router. Wait explicitly for the URL to become the target.
+          try {
+            await page.waitForURL(target.pattern, { timeout: 15000 });
+          } catch {
+            // fall through; navigatedTo below records where we actually landed
+          }
+          await page.waitForLoadState("networkidle", { timeout: 30000 });
+          navigatedTo = new URL(page.url()).pathname;
+        }
+      } catch (e) {
+        error = String(e.message || e);
+      }
+      const ok = visible && navigatedTo !== null && target.pattern.test(navigatedTo);
+      navResults.push({
+        target: target.name,
+        viewport: vp.kind,
+        visibleFromHome: visible,
+        navigatedTo,
+        ok,
+        error,
+      });
+      await context.close();
+    }
+  }
+} finally {
+  await navBrowser.close();
+}
+
 const failed = results.filter((r) => !r.ok);
-console.log(JSON.stringify({ base: BASE, out: OUT, total: results.length, failed: failed.length, results }, null, 2));
-process.exit(failed.length === 0 ? 0 : 1);
+const navFailed = navResults.filter((r) => !r.ok);
+console.log(JSON.stringify({
+  base: BASE,
+  out: OUT,
+  total: results.length,
+  failed: failed.length,
+  results,
+  navTotal: navResults.length,
+  navFailed: navFailed.length,
+  navResults,
+}, null, 2));
+process.exit(failed.length === 0 && navFailed.length === 0 ? 0 : 1);

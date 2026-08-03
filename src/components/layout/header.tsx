@@ -21,7 +21,7 @@ export function Header() {
           </Link>
           <Link
             href="/pricing"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted hidden sm:block"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-muted"
           >
             Pricing
           </Link>
