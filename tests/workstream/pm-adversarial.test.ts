@@ -103,6 +103,10 @@ describe("PM adversarial package audit (regression guard — must now fail close
       correctedSemanticBriefSha256: "0".repeat(64),
       successorBundleSha256: pkg.manifest.bundleSha256,
       sameInputCheckpoint: false,
+      originalSemanticBriefSha256: "0".repeat(64),
+      originalManifestSha256: "0".repeat(64),
+      originalCoverageReceiptSha256: "0".repeat(64),
+      originalPackageSha256: "0".repeat(64),
     };
     pkg.correctionReceipt = {
       ...core,

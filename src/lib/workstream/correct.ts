@@ -256,20 +256,29 @@ export function applyPackageCorrection(
       }
     }
     if (!mutated) {
-      // Allow correcting a decision by id too (its evidence binds under the same rule).
-      for (const decision of cloned.decisionsNeeded) {
-        if (decision.id === input.targetClaimId) {
-          decision.evidence = evidence;
-          mutated = true;
-        }
+      // Decisions are intentionally NOT correctable in this claim-correction slice (PM finding #6).
+      // The decision path used to replace only a decision's evidence while silently ignoring the
+      // requested text/status/reason and still minting a successor — a control whose change is
+      // dropped. Reject a decision target with a clear error; honest decision reclassification is a
+      // separate, scoped slice.
+      if (cloned.decisionsNeeded.some((d) => d.id === input.targetClaimId)) {
+        fail(
+          `targetClaimId ${input.targetClaimId} is a decision; decision correction is not supported in ` +
+            "this claim-correction slice (target a claim instead)",
+        );
       }
+      fail(`targetClaimId ${input.targetClaimId} is not a claim in the original brief`);
     }
-    if (!mutated) fail(`targetClaimId ${input.targetClaimId} is not a claim or decision in the original brief`);
 
     // 7) Link the successor to the immutable original and re-finalize with the engine's hashing
     //    tail (checkpointId over semantic-with-blank-id, then the semantic hash). Mirrors buildBrief
-    //    exactly, but never derives claims.
+    //    exactly, but never derives claims. We commit the WHOLE canonical original's hash into the
+    //    SEMANTIC brief (correctionOfPackageSha256), so the successor's checkpointId binds the exact
+    //    parent content — the reader recomputes it and a swapped/mutated parent fails closed
+    //    (independent review finding #1).
+    const originalPackageSha256 = hash(stable(original));
     cloned.correctionOf = originalBrief.checkpointId;
+    cloned.correctionOfPackageSha256 = originalPackageSha256;
     cloned.correctionReceiptPaths = ["correction-receipt.json"];
     cloned.freshnessCursor = freshnessCursor;
 
@@ -301,7 +310,9 @@ export function applyPackageCorrection(
       },
     };
 
-    // 8) Correction receipt binds original ↔ successor from CONTENT (recomputed hashes).
+    // 8) Correction receipt binds original ↔ successor from CONTENT (recomputed hashes). The four
+    //    original* hashes bind the parent by content (independent review finding #1) so the reader
+    //    can recompute each from the embedded original and fail closed on any parent swap/mutation.
     const receiptCore = {
       schemaVersion: 1,
       originalCheckpointId: originalBrief.checkpointId,
@@ -314,6 +325,10 @@ export function applyPackageCorrection(
       correctedSemanticBriefSha256: semanticBriefSha256,
       successorBundleSha256: manifest.bundleSha256,
       sameInputCheckpoint: false,
+      originalSemanticBriefSha256: originalBrief.receipt.semanticBriefSha256,
+      originalManifestSha256: original.manifest.bundleSha256,
+      originalCoverageReceiptSha256: hash(stable(original.coverageReceipt)),
+      originalPackageSha256,
     };
     const correctionReceipt = {
       ...receiptCore,

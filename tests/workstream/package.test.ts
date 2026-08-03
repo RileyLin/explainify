@@ -325,6 +325,10 @@ describe("validatePackage — fails closed on tamper", () => {
       correctedSemanticBriefSha256: "0".repeat(64),
       successorBundleSha256: t.manifest.bundleSha256,
       sameInputCheckpoint: false,
+      originalSemanticBriefSha256: "0".repeat(64),
+      originalManifestSha256: "0".repeat(64),
+      originalCoverageReceiptSha256: "0".repeat(64),
+      originalPackageSha256: "0".repeat(64),
     };
     t.correctionReceipt = {
       ...core,

@@ -19,7 +19,10 @@ function StatusBadge({ status }: { status: string }) {
     inferred: { fg: "#7b570f", bg: "rgba(155,112,21,0.14)" },
     needed: { fg: "#a42537", bg: "rgba(164,37,55,0.12)" },
   };
-  const c = map[status] || map.observed;
+  // NEVER fall back to the observed (green) style for an unrecognized status (independent review
+  // finding #3) — an unknown/untrusted status must never render as trusted. Default to a neutral
+  // amber caution style instead.
+  const c = map[status] || { fg: "#7b570f", bg: "rgba(155,112,21,0.14)" };
   return (
     <span
       className="mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
@@ -103,7 +106,7 @@ function ClaimItem({ claim, onOpenRaw }: { claim: Claim; onOpenRaw: (id: string)
         <StatusBadge status={claim.status} />
         <span>{claim.text}</span>
       </div>
-      {claim.status === "unknown" && (
+      {claim.status !== "observed" && (
         <p className="mt-1 text-xs" style={{ color: "#b1841c" }}>
           {claim.unknownReason || `Missing: ${(claim.missingSourceIds || []).join(", ")}`}
         </p>
@@ -164,10 +167,11 @@ export function BriefView({
   const [openRaw, setOpenRaw] = useState<string | null>(null);
   const uncovered = coverage.requestedSourceCount - coverage.scannedSourceCount;
 
-  // Every claim/decision id, so a correction can target an existing item (the engine rejects any
-  // other target).
+  // Correctable targets are CLAIMS only (PM finding #6). Decisions are intentionally excluded from
+  // this claim-correction slice — the API rejects a decision target — so we do not offer a control
+  // whose requested change would be silently dropped.
   const targetIds = useMemo(() => {
-    const ids = [
+    return [
       brief.currentOutcome.id,
       ...brief.sinceLastLooked.map((c) => c.id),
       ...brief.reviewFirst.map((c) => c.id),
@@ -175,9 +179,7 @@ export function BriefView({
       ...brief.risks.map((c) => c.id),
       ...brief.blockers.map((c) => c.id),
       ...brief.unknowns.map((c) => c.id),
-      ...brief.decisionsNeeded.map((d) => d.id),
     ];
-    return ids;
   }, [brief]);
 
   // The raw-source escape hatch joins the frozen manifest metadata (locator, captured,
@@ -412,6 +414,23 @@ function CorrectionPanel({
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ json: string; checkpointId: string; downgraded: boolean } | null>(null);
 
+  // Optional new captured evidence (PM finding #7). Without this the positive observed-correction
+  // path is unreachable in-product — every UI correction could only downgrade. A new source is
+  // captured locally (id/kind/locator/content + provenance); when the target claim cites at least
+  // one captured source that resolves, it may honestly stay/become observed. Capture stays local:
+  // the content is hashed in-process by the same generic freeze primitives, never uploaded.
+  const [newSource, setNewSource] = useState<{
+    id: string;
+    kind: string;
+    locator: string;
+    content: string;
+    evidenceLevel: string;
+    evidenceLabel: string;
+  }>({ id: "", kind: "file", locator: "", content: "", evidenceLevel: "receipt_attested", evidenceLabel: "local capture" });
+  const [wantObserved, setWantObserved] = useState(false);
+
+  const hasNewEvidence = wantObserved && newSource.id.trim() && newSource.content.length > 0;
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -419,16 +438,38 @@ function CorrectionPanel({
     try {
       // submittedAt is caller-supplied — the engine has no clock. Use the client wall-clock here.
       const submittedAt = new Date().toISOString();
+      // When the user captures a new source and asks to keep the claim observed, ingest it as a
+      // captured source and cite it. Badge honesty still applies server-side: the successor claim
+      // becomes observed only if the cited source actually resolves + is captured, else it is
+      // downgraded with a reason. Without new evidence, the correction reclassifies to
+      // inferred/unknown.
       const r = await applyCorrectionAction(JSON.stringify(pkg), {
         correctionKind: kind,
         note: note.trim(),
         submittedAt,
         targetClaimId,
         correctedText: correctedText.trim() || undefined,
-        // This UI does not ingest new raw sources; a correction here reclassifies/annotates. New
-        // captured evidence is added via the (Phase A) capture path, keeping raw-ID capture local.
-        intendedStatus: reason.trim() ? "inferred" : "unknown",
-        reason: reason.trim() || undefined,
+        ...(hasNewEvidence
+          ? {
+              intendedStatus: "observed" as const,
+              newSources: [
+                {
+                  id: newSource.id.trim(),
+                  kind: newSource.kind.trim() || "file",
+                  locator: newSource.locator.trim() || newSource.id.trim(),
+                  content: newSource.content,
+                  evidenceLevel: newSource.evidenceLevel.trim() || "receipt_attested",
+                  evidenceLabel: newSource.evidenceLabel.trim() || "local capture",
+                  captured: true,
+                },
+              ],
+              citeSourceIds: [newSource.id.trim()],
+              reason: reason.trim() || undefined,
+            }
+          : {
+              intendedStatus: (reason.trim() ? "inferred" : "unknown") as "inferred" | "unknown",
+              reason: reason.trim() || undefined,
+            }),
       });
       if (!r.ok) {
         setError(r.error);
@@ -534,9 +575,87 @@ function CorrectionPanel({
               style={{ border: "1px solid var(--border)" }}
             />
           </label>
+
+          {/* Optional new captured evidence (PM finding #7): the only in-product way to keep/raise a
+              corrected claim to observed. Capture is local — the content is hashed in-process and
+              never uploaded. Badge honesty is still enforced server-side. */}
+          <div className="rounded-lg p-3" style={{ border: "1px dashed var(--border)" }}>
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={wantObserved}
+                onChange={(e) => setWantObserved(e.target.checked)}
+              />
+              Attach a new captured source and keep this claim <em>observed</em>
+            </label>
+            {wantObserved && (
+              <div className="mt-2 space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Captured locally and hashed in your Explainify process — nothing is uploaded. The
+                  claim stays observed only if this source resolves and is captured; otherwise it is
+                  downgraded honestly.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <label className="text-[11px] text-muted-foreground">
+                    Source id
+                    <input
+                      value={newSource.id}
+                      onChange={(e) => setNewSource((s) => ({ ...s, id: e.target.value }))}
+                      placeholder="e.g. rerun-2026-08-03"
+                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      style={{ border: "1px solid var(--border)" }}
+                    />
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Kind
+                    <input
+                      value={newSource.kind}
+                      onChange={(e) => setNewSource((s) => ({ ...s, kind: e.target.value }))}
+                      placeholder="file · test_receipt · command_receipt · …"
+                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      style={{ border: "1px solid var(--border)" }}
+                    />
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Locator (provenance)
+                    <input
+                      value={newSource.locator}
+                      onChange={(e) => setNewSource((s) => ({ ...s, locator: e.target.value }))}
+                      placeholder="where this evidence came from"
+                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      style={{ border: "1px solid var(--border)" }}
+                    />
+                  </label>
+                  <label className="text-[11px] text-muted-foreground">
+                    Evidence level
+                    <select
+                      value={newSource.evidenceLevel}
+                      onChange={(e) => setNewSource((s) => ({ ...s, evidenceLevel: e.target.value }))}
+                      className="mt-1 block rounded-lg bg-background p-2 text-xs text-foreground"
+                      style={{ border: "1px solid var(--border)" }}
+                    >
+                      <option value="receipt_attested">receipt-attested</option>
+                      <option value="independently_verified">independently verified</option>
+                    </select>
+                  </label>
+                </div>
+                <label className="block text-[11px] text-muted-foreground">
+                  Content (hashed as the evidence)
+                  <textarea
+                    value={newSource.content}
+                    onChange={(e) => setNewSource((s) => ({ ...s, content: e.target.value }))}
+                    placeholder="Paste the verbatim evidence content this claim relies on"
+                    className="mt-1 block h-24 w-full rounded-lg bg-background p-2 font-mono text-[11px] text-foreground"
+                    style={{ border: "1px solid var(--border)" }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
-            disabled={!note.trim() || busy}
+            disabled={!note.trim() || busy || (wantObserved && !hasNewEvidence)}
             onClick={submit}
             className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
           >
