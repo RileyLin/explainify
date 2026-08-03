@@ -17,5 +17,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     globals: true,
+    // Vitest suites all live under tests/. The comparative engine (tools/comprehension/comparative)
+    // ships its own node:test suite run via `npm run test:comparative`; scoping the include glob to
+    // tests/ keeps vitest from mis-collecting those node:test files as (empty) vitest suites.
+    include: ["tests/**/*.{test,spec}.{ts,tsx}"],
   },
 });

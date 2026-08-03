@@ -12,14 +12,24 @@ export interface EvidenceLink {
   evidenceLabel: string;
 }
 
+// Claim status is a strict runtime enum (enforced by the reader). `not_comparable` (task #23)
+// is a first-class NON-observed state for comparative briefs: two sides carry real bilateral
+// evidence but an equivalence gate (code/region/metric-basis/pricing/…) failed, so no honest
+// comparison can be drawn. It is NOT a cosmetically-green observed claim and NOT silently
+// flattened to unknown — it renders amber, keeps its confounders (in `unknownReason`) and any
+// missing conditions, and its evidence links are bound exactly like every other status.
 export interface Claim {
   id: string;
   text: string;
-  status: "observed" | "unknown" | "inferred";
+  status: "observed" | "unknown" | "inferred" | "not_comparable";
   evidence: EvidenceLink[];
   unknownReason?: string;
   missingSourceIds?: string[];
   reclassifiedFromDecision?: string;
+  // Comparative confounders (task #23): the equivalence dimensions that blocked comparison. Kept
+  // distinct from coverage — a claim can be fully covered yet not_comparable because the two sides
+  // are not equivalent. Purely descriptive; the reason of record for the badge is `unknownReason`.
+  confounders?: string[];
 }
 
 export interface DecisionNeeded {

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "Comparative benchmark frozen rate card",
+  "currency": "USD",
+  "effectiveAt": "2026-08-01T00:00:00.000Z",
+  "source": "Explainify synthetic benchmark rate card v0.1",
+  "rates": {
+    "aws": {
+      "computeUnitHour": 0.096,
+      "requestMillion": 0.2
+    },
+    "gcp": {
+      "computeUnitHour": 0.089,
+      "requestMillion": 0.22
+    }
+  },
+  "notes": [
+    "Synthetic rates exist only to make benchmark arithmetic reproducible.",
+    "They are not current provider quotes and must not be used for purchasing."
+  ]
+}

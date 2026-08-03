@@ -1,0 +1,4244 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "notComparableDimensions": [],
+        "recommendationSupported": true
+      },
+      "id": "C01",
+      "left": {
+        "agent": {
+          "executionId": "C01-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "0f0c83a0cb8de671a64e08c2364542fa",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "0eef5ead64fd738f07b971c17f3f1b61",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C01-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "956f27bb111addf8798c40e13f7d5837cf12b0734c4f514b77b6e3e42d7665ef",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "e083595e8b3815bb43e7fdf56a8079d93bc6432f2f0eba347c6ff1af31e27a3b",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C01-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "feb0194642831a942300fe9675a20820",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "27ca37d4a78ccff3a23b71a7432725d3",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C01-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "1aae559c74cfe6660678d36cdd7daebe82152156219165d6480d27f5da501812",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "5cc3de53fced4fefdcad978182026fa38ca90218520ed3bc96539087623b0558",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Equivalent pinned AWS and GCP runs"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "performance"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C02",
+      "left": {
+        "agent": {
+          "executionId": "C02-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "a3cd62af39156673e62da8ff4e500c61",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "7425d8cc797fac5f6be4f628a4df712f",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-2",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C02-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "e2347bbf6b4a5163ac136be4d49b8abf898dfca83112b294e6695b1840986fc2",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "786b36f01a3044378624f9862fc01a0700094affcad9cde379344a825d923800",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-2; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "1cca6a4d09ebe95c217cb839a5aca2562d44ce6cf53631793ee86f87cdaf2cff"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=118ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "ad1dd1630317a94b0404b8f708cdebf54940a3c53d5114f3f6b135a84d1f3ea7"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 118
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C02-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "bcef0a61eb73473e71c495bc98d1f1db",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "a9192f715f8faa8e626c11aa2afe1392",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "europe-west1",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C02-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "6dae04ca0c8d5dd2b883334306266c870b0a645012d6af4a3f414169cbcfae4f",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "1175a75e8feea224a3437c76e71a3962d4e2a0952b1708bc91c59e5529f3a856",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=europe-west1; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "ded7f5117147b2db6be794299b664d56227cb2da9ab9900fed25c18db0fc3047"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=168ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "fd5dcad98089aef724167a2141962f046c8fd3ac9b9e3258ff91077759fc9aa5"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 168
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Different regions and latency baselines"
+    },
+    {
+      "expected": {
+        "dirtyRejectedAsReproducible": true,
+        "notComparableDimensions": [
+          "behavior",
+          "performance",
+          "cost"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C03",
+      "left": {
+        "agent": {
+          "executionId": "C03-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "8b2f8dd3a46da4b599d91c5be024165f",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "33c677a9d7848229d962eb9f1725467e",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C03-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "551a1de0e390bf0ee0557a71867be83ac8a27ba86ed64ba4ed21c50f0519276c",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "98efc0baa3dcfcb3f9b911cea3455f4c942376e9a89d6a85fdae7b59b1cf5579",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: dirty; revision=ac0d7e7ec684b2d0994a8620dd3dc575e218780b",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "2946a0654fe2ea25e7c750e33d4930888d280ce48766a8ac91826e9d33e8b30b"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "bounded diff sha256=52c6e...; files=1",
+            "id": "receipt:git-diff",
+            "kind": "git_diff",
+            "sha256": "0c92ef124ce3fb29228fd5e2bd5603e47ca12d225d3e92d633f99153e894fe91"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": true,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": false,
+          "revision": "ac0d7e7ec684b2d0994a8620dd3dc575e218780b",
+          "statusEvidence": [
+            "receipt:git-status",
+            "receipt:git-diff"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C03-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "c5621bd40c657d45102a6065a6dd45a3",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "2e3494526137c83195d05a937f629f53",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C03-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "655f61b82781aea3415009f415638b7abee03c54c95f8e14203b839f8a90e0df",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "6ca8ceb5da609f04357108343e66a3a04dfa513927be843de6dd4a2c78635029",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Different revision with dirty left tree"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "performance",
+          "cost"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C04",
+      "left": {
+        "agent": {
+          "executionId": "C04-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "78a4783f304e0035daed72d4f57ea00c",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "3e32236a1e1e3691e409da5bf6567eab",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C04-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "99c6a059c150f00b432477217f69f1b46026f27776af39f76a11db3d47b89c28",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "8a5e1624346bda385e91a3011b6582f13ac7e30a00b037b4dd7b58c881f1ae57",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C04-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "25cd44c3ce96331135e9e81c0a650f63",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "51f116df110a268ff632d16437d9982b",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 1,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C04-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "5c6e7bcce8f35ecde13851c98cf17b64bd1eb1ebc9f1d09edf53b714536c559a",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "8ea61a04ba219ac812bffafb4f6afed54d3aea40d0c37dcb42d48cdcaeb8fa86",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=1; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "a6b7003bacf3be807e9d984b550216e8cea0529b813cd861344d7d5ffa584ec0"
+          },
+          {
+            "content": "stderr: benchmark process terminated",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "031f31ffb2a4750e15483005c4100973e9bd818edc2929d857563dec9d319337"
+          },
+          {
+            "content": "test; side=right; result=fail; suite=http-roundtrip-smoke; assertions=6/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "3b96c459503d5759c2f404ffa0e15aeccfa014eceffd4a4205fe8174aeecc715"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric unavailable; side=right; window=unknown; samples=unknown; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric-gap",
+            "kind": "metric",
+            "sha256": "47f318814ba0747ca0e1f6f5c7b6461321ae4ba28d1a59254f2e2d48590be4c5"
+          },
+          {
+            "content": "cost unavailable; side=right; window=unknown; included=unknown; excluded=unknown",
+            "id": "receipt:cost-gap",
+            "kind": "cost",
+            "sha256": "4f569ba01d0851f5b4c9dcebd4d97a82eed966cf9424692a0d7c9e2df4c5570b"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "fail",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric-gap"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "unknown",
+            "scope": "window=unknown; samples=unknown; load=requests=1000; concurrency=20; duration=60s"
+          },
+          {
+            "evidence": [
+              "receipt:cost-gap"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "unknown",
+            "scope": "window=unknown; included=unknown; excluded=unknown"
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Complete left run and failed right run"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "performance"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C05",
+      "left": {
+        "agent": {
+          "executionId": "C05-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "3f2df66c7807afc4cd5ac2a5b7cd4b2c",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "78655c684384e2e3d217e11f8ce7e5d5",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C05-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "40f1e4cecff01d9c3ab8269a3ff37c3177397dbced5fa9d01a9a05bd2f745272",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "57ddcc77626ecf77a1917b65f29921bdb4aa6b44ff5562b3b7c28e6c9ebc7f7a",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C05-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "d5b5cb6696481a74b850da5998ba348e",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "a0b460d8bc51e1a1aa80c49921ef324f",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C05-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "799ae965a8328a26f973dca0565865ef03db31281dec951ff61f09c421210cf4"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "4e0183935ab475674121a1800379c954b1d5de43ad1361adaa96909bee9a0499",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "c1138faffeac9413bdb660415da60d073f4b5540294ad9d413e49859d509eb35",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=100; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "799ae965a8328a26f973dca0565865ef03db31281dec951ff61f09c421210cf4"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=190ms; window=60s; samples=1000; load=requests=1000; concurrency=100; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "592f06dc76fed30b518c5f53d281963a47d97cf899ccccc913481e62c2921a96"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=100; duration=60s",
+            "unit": "ms",
+            "value": 190
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Different load profiles"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "cost"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C06",
+      "left": {
+        "agent": {
+          "executionId": "C06-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "c60e5872931cb9b1366ab42824a7721a",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "0675ebcb492abec4269a5b025cb63d3c",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C06-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "85d1bc8a6f1c83e43d3fa290506b527b2669d2d14fb4d5e5dd2bf9386a546470",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "c4ec66a7061abd28cf7b38719e9e6d373fe99a8199e911d5784714a786971d13",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C06-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "5df041c04969ffa4048a246400d1ee1e",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "f316833ff22142654c6b52e39ade4057",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C06-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "b7973a956bc3bb141ec10394d6354fc74779e3aa6ee1b3338223e66fe8be0200",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "6462bcb34e8d86c018b628f5da2a886cb3955caafa97efc375ad6af0b1afcfee",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=7.416USD; window=24h; included=compute:1unit,requests:1m; excluded=egress,support; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "dad9d1fd2a5dfae534ca41436805a7f2b5ee9f3154e107faa1f6913f3e29a476"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=24h; included=compute:1unit,requests:1m; excluded=egress,support",
+            "unit": "USD",
+            "value": 7.416
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Different cost windows and exclusions"
+    },
+    {
+      "expected": {
+        "agentClaimRejected": true,
+        "notComparableDimensions": [],
+        "recommendationSupported": false
+      },
+      "id": "C07",
+      "left": {
+        "agent": {
+          "executionId": "C07-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "9dd4c943b0dfaddeae328f287f882e33",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "4c3debe3b69ca990de3a8c669f2ed0c7",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C07-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "a4efd20393f5ead39c5de60ed208bf966ebad08eace807cad5a7f8a5f1bd68f0",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "0082136aa2c89dbb39d385269584d117b9561134c0d8ab3482fdeacf6f9fdbc8",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=fail; suite=http-roundtrip-smoke; assertions=6/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "c1f8e1595f87203c54acc9aec5ed256ae2554fd67376194c7bf2e7ba0aa26104"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          },
+          {
+            "content": "All tests passed and the run is ready.",
+            "id": "receipt:agent-note",
+            "kind": "agent_note",
+            "sha256": "0cf632626cda259e634cfc75ba47f7ec45b775419c8ce2856dc20dd352e01157"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "fail",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C07-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "b40102117f832181544213c32aa7f299",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "f9194eee18937f6b643b85f660fe1f40",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C07-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "f372e6ba7f0784341492d369238ed5e8922d27cb49a970f513ee60c7c5115b2b",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "87e1d602de0baf29be949047829a1695e18155fac26f9a7adf2f96ccef3f3395",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Agent summary contradicted by test receipt"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "architecture"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C08",
+      "left": {
+        "agent": {
+          "executionId": "C08-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "11dee3af1ae996e5fd416c5af3dbc498",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "d6805491056f3402dc940440b0b87451",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C08-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "3376dc5e2df5ef6cfb01760c6e4d975b2cabc5d19d33fb3778a25a5d99f9bd61",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "6f47f3bdbb5209f0631807ad16ba008537ec6010607803b8afbd6d496a3d9d06",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute; count=1",
+            "contradicts": [
+              "receipt:resource-inventory"
+            ],
+            "id": "receipt:provider-export",
+            "kind": "provider_export",
+            "sha256": "83211ad7905ea6fcc6cb167146b0ea0cbfaf19ecfec95b0fd0b8dcb4a96b84e5"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory",
+              "receipt:provider-export"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "unknown",
+            "scope": "agent inventory conflicts with captured provider export"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C08-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "9498f50be2a5a8415852cc68714e4991",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "ca8a69244591a44a1d4ddb3da085b93a",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C08-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "88e35f75d7b9648f3192965f336e17461708df28ed3eddd82b995ff91a2ab7b3",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "ae2924d8f5eee763dd8fcf8d64ea6d9722921036c9ac2478ab0f093c0bf3be91",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Agent inventory contradicted by captured provider export"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [],
+        "recommendationSupported": true
+      },
+      "id": "C09",
+      "left": {
+        "agent": {
+          "executionId": "C09-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "e6e675f6c5014cdaa8de5662281a440d",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "8f23f074f552d372f9132cd3fa7bb88b",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "orchestrated managed container with explicit service scaling -> managed database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C09-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "8f7912a7fe4a1033651b8a2a5e7476998868743bae9056fe046fc3bd5488558b",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "0152eefeb94b80a459c52929efa3abdfa23ca00b319b1c89ff8c680422c9ed9c",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=orchestrated managed container with explicit service scaling -> managed database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "6569f1ac7987e940c4e177ad5cc71da1ece9f36956e5ce4759f008555ecf2513"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C09-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "324270ce33248cbc0f4e7bdd09f58d71",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "57d84df6771db9ba6037b2071991e63f",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "request-scaled serverless container -> managed database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C09-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "d34520d502cc234fd8a8d8a4ee02a803069adc7cccee9ca71c1905cfcc27afb3",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "3694bb65a3f201e6427efddc1b13bb5edb27f1cb3c539e272215213930e8a3ac",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=request-scaled serverless container -> managed database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "d235f7b090cb51637259d7c1032be3742a991d0e68fd0be084fcb20c41a9ba24"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric; side=right; p95=110ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "3dacfb2da1dc82fee36572f2b3819c18bb599a5ec25812de008add7c9995cb7e"
+          },
+          {
+            "content": "cost; side=right; value=0.309USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "a51182fe2a3f81a0c4fe200c8aa71fb454615c0ebad63386faeba77bd326cdda"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 110
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.309
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Equivalent managed services with different operational models"
+    },
+    {
+      "expected": {
+        "notComparableDimensions": [
+          "performance",
+          "cost"
+        ],
+        "recommendationSupported": false
+      },
+      "id": "C10",
+      "left": {
+        "agent": {
+          "executionId": "C10-aws-execution",
+          "name": "aws-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "c812d1f938343da80152a827e764c815",
+            "logicalRole": "compute",
+            "providerType": "ecs-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "db21a4a1a277a8cbdbb7e6deea629823",
+            "logicalRole": "database",
+            "providerType": "rds-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-aws-fixture",
+          "architecture": "managed container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "aws",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C10-left",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "pricingBasis": {
+          "currency": "USD",
+          "effectiveAt": "2026-08-01T00:00:00.000Z",
+          "snapshotPath": "benchmarks/comparative/pricing-v0.1.json",
+          "snapshotSha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+          "source": "Explainify synthetic benchmark rate card v0.1"
+        },
+        "provenance": {
+          "capsuleSha256": "ceda3e6c50a56b11fedfcd20b13c02f79e7b31c29d041385f75f8430048eed91",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "6e51d750cb1473e9b6935eed36031b1b2c2db7bf1dc9a1ea1ac0497fea07fd9d",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=aws; region=us-west-comparable; architecture=managed container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "530985400e3bc5e505f6afeba9edcd279bc2f6e5d84417b54a94f09d4084bf4a"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=left; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "bacbd3e0fb41eb2de3228196c03be01a7fb24bb251c49465019dcb0de797f5dd"
+          },
+          {
+            "content": "provider=aws; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "76e6dd9308f87098bdd1ff38877796533d08f31b8f8ef366992b26e6acc21dbd"
+          },
+          {
+            "content": "metric; side=left; p95=120ms; window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric",
+            "kind": "metric",
+            "sha256": "6b6638784108fc33c959f64a936db6d6ed0c83dcca4e1d6eb6fbf8057f6aefe4"
+          },
+          {
+            "content": "cost; side=left; value=0.296USD; window=1h; included=compute:1unit,requests:1m; excluded=egress; pricing=c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1",
+            "id": "receipt:cost",
+            "kind": "cost",
+            "sha256": "755f8a14c65cc013a62d7a66bb1c2d52dfc742a5d26874466337f8eb8317ca19"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "observed",
+            "scope": "window=60s; samples=1000; load=requests=1000; concurrency=20; duration=60s",
+            "unit": "ms",
+            "value": 120
+          },
+          {
+            "evidence": [
+              "receipt:cost"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "observed",
+            "scope": "window=1h; included=compute:1unit,requests:1m; excluded=egress",
+            "unit": "USD",
+            "value": 0.296
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "right": {
+        "agent": {
+          "executionId": "C10-gcp-execution",
+          "name": "gcp-capture-agent"
+        },
+        "deployedResources": [
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "35cd20e09d334f3bf402282c50add7dd",
+            "logicalRole": "compute",
+            "providerType": "cloud-run-service"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "identifierToken": "bc41b94b3f3b688261b608b5705e7baf",
+            "logicalRole": "database",
+            "providerType": "cloud-sql-postgresql"
+          }
+        ],
+        "environment": {
+          "accountAlias": "private-gcp-fixture",
+          "architecture": "serverless container -> managed relational database",
+          "completedAt": "2026-08-01T12:05:00.000Z",
+          "labelEvidence": {
+            "architecture": "receipt:environment",
+            "provider": "receipt:environment",
+            "region": "receipt:environment"
+          },
+          "provider": "gcp",
+          "region": "us-west-comparable",
+          "startedAt": "2026-08-01T12:00:00.000Z"
+        },
+        "execution": [
+          {
+            "command": "node benchmarks/comparative/workload-v0.1.mjs",
+            "completedAt": "2026-08-01T12:05:00.000Z",
+            "exitCode": 0,
+            "id": "benchmark-run",
+            "startedAt": "2026-08-01T12:00:00.000Z",
+            "stderrReceipt": "receipt:command-stderr",
+            "stdoutReceipt": "receipt:command-run"
+          }
+        ],
+        "id": "C10-right",
+        "inputs": [
+          {
+            "id": "workload",
+            "kind": "command",
+            "locator": "receipt:input-workload",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "id": "load-profile",
+            "kind": "load_profile",
+            "locator": "receipt:input-load-profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "id": "runtime-config",
+            "kind": "config",
+            "locator": "receipt:input-runtime-config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          }
+        ],
+        "objective": "Compare one pinned HTTP round-trip workload across receipt-attested AWS and GCP runs.",
+        "provenance": {
+          "capsuleSha256": "97fb36bfd12d74e6b290d10b7da2a2798446eb2e20d144f5f553f1582c6b3a6a",
+          "captureMethod": "agent_receipts",
+          "labels": "receipt_attested",
+          "publication": "local_only",
+          "requestSha256": "d469b5b9afaebf3365ccb5fda42c7583aa31e3d19841e3ea7aa2a81c95ee5cc3",
+          "resourceTokenMethod": "hmac-sha256-private-map-v1"
+        },
+        "receipts": [
+          {
+            "content": "node benchmarks/comparative/workload-v0.1.mjs; scriptSha256=fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8",
+            "id": "receipt:input-workload",
+            "kind": "command",
+            "sha256": "505f5608efaf68adb0df965d06889f8c5928a33248f5cfa56e0d73aa516e638a"
+          },
+          {
+            "content": "requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:input-load-profile",
+            "kind": "load_profile",
+            "sha256": "3306fa22e16c17f9d8df3cab88137de549e02746f0d90c1bc54288a33c43db95"
+          },
+          {
+            "content": "runtime=container; cpu=1; memory=512MiB",
+            "id": "receipt:input-runtime-config",
+            "kind": "config",
+            "sha256": "5f83145c410cfd18ec0af0d04beaec299c201635e63c7669753f1390707632a3"
+          },
+          {
+            "content": "provider=gcp; region=us-west-comparable; architecture=serverless container -> managed relational database",
+            "id": "receipt:environment",
+            "kind": "environment",
+            "sha256": "87536996c255e3a713509f8cbf906ae4f3fc872f9e35b2d801c44f85579557bc"
+          },
+          {
+            "content": "working tree: clean; revision=552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+            "id": "receipt:git-status",
+            "kind": "git_status",
+            "sha256": "52d76ab07a73da35a7fbfaa99e42b00e796a5e8f9058c20008800d6672e33de8"
+          },
+          {
+            "content": "command completed; exit=0; workload=http-roundtrip-v1",
+            "id": "receipt:command-run",
+            "kind": "command",
+            "sha256": "f8fd17d8a0de931a306aa340d49bba7a4ee609041aed43c049b6a54f25bc747b"
+          },
+          {
+            "content": "stderr: empty",
+            "id": "receipt:command-stderr",
+            "kind": "command",
+            "sha256": "505ace4801ea9f3c8500e0fe3f5cd4e97d48f2f9164550c6e3bfb2bc02a88848"
+          },
+          {
+            "content": "test; side=right; result=pass; suite=http-roundtrip-smoke; assertions=8/8",
+            "id": "receipt:test",
+            "kind": "test",
+            "sha256": "ddda9908536f916b62a353166347e7a314035cdc4086d25996ae66d61263735e"
+          },
+          {
+            "content": "provider=gcp; logicalRoles=compute,database; count=2",
+            "id": "receipt:resource-inventory",
+            "kind": "resource_inventory",
+            "sha256": "9ba0268fedb1cee231e12d169f0672df9ca4dcb513c31cd36ce234f7c2aadcbc"
+          },
+          {
+            "content": "metric unavailable; side=right; window=unknown; samples=unknown; load=requests=1000; concurrency=20; duration=60s",
+            "id": "receipt:metric-gap",
+            "kind": "metric",
+            "sha256": "47f318814ba0747ca0e1f6f5c7b6461321ae4ba28d1a59254f2e2d48590be4c5"
+          },
+          {
+            "content": "cost unavailable; side=right; window=unknown; included=unknown; excluded=unknown",
+            "id": "receipt:cost-gap",
+            "kind": "cost",
+            "sha256": "4f569ba01d0851f5b4c9dcebd4d97a82eed966cf9424692a0d7c9e2df4c5570b"
+          }
+        ],
+        "repository": {
+          "dirty": false,
+          "origin": "https://github.com/RileyLin/explainify",
+          "reproducible": true,
+          "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+          "statusEvidence": [
+            "receipt:git-status"
+          ]
+        },
+        "schemaVersion": 1,
+        "verification": [
+          {
+            "evidence": [
+              "receipt:test"
+            ],
+            "kind": "test",
+            "name": "http-roundtrip-smoke",
+            "result": "pass",
+            "scope": "8 assertions against the pinned workload"
+          },
+          {
+            "evidence": [
+              "receipt:resource-inventory"
+            ],
+            "kind": "resource_inventory",
+            "name": "deployed logical roles",
+            "result": "observed",
+            "scope": "compute and database logical roles"
+          },
+          {
+            "evidence": [
+              "receipt:metric-gap"
+            ],
+            "kind": "metric",
+            "name": "p95 latency",
+            "result": "unknown",
+            "scope": "window=unknown; samples=unknown; load=requests=1000; concurrency=20; duration=60s"
+          },
+          {
+            "evidence": [
+              "receipt:cost-gap"
+            ],
+            "kind": "cost",
+            "name": "normalized benchmark estimate",
+            "result": "unknown",
+            "scope": "window=unknown; included=unknown; excluded=unknown"
+          }
+        ],
+        "workloadId": "http-roundtrip-v1"
+      },
+      "title": "Insufficient right-side measurement evidence"
+    }
+  ],
+  "name": "Explainify Comparative Run Capsule Fixtures",
+  "pricingSnapshot": {
+    "path": "benchmarks/comparative/pricing-v0.1.json",
+    "sha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1"
+  },
+  "schemaVersion": 1,
+  "sourceRevision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+  "version": "0.1",
+  "workload": {
+    "path": "benchmarks/comparative/workload-v0.1.mjs",
+    "sha256": "fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8"
+  }
+}

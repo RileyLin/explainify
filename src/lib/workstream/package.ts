@@ -129,8 +129,11 @@ function utf8Bytes(value: string): number {
 }
 
 // A claim's status is a strict runtime enum (PM finding #3). Anything else (e.g. "verified") is
-// rejected, so unknown data can never slip through as a cosmetically-trusted claim.
-const VALID_CLAIM_STATUSES = new Set(["observed", "unknown", "inferred"]);
+// rejected, so unknown data can never slip through as a cosmetically-trusted claim. `not_comparable`
+// (task #23) is a first-class non-observed comparative state — it is subject to the same
+// non-observed reason requirement and the same evidence-link binding as unknown/inferred, so an
+// evidence-backed not_comparable claim cannot bypass integrity or masquerade as observed.
+const VALID_CLAIM_STATUSES = new Set(["observed", "unknown", "inferred", "not_comparable"]);
 
 // Source kinds whose evidence links use the task #15 receipt-scoped locator shape, mirroring the
 // engine's evidenceLink() in brief.mjs. Kept in sync with that list; any other kind uses the

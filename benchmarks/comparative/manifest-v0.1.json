@@ -1,0 +1,160 @@
+{
+  "bundle": {
+    "path": "benchmarks/comparative/fixtures-v0.1.json",
+    "sha256": "3612354b58a6d295443df265e62702cf1a318731601c7de0fbb1ca7b5d91c2e4"
+  },
+  "cases": [
+    {
+      "expectedSha256": "5f454c411b6fc4de895bc08a8214a297d30457f1a37a0db50499339a2d9b0da0",
+      "id": "C01",
+      "left": {
+        "pointer": "/cases/0/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "baace4513d4501bdcf9c6e7f89d85f0d926073b27b76a80d0d1a2c2f9952b294"
+      },
+      "right": {
+        "pointer": "/cases/0/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "530cd4bffd92196d394ab94a5ebeb1fe9256b23b4d8573101501d5ee3bebb57f"
+      }
+    },
+    {
+      "expectedSha256": "9c9922c7da78c07660f4186d70ce7d8785cec715aaa5b351234c0a6de8e0921b",
+      "id": "C02",
+      "left": {
+        "pointer": "/cases/1/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "228021e43843974d0bb89b6c226d5bc8aadb30ebe9eef67e18227bd51a42bbd5"
+      },
+      "right": {
+        "pointer": "/cases/1/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "bdeea420949899a24acbeb0ed7829c5c0f2e364885d503a0014c68f74c113f57"
+      }
+    },
+    {
+      "expectedSha256": "92d6175e6552fdd797d1ab4801cf694f31a22bf3ccdd23f4681d4c863cf6a4ff",
+      "id": "C03",
+      "left": {
+        "pointer": "/cases/2/left",
+        "revision": "ac0d7e7ec684b2d0994a8620dd3dc575e218780b",
+        "sha256": "1e61bf6de8855bac469c74e4c6945613a9fc73e15f44d277e26301e10f81742c"
+      },
+      "right": {
+        "pointer": "/cases/2/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "c4a4b31b223299c3983a61cdc06a4374a9617602e8a309ecfb17e36dc4cdd747"
+      }
+    },
+    {
+      "expectedSha256": "3cec9b612a51b5922218bef9c050252c636e4b7df49a070bae426ad130889984",
+      "id": "C04",
+      "left": {
+        "pointer": "/cases/3/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "1d5b99ed7e67747cf66fd6366620443e529a56e4d76dea7a3fd2c8f27c2e6a86"
+      },
+      "right": {
+        "pointer": "/cases/3/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "e1f210ab05d7ca67e8b2862cc2d31001cfdba54d3a904b0d15499e6e785c36eb"
+      }
+    },
+    {
+      "expectedSha256": "9c9922c7da78c07660f4186d70ce7d8785cec715aaa5b351234c0a6de8e0921b",
+      "id": "C05",
+      "left": {
+        "pointer": "/cases/4/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "86e960861bab218eac85fa50eab0a3e96c214b5287a8adbda80b9766669a2778"
+      },
+      "right": {
+        "pointer": "/cases/4/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "a4f02a781d22ba7e165b766cb81e563839e0701684d0040c642b60c7fd952d9e"
+      }
+    },
+    {
+      "expectedSha256": "4e2ce6099246ee63b0856f6bccc3aef7aab9b44f492681967c98f49ba88ef399",
+      "id": "C06",
+      "left": {
+        "pointer": "/cases/5/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "9494988a687008d2912c30dd87ebfacaa196144982958402383af4a7d727b225"
+      },
+      "right": {
+        "pointer": "/cases/5/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "7f1302d9b9224af620e9ec8247056b114bbdbe9b88c03f6bab1f8af8d1fec956"
+      }
+    },
+    {
+      "expectedSha256": "57328c0b2a5fd7534f78a8de1b3b04ea6b86e3c56b9b79ea527829b71e7d6b0c",
+      "id": "C07",
+      "left": {
+        "pointer": "/cases/6/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "69b5caca53496999be03f3c1a3abfd08cf84b6b236d468179a8b47a6020b865e"
+      },
+      "right": {
+        "pointer": "/cases/6/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "aa374e8823793657df08e9c6777ad270de0d5a1662518a2dc8f74c3d0698f341"
+      }
+    },
+    {
+      "expectedSha256": "9a33d4dacf639c763f4187484c8ac840523338e9a0c08861a7c1e47a984572cd",
+      "id": "C08",
+      "left": {
+        "pointer": "/cases/7/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "66f7cd421132b9e4b15c2b47cd689a3d4675087e23b9ada27e6731603a2814e3"
+      },
+      "right": {
+        "pointer": "/cases/7/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "c5d08a98d1b5b9ab87ecd6eff7481a1a876348fea33aa76c1fe662be3cb00bd5"
+      }
+    },
+    {
+      "expectedSha256": "5f454c411b6fc4de895bc08a8214a297d30457f1a37a0db50499339a2d9b0da0",
+      "id": "C09",
+      "left": {
+        "pointer": "/cases/8/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "bc397c617ef5fbec8ee634377f7dee1e5e607b0cefd845521b6dffa51ae22759"
+      },
+      "right": {
+        "pointer": "/cases/8/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "6d8b59b097901eb64fbd0521090ad9b294dfff6bd6f6b78365ec9fe3d0318ccf"
+      }
+    },
+    {
+      "expectedSha256": "3cec9b612a51b5922218bef9c050252c636e4b7df49a070bae426ad130889984",
+      "id": "C10",
+      "left": {
+        "pointer": "/cases/9/left",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "89a42619f54aea92f974a16db9147d27334a56f0fcaae1cbbf4b5f521932dfdd"
+      },
+      "right": {
+        "pointer": "/cases/9/right",
+        "revision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+        "sha256": "ea7de972f76f037acb076736f29cb6f0390a8cb9b4aec8add845003acaca90c2"
+      }
+    }
+  ],
+  "name": "Explainify Comparative Fixture Manifest",
+  "pricingSnapshot": {
+    "path": "benchmarks/comparative/pricing-v0.1.json",
+    "sha256": "c6ced8ca6724df31928f65ea575f095bf623525ae399a2717d1713faa9c663a1"
+  },
+  "schemaVersion": 1,
+  "sourceRevision": "552186bf77de61d84ef06aaa5cbf8f7ea2a29077",
+  "version": "0.1",
+  "workload": {
+    "path": "benchmarks/comparative/workload-v0.1.mjs",
+    "sha256": "fcbd74b777d08b2d8e5f981b728a6e5b5c7dd376c04e962c1cd7ea4c8ff617e8"
+  }
+}

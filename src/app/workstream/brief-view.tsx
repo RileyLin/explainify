@@ -17,6 +17,10 @@ function StatusBadge({ status }: { status: string }) {
     observed: { fg: "#06715f", bg: "rgba(7,134,111,0.12)" },
     unknown: { fg: "#7b570f", bg: "rgba(155,112,21,0.14)" },
     inferred: { fg: "#7b570f", bg: "rgba(155,112,21,0.14)" },
+    // not_comparable (task #23): explicit amber, NEVER green. Two sides carry real evidence but an
+    // equivalence gate failed, so no honest comparison can be drawn — it must read as caution, not
+    // as a trusted result and not silently as a plain unknown.
+    not_comparable: { fg: "#7b570f", bg: "rgba(155,112,21,0.14)" },
     needed: { fg: "#a42537", bg: "rgba(164,37,55,0.12)" },
   };
   // NEVER fall back to the observed (green) style for an unrecognized status (independent review
@@ -49,7 +53,11 @@ function LevelBadge({ level }: { level: string }) {
 }
 
 function EvidenceDrawer({ claim, onOpenRaw }: { claim: Claim; onOpenRaw: (id: string) => void }) {
-  if (claim.status !== "observed" || !claim.evidence.length) return null;
+  // Open the drawer whenever the claim carries evidence, regardless of status (task #23). A
+  // not_comparable comparison claim still has real bilateral evidence a reader must be able to
+  // inspect; gating on `observed` would hide it. Integrity of every present link is already
+  // enforced by the reader, so showing them here cannot misrepresent a non-observed badge.
+  if (!claim.evidence.length) return null;
   return (
     <details className="mt-2">
       <summary className="cursor-pointer text-sm font-medium text-blue-500">
@@ -111,6 +119,11 @@ function ClaimItem({ claim, onOpenRaw }: { claim: Claim; onOpenRaw: (id: string)
           {claim.unknownReason || `Missing: ${(claim.missingSourceIds || []).join(", ")}`}
         </p>
       )}
+      {claim.status === "not_comparable" && claim.confounders?.length ? (
+        <p className="mt-1 text-xs" style={{ color: "#b1841c" }}>
+          Confounders: {claim.confounders.join(", ")}
+        </p>
+      ) : null}
       <EvidenceDrawer claim={claim} onOpenRaw={onOpenRaw} />
     </li>
   );
@@ -252,8 +265,8 @@ export function BriefView({
           <Count n={uncovered} label="uncovered sources" warn />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          ↓ Verification and evidence continue below. Every observed claim opens its
-          immutable evidence.
+          ↓ Verification and evidence continue below. Every claim that carries evidence opens its
+          immutable evidence — including comparisons marked not comparable.
         </p>
       </Band>
 
