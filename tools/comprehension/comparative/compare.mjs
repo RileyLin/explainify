@@ -306,21 +306,48 @@ function compareClaims(left, right, equivalence) {
   return claims;
 }
 
+// The ONLY provider pair a cross-provider recommendation is allowed to rest on: exactly one aws plus
+// one gcp (task #23, PM msg f154e1bd). A same-provider pair (two aws), or any pair involving
+// azure/local/other, can never yield an AWS/GCP provider recommendation. This invariant lives HERE,
+// in the comparison result itself — not only in a downstream badge — so the legacy artifact, the CLI
+// HTML/receipt, and the Phase B package are ALL honest. Role order is irrelevant ({aws,gcp} is a
+// set), so a role-swapped aws/gcp pair is treated identically.
+function isAwsGcpPair(left, right) {
+  const providers = new Set([left.environment.provider, right.environment.provider]);
+  return providers.size === 2 && providers.has("aws") && providers.has("gcp");
+}
+
+// Pick the capsule with the strictly-lower measured value. On an exact TIE the choice must NOT depend
+// on which capsule is left/right (PM re-review: tied metrics made forward say aws and role-swapped
+// say gcp). Break the tie deterministically by provider name so the result is role-order-independent.
+function lowerBy(a, aValue, b, bValue) {
+  if (aValue < bValue) return a;
+  if (bValue < aValue) return b;
+  return a.environment.provider <= b.environment.provider ? a : b;
+}
+
 function buildRecommendation(left, right, claims, confounders) {
   const performance = claims.find((claim) => claim.id === "performance");
   const cost = claims.find((claim) => claim.id === "cost");
   const operations = claims.find((claim) => claim.id === "operations");
+  const providerPairAllowed = isAwsGcpPair(left, right);
   const supportsDecision = performance.status === "observed"
     && cost.status === "observed"
     && operations.status === "observed"
-    && confounders.length === 0;
+    && confounders.length === 0
+    && providerPairAllowed;
   const observed = claims.filter((claim) => claim.status === "observed");
   const leftEvidence = [...new Set(observed.flatMap((claim) => claim.leftEvidence))];
   const rightEvidence = [...new Set(observed.flatMap((claim) => claim.rightEvidence))];
   if (!supportsDecision) {
+    // Distinguish WHY: a disallowed provider pair is a different (permanent) reason from confounders
+    // that could be resolved by aligning the runs. Either way, no provider winner is asserted.
+    const text = !providerPairAllowed
+      ? `No provider choice is supported: a cross-provider recommendation requires exactly one aws and one gcp run, but this pair is ${left.environment.provider} vs ${right.environment.provider}.`
+      : "No provider choice is supported by these receipts. Align the listed confounders and rerun the pinned workload before deciding.";
     return {
       supported: false,
-      text: "No provider choice is supported by these receipts. Align the listed confounders and rerun the pinned workload before deciding.",
+      text,
       confidence: "low",
       supportingClaims: claims.filter((claim) => claim.status === "observed").map((claim) => claim.id),
       decisionDependsOn: confounders.map((item) => item.dimension),
@@ -332,8 +359,8 @@ function buildRecommendation(left, right, claims, confounders) {
   const rightMetric = verification(right, "metric");
   const leftCost = verification(left, "cost");
   const rightCost = verification(right, "cost");
-  const lowerLatency = leftMetric.value <= rightMetric.value ? left : right;
-  const lowerCost = leftCost.value <= rightCost.value ? left : right;
+  const lowerLatency = lowerBy(left, leftMetric.value, right, rightMetric.value);
+  const lowerCost = lowerBy(left, leftCost.value, right, rightCost.value);
   return {
     supported: true,
     text: lowerLatency.id === lowerCost.id

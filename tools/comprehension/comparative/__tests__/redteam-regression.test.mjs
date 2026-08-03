@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { validateCapsule, capsuleSemantic } from "../capsule.mjs";
-import { compareCapsules } from "../compare.mjs";
+import { compareCapsules, writeComparison } from "../compare.mjs";
 import { loadComparativeFixtures } from "../fixtures.mjs";
 import { comparisonToPackage } from "../workstream-package.mjs";
 import { sha256, stableStringify } from "../../util.mjs";
@@ -121,4 +124,100 @@ test("red-team #4: a private cloud identifier in artifact prose is refused (neve
     () => comparisonToPackage(comparison.artifact, comparison.left, comparison.right),
     /does not match the canonical comparison|secret scan|forged|tampered/i,
   );
+});
+
+// ── PM re-review of 488ba29 (msg 699c078b): the provider-set invariant must live in the COMPARISON
+//    RESULT, not only in currentOutcome.status. These four assert the source-level fix. ──
+
+// PM re-review #1a: a same-provider comparison must NOT return supported:true or winner prose at the
+// ENGINE level, and the package must not reuse winner prose next to an amber "no winner" badge.
+test("re-review #1a: same-provider yields supported:false + neutral text at the engine and in the package", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const original = cases.find((entry) => entry.id === "C01").left;
+  const duplicate = structuredClone(original);
+  duplicate.id = `${original.id}-same-provider-copy`;
+  rehashCapsule(duplicate);
+
+  const comparison = compareCapsules(original, duplicate, "same provider");
+  const pkg = comparisonToPackage(comparison.artifact, comparison.left, comparison.right);
+
+  assert.equal(comparison.artifact.recommendation.supported, false);
+  // No winner prose: a provider name must never be asserted as supported/preferred.
+  assert.doesNotMatch(comparison.artifact.recommendation.text, /(aws|gcp) is supported|prefer (aws|gcp)/i);
+  assert.equal(pkg.brief.currentOutcome.status, "not_comparable");
+  // The package outcome must NOT carry winner prose — the exact defect the PM reproduced.
+  assert.doesNotMatch(pkg.brief.currentOutcome.text, /(aws|gcp) is supported|prefer (aws|gcp)/i);
+});
+
+// PM re-review #1b: a non-{aws,gcp} pair (aws vs azure) must NOT get a provider recommendation at the
+// engine level, and the package must render neutral no-winner text.
+test("re-review #1b: aws-vs-azure yields supported:false + neutral text (no 'prefer azure')", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const entry = cases.find((candidate) => candidate.id === "C01");
+  const azure = structuredClone(entry.right);
+  azure.id = "azure-run";
+  azure.environment.provider = "azure";
+  rehashCapsule(azure);
+
+  const comparison = compareCapsules(entry.left, azure, "aws vs azure");
+  const pkg = comparisonToPackage(comparison.artifact, comparison.left, comparison.right);
+
+  assert.equal(comparison.artifact.recommendation.supported, false);
+  assert.doesNotMatch(comparison.artifact.recommendation.text, /prefer azure|azure is supported/i);
+  assert.equal(pkg.brief.currentOutcome.status, "not_comparable");
+  assert.doesNotMatch(pkg.brief.currentOutcome.text, /prefer azure|azure is supported/i);
+});
+
+// PM re-review #2: tied AWS/GCP latency AND cost must produce a role-order-INDEPENDENT conclusion —
+// forward and swapped orderings must reach the identical recommendation text (the tie is broken by
+// provider name, not by which side is left).
+test("re-review #2: tied aws/gcp measures reach the same conclusion regardless of role order", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const entry = cases.find((candidate) => candidate.id === "C01");
+  const right = structuredClone(entry.right);
+
+  for (const kind of ["metric", "cost"]) {
+    const leftValue = entry.left.verification.find((item) => item.kind === kind);
+    const rightValue = right.verification.find((item) => item.kind === kind);
+    rightValue.value = leftValue.value;
+    const receipt = right.receipts.find((item) => item.id === rightValue.evidence[0]);
+    receipt.content = `${kind}=${leftValue.value}; ${rightValue.scope}`;
+    receipt.sha256 = sha256(receipt.content);
+  }
+  rehashCapsule(right);
+
+  const forward = compareCapsules(entry.left, right, "tied measures");
+  const swapped = compareCapsules(right, entry.left, "tied measures");
+  const forwardPackage = comparisonToPackage(forward.artifact, forward.left, forward.right);
+  const swappedPackage = comparisonToPackage(swapped.artifact, swapped.left, swapped.right);
+
+  // Both orderings agree on a single conclusion — role swapping does not flip the winner.
+  assert.equal(
+    forwardPackage.brief.currentOutcome.text,
+    swappedPackage.brief.currentOutcome.text,
+  );
+  assert.equal(forward.artifact.recommendation.text, swapped.artifact.recommendation.text);
+});
+
+// PM re-review #1 (legacy path): writeComparison / the CLI must not expose recommendationSupported
+// true or winner prose for a same-provider pair either.
+test("re-review #1c: legacy writeComparison reports supported:false + neutral text for same-provider", async () => {
+  const { cases } = await loadComparativeFixtures(root);
+  const original = cases.find((entry) => entry.id === "C01").left;
+  const duplicate = structuredClone(original);
+  duplicate.id = `${original.id}-legacy-copy`;
+  rehashCapsule(duplicate);
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "explainify-rereview-"));
+
+  const result = await writeComparison({
+    left: original,
+    right: duplicate,
+    question: "same provider legacy output",
+    outputDir,
+  });
+  const artifact = JSON.parse(await readFile(result.manifestPath, "utf8"));
+
+  assert.equal(result.recommendationSupported, false);
+  assert.equal(artifact.recommendation.supported, false);
+  assert.doesNotMatch(artifact.recommendation.text, /aws is supported/i);
 });

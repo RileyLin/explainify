@@ -318,18 +318,24 @@ export function comparisonToPackage(artifact, leftInput, rightInput) {
     let status = recBlocked || !recBilateral ? "not_comparable" : "observed";
     const evidence = linksForRefs(recRefs);
     if (status === "observed" && !evidence.length) status = "not_comparable";
-    const claim = {
-      id: "outcome",
-      text:
-        rec.text ||
-        `Comparison of ${left.environment.provider} vs ${right.environment.provider} on the frozen workload.`,
-      status,
-      evidence,
-    };
+    const conf = (artifact.confounders || []).map((c) => c.dimension || c);
+    // DEFENSE IN DEPTH (PM re-review): a not_comparable outcome must NEVER reuse the recommendation's
+    // winner prose (rec.text). Even though the engine now emits neutral no-winner text on a disallowed
+    // pair, the adapter independently substitutes a neutral, provider-free sentence for any
+    // non-observed outcome so a browser can never render "aws is supported" next to an amber "no
+    // winner" badge. rec.text is used ONLY when the outcome is genuinely observed.
+    const text =
+      status === "observed"
+        ? rec.text ||
+          `Comparison of ${left.environment.provider} vs ${right.environment.provider} on the frozen workload.`
+        : conf.length
+          ? `No provider recommendation: the comparison is blocked by non-equivalent dimensions (${conf.join(", ")}).`
+          : !providerPairAllowed
+            ? `No provider recommendation: a cross-provider comparison requires exactly one aws and one gcp run, but this pair is ${left.environment.provider} vs ${right.environment.provider}.`
+            : "No provider recommendation is supported from the current bilateral evidence.";
+    const claim = { id: "outcome", text, status, evidence };
     if (status !== "observed") {
-      const conf = (artifact.confounders || []).map((c) => c.dimension || c);
-      // When the only reason we degraded is the provider pairing (no confounders, engine supported
-      // it), give an explicit reason rather than a misleading "no bilateral evidence".
+      // The reason mirrors the (already neutral) text so a reader sees a consistent explanation.
       claim.unknownReason = conf.length
         ? `No provider can be recommended: comparison blocked by non-equivalent dimensions (${conf.join(", ")}).`
         : !providerPairAllowed
