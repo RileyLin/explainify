@@ -108,11 +108,23 @@ export function mintPortablePackage() {
   const manifest = buildSourceManifest(bundle);
   const coverageReceipt = buildCoverageReceipt(manifest);
   const byId = (id) => manifest.sources.find((s) => s.id === id);
+  // Mirror the engine's evidenceLink() deterministic mapping (brief.mjs): receipt-backed kinds get
+  // receiptId=`receipt:<id>` and locator=`<id>#receipt:<id>`; other kinds use the manifest locator.
+  // The reader enforces this exact mapping, so the fixture must follow it to be a faithful package.
+  const RECEIPT_BACKED_KINDS = new Set([
+    "command_receipt",
+    "test_receipt",
+    "deployment_receipt",
+    "raft_message",
+    "raft_task_state",
+  ]);
   const link = (id) => {
     const s = byId(id);
+    const receiptBacked = RECEIPT_BACKED_KINDS.has(s.kind);
     return {
       sourceId: s.id,
-      locator: s.locator,
+      ...(receiptBacked ? { receiptId: `receipt:${s.id}` } : {}),
+      locator: receiptBacked ? `${s.id}#receipt:${s.id}` : s.locator,
       ...(s.revision ? { revision: s.revision } : {}),
       sha256: s.sha256,
       evidenceLevel: s.evidenceLevel,

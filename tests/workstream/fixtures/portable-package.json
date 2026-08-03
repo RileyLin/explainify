@@ -1,7 +1,7 @@
 {
   "brief": {
     "blockers": [],
-    "checkpointId": "checkpoint-ea884571d974",
+    "checkpointId": "checkpoint-1248ef9e09ba",
     "correctionReceiptPaths": [],
     "coverageReceiptPath": "coverage-receipt.json",
     "currentOutcome": {
@@ -17,7 +17,8 @@
         {
           "evidenceLabel": "receipt-attested, not independently verified",
           "evidenceLevel": "receipt_attested",
-          "locator": "npm run test:billing @a1b2c3d",
+          "locator": "m2-cutover-test#receipt:m2-cutover-test",
+          "receiptId": "receipt:m2-cutover-test",
           "revision": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
           "sha256": "70c82444dcd7a345a56ed4dffd27fcf935d54415df9fceae0498d28f887d084b",
           "sourceId": "m2-cutover-test"
@@ -35,7 +36,7 @@
       "coverageReceiptSha256": "61dd0035f7c9695818515064560e91e5db1c1eafaf12f80ace3c15556e8bae62",
       "publication": "local_only",
       "secretScan": "pass",
-      "semanticBriefSha256": "d559c83884c141b6521daa1b0cc543c5d72d629497dc76cc648ec60cc1bacd76",
+      "semanticBriefSha256": "6d0623fbc8bf670f780de49adef554aafc7495ea0c218246d373c364c5a18e33",
       "sourceManifestSha256": "1414eb576c862260bc62963da419eebe9a392d4591e0401718578356e4884dc9",
       "unsupportedObservedClaimCount": 0
     },
@@ -64,7 +65,8 @@
           {
             "evidenceLabel": "receipt-attested, not independently verified",
             "evidenceLevel": "receipt_attested",
-            "locator": "npm run test:billing @a1b2c3d",
+            "locator": "m2-cutover-test#receipt:m2-cutover-test",
+            "receiptId": "receipt:m2-cutover-test",
             "revision": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
             "sha256": "70c82444dcd7a345a56ed4dffd27fcf935d54415df9fceae0498d28f887d084b",
             "sourceId": "m2-cutover-test"
@@ -94,7 +96,8 @@
           {
             "evidenceLabel": "receipt-attested, not independently verified",
             "evidenceLevel": "receipt_attested",
-            "locator": "npm run test:billing @a1b2c3d",
+            "locator": "m2-cutover-test#receipt:m2-cutover-test",
+            "receiptId": "receipt:m2-cutover-test",
             "revision": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
             "sha256": "70c82444dcd7a345a56ed4dffd27fcf935d54415df9fceae0498d28f887d084b",
             "sourceId": "m2-cutover-test"
@@ -107,7 +110,7 @@
     ],
     "workstreamId": "acme-migration"
   },
-  "checkpointId": "checkpoint-ea884571d974",
+  "checkpointId": "checkpoint-1248ef9e09ba",
   "coverageReceipt": {
     "availableSourceCount": 3,
     "excludedSourceCount": 1,

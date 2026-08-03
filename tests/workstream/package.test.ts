@@ -3,6 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { validatePackage, type WorkstreamCheckpointPackage } from "@/lib/workstream/package";
+import { sha256, stableStringify } from "@engine/../comprehension/util.mjs";
+
+const hash = sha256 as (value: string) => string;
+const stable = stableStringify as (value: unknown) => string;
 
 // Task #22 (revised contract): the product is a portable checkpoint READER. validatePackage must
 // (a) accept ANY internally-consistent package regardless of workstream/source ids, and (b) fail
@@ -13,6 +17,25 @@ function loadPkg(name: string): WorkstreamCheckpointPackage {
 }
 function clone(pkg: WorkstreamCheckpointPackage): WorkstreamCheckpointPackage {
   return JSON.parse(JSON.stringify(pkg)) as WorkstreamCheckpointPackage;
+}
+
+// Re-finalize a package's brief after mutating its semantic content, mirroring the engine's
+// two-step hashing tail (checkpointId over semantic-with-blank-id, then semantic hash with the id
+// filled). This makes the package INTERNALLY consistent so a tampered-evidence test reaches the
+// evidence-binding check (step 4) instead of tripping the earlier checkpointId/semantic-hash check.
+// It models a buggy or malicious mint that produced a self-consistent but manifest-inconsistent
+// brief — exactly the case set-membership would have missed.
+function refinalizeBrief(pkg: WorkstreamCheckpointPackage): WorkstreamCheckpointPackage {
+  const brief = pkg.brief as unknown as Record<string, unknown>;
+  const semantic = { ...brief };
+  delete semantic.receipt;
+  const checkpointId = `checkpoint-${hash(stable({ ...semantic, checkpointId: "" })).slice(0, 12)}`;
+  (brief as { checkpointId: string }).checkpointId = checkpointId;
+  const semanticFilled = { ...brief };
+  delete semanticFilled.receipt;
+  pkg.brief.receipt.semanticBriefSha256 = hash(stable(semanticFilled));
+  pkg.checkpointId = checkpointId;
+  return pkg;
 }
 
 const EXPLAINIFY = loadPkg("explainify-package.json");
@@ -100,5 +123,162 @@ describe("validatePackage — fails closed on tamper", () => {
     expect(validatePackage(null).ok).toBe(false);
     expect(validatePackage("nope").ok).toBe(false);
     expect(validatePackage(42).ok).toBe(false);
+  });
+
+  it("rejects relabeled evidence: an observed claim link whose sourceId and sha256 belong to different sources", () => {
+    // The link keeps a real manifest hash (set-membership passes) but points its sourceId at a
+    // DIFFERENT source. Hash-membership alone would accept this; strict id↔hash binding must reject.
+    // Re-finalize so the brief is internally consistent and the check reaches step 4.
+    const t = clone(PORTABLE);
+    const other = t.manifest.sources.find((s) => s.id === "m2-cutover-test")!;
+    const link = t.brief.reviewFirst.find((c) => c.id === "review-cutover")!.evidence[0];
+    expect(link.sourceId).toBe("m1-migration-commit");
+    link.sha256 = other.sha256; // m2's real hash under m1's id
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/relabeled|does not match manifest source/i);
+  });
+
+  it("rejects an observed claim citing a sourceId absent from the manifest", () => {
+    const t = clone(PORTABLE);
+    t.brief.reviewFirst.find((c) => c.id === "review-cutover")!.evidence[0].sourceId = "ghost-source";
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/absent from the frozen manifest/i);
+  });
+
+  it("rejects an observed claim citing an uncaptured (excluded) source as evidence", () => {
+    // m3-owner-approval is policy-excluded (captured=false); it cannot back an observed claim.
+    const t = clone(PORTABLE);
+    const excluded = t.manifest.sources.find((s) => s.id === "m3-owner-approval")!;
+    const link = t.brief.reviewFirst.find((c) => c.id === "review-cutover")!.evidence[0];
+    link.sourceId = excluded.id;
+    link.sha256 = excluded.sha256;
+    link.evidenceLevel = excluded.evidenceLevel;
+    link.evidenceLabel = excluded.evidenceLabel;
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/not captured/i);
+  });
+
+  it("rejects a forged locator on a valid-hash link (evidence escape path cannot lie)", () => {
+    // Keep a real source + real hash, but fabricate the locator the UI would open. The
+    // deterministic locator mapping must reject it even though the hash is genuine.
+    const t = clone(PORTABLE);
+    const link = t.brief.currentOutcome.evidence.find((l) => l.sourceId === "m1-migration-commit")!;
+    link.locator = "fabricated://not-the-hashed-source";
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/locator|forged/i);
+  });
+
+  it("rejects a forged receiptId on a receipt-backed link", () => {
+    // m2-cutover-test is a test_receipt: receiptId must be receipt:<id>. Tamper it.
+    const t = clone(PORTABLE);
+    const link = t.brief.verification.find((c) => c.id === "verify-tests")!.evidence[0];
+    expect(link.sourceId).toBe("m2-cutover-test");
+    link.receiptId = "receipt:some-other-source";
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/receiptId|receipt id|forged/i);
+  });
+
+  it("rejects decision evidence that resolves to no manifest source", () => {
+    const t = clone(PORTABLE);
+    t.brief.decisionsNeeded = [
+      {
+        id: "decision-forged",
+        question: "Ship on evidence that is not in this package?",
+        owner: "@owner",
+        status: "needed",
+        evidence: [
+          {
+            sourceId: "outside-manifest",
+            locator: "fabricated://outside",
+            sha256: "f".repeat(64),
+            evidenceLevel: "independently_verified",
+            evidenceLabel: "independently verified",
+          },
+        ],
+      },
+    ];
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/decision .* absent from the frozen manifest/i);
+  });
+
+  it("rejects a brief whose workstreamId disagrees with its manifest", () => {
+    const t = clone(PORTABLE);
+    t.brief.workstreamId = "different-workstream";
+    t.workstreamId = "different-workstream";
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/workstreamId disagrees/i);
+  });
+
+  it("rejects a brief whose freshnessCursor disagrees with its manifest", () => {
+    const t = clone(PORTABLE);
+    t.brief.freshnessCursor = "2099-01-01T00:00:00Z";
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/freshnessCursor disagrees/i);
+  });
+
+  it("rejects an inflated unsupportedObservedClaimCount trust label", () => {
+    const t = clone(PORTABLE);
+    t.brief.receipt.unsupportedObservedClaimCount = 99;
+    // receipt is outside the semantic hash, so no refinalize needed — the reader must catch it.
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/unsupportedObservedClaimCount/i);
+  });
+
+  it("rejects a forged publication trust label", () => {
+    const t = clone(PORTABLE);
+    t.brief.receipt.publication = "public";
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/publication/i);
+  });
+
+  it("rejects a forged secretScan trust label", () => {
+    const t = clone(PORTABLE);
+    t.brief.receipt.secretScan = "not-run";
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/secretScan/i);
+  });
+
+  it("fails closed on a correction receipt (single-brief contract cannot attest a chain)", () => {
+    // A receipt that merely CLAIMS an arbitrary successor must not return correctionVerified:true.
+    // Until the correction/export slice binds the immutable original, any receipt fails closed.
+    const t = clone(PORTABLE);
+    const core = {
+      schemaVersion: 1,
+      originalCheckpointId: t.brief.checkpointId,
+      correctionKind: "wrong",
+      note: "Claims a successor exists, but none is in the package.",
+      evidence: [],
+      submittedAt: "2026-08-03T08:00:00Z",
+      correctedCheckpointId: "checkpoint-never-provided",
+      correctedSemanticBriefSha256: "0".repeat(64),
+      successorBundleSha256: t.manifest.bundleSha256,
+      sameInputCheckpoint: false,
+    };
+    t.correctionReceipt = {
+      ...core,
+      correctionReceiptSha256: hash(stable(core)),
+    } as WorkstreamCheckpointPackage["correctionReceipt"];
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/correction/i);
   });
 });

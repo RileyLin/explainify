@@ -13,7 +13,6 @@
 // tampered package fails closed.
 import { buildSourceManifest } from "@engine/freeze.mjs";
 import { validateManifestAgainstBundle, buildCoverageReceipt } from "@engine/brief.mjs";
-import { verifyCorrectionChain } from "@engine/correct.mjs";
 import { sha256, stableStringify } from "@engine/../comprehension/util.mjs";
 import { scanOutput } from "@engine/../comprehension/evidence.mjs";
 
@@ -24,6 +23,11 @@ import type {
   CorrectionReceipt,
 } from "./types";
 
+// Note: verifyCorrectionChain is intentionally NOT imported. A single-brief package cannot bind
+// both the immutable original and its successor, so this reader fails closed on any correction
+// receipt (see step 5) rather than call a verifier that would false-positive on one side. Full
+// chain verification arrives with the correction/export slice that extends the package contract.
+
 // Narrow the generic .mjs primitives (tsc infers `any`) at this single boundary.
 const freeze = buildSourceManifest as (bundle: unknown) => WorkstreamManifest;
 const validateManifest = validateManifestAgainstBundle as (
@@ -31,11 +35,6 @@ const validateManifest = validateManifestAgainstBundle as (
   manifest: unknown,
 ) => WorkstreamManifest;
 const coverageOf = buildCoverageReceipt as (manifest: unknown) => CoverageReceipt;
-const verifyChain = verifyCorrectionChain as (
-  original: WorkstreamBrief,
-  receipt: CorrectionReceipt,
-  corrected?: WorkstreamBrief | null,
-) => boolean;
 const hash = sha256 as (value: string) => string;
 const stable = stableStringify as (value: unknown) => string;
 const scan = scanOutput as (value: unknown) => void;
@@ -104,6 +103,17 @@ export type ValidatePackageResult =
   | { ok: false; error: string };
 
 const SUPPORTED_PACKAGE_VERSION = 1;
+
+// Source kinds whose evidence links use the task #15 receipt-scoped locator shape, mirroring the
+// engine's evidenceLink() in brief.mjs. Kept in sync with that list; any other kind uses the
+// manifest's own locator and carries no receiptId.
+const RECEIPT_BACKED_KINDS = new Set([
+  "command_receipt",
+  "test_receipt",
+  "deployment_receipt",
+  "raft_message",
+  "raft_task_state",
+]);
 
 function fail(message: string): never {
   throw new Error(message);
@@ -209,12 +219,75 @@ export function validatePackage(input: unknown): ValidatePackageResult {
     if (pkg.brief.receipt.coverageReceiptSha256 !== hash(stable(pkg.coverageReceipt))) {
       fail("brief receipt coverageReceiptSha256 does not match the coverage receipt (tampered)");
     }
+
+    // 3b) Identity binding: the package header, brief, manifest, AND coverage receipt must all agree
+    //     on workstreamId and freshnessCursor, and the header/brief on checkpointId. Otherwise a
+    //     brief could claim a different workstream or a fabricated future freshness while the result
+    //     still reports the manifest's real identity (PM finding #2).
     if (pkg.checkpointId !== pkg.brief.checkpointId || pkg.workstreamId !== pkg.brief.workstreamId) {
       fail("package header does not match its brief (checkpointId/workstreamId)");
     }
+    const wsIds = [
+      pkg.brief.workstreamId,
+      pkg.manifest.workstreamId,
+      pkg.coverageReceipt.workstreamId,
+    ];
+    if (new Set(wsIds).size !== 1) {
+      fail("workstreamId disagrees across brief, manifest, and coverage receipt (tampered identity)");
+    }
+    const cursors = [
+      pkg.brief.freshnessCursor,
+      pkg.manifest.freshnessCursor,
+      pkg.coverageReceipt.freshnessCursor,
+    ];
+    if (new Set(cursors).size !== 1) {
+      fail("freshnessCursor disagrees across brief, manifest, and coverage receipt (tampered identity)");
+    }
 
-    // 4) Every observed claim's evidence must reference a hash present in the validated manifest.
-    const manifestHashes = new Set(pkg.manifest.sources.map((s) => s.sha256));
+    // 4) Evidence binding. Every evidence link must bind to a SPECIFIC manifest source by id, and
+    //    that source's hash + provenance must match the link exactly. Set-membership on the hash
+    //    alone is not enough: it would let a link cite sourceId "A" while carrying source B's hash
+    //    (or any hash present in the bundle), relabeling evidence while still "looking cited".
+    //    Binding sourceId -> the exact manifest entry ties each link to the real source it names.
+    //    - Observed CLAIM evidence additionally requires captured=true (you cannot "observe" an
+    //      uncaptured source).
+    //    - decisionsNeeded evidence must still resolve to a real manifest source (PM finding #1
+    //      extension), but MAY reference an uncaptured/excluded source — a decision can legitimately
+    //      hinge on evidence outside coverage, which the brief marks with a coverage caveat.
+    const manifestById = new Map(pkg.manifest.sources.map((s) => [s.id, s]));
+    function bindLink(ownerLabel: string, link: WorkstreamBrief["currentOutcome"]["evidence"][number], requireCaptured: boolean): void {
+      const source = manifestById.get(link.sourceId);
+      if (!source) {
+        fail(`${ownerLabel} cites sourceId ${link.sourceId} absent from the frozen manifest`);
+      }
+      if (requireCaptured && !source.captured) {
+        fail(`${ownerLabel} cites ${link.sourceId}, which was not captured (cannot be observed evidence)`);
+      }
+      if (link.sha256 !== source.sha256) {
+        fail(`${ownerLabel} evidence hash does not match manifest source ${link.sourceId} (relabeled evidence)`);
+      }
+      // Locator/receiptId must follow the engine's DETERMINISTIC evidenceLink mapping (brief.mjs).
+      // The link locator is not literally the manifest locator for receipt-backed kinds, but it is
+      // not free either: receipt-backed kinds require receiptId=`receipt:<id>` and
+      // locator=`<id>#receipt:<id>`; every other kind requires the manifest's own locator and no
+      // receiptId. Enforcing this closes the escape path where a fabricated locator ("fabricated://
+      // not-the-hashed-source") rides along with a valid hash and the UI's raw-evidence link lies.
+      const receiptBacked = RECEIPT_BACKED_KINDS.has(source.kind);
+      const expectedLocator = receiptBacked ? `${source.id}#receipt:${source.id}` : source.locator;
+      if (link.locator !== expectedLocator) {
+        fail(`${ownerLabel} evidence locator does not match the deterministic mapping for ${link.sourceId} (forged locator)`);
+      }
+      const expectedReceiptId = receiptBacked ? `receipt:${source.id}` : undefined;
+      if ((link.receiptId ?? undefined) !== expectedReceiptId) {
+        fail(`${ownerLabel} evidence receiptId does not match the deterministic mapping for ${link.sourceId} (forged receipt id)`);
+      }
+      if ((link.revision ?? undefined) !== (source.revision ?? undefined)) {
+        fail(`${ownerLabel} evidence revision does not match manifest source ${link.sourceId}`);
+      }
+      if (link.evidenceLevel !== source.evidenceLevel || link.evidenceLabel !== source.evidenceLabel) {
+        fail(`${ownerLabel} evidence level/label does not match manifest source ${link.sourceId} (relabeled evidence)`);
+      }
+    }
     const claimGroups = [
       [pkg.brief.currentOutcome],
       pkg.brief.sinceLastLooked,
@@ -228,19 +301,68 @@ export function validatePackage(input: unknown): ValidatePackageResult {
       for (const claim of group) {
         if (claim.status === "observed") {
           if (!claim.evidence.length) fail(`observed claim ${claim.id} has no evidence`);
-          for (const link of claim.evidence) {
-            if (!manifestHashes.has(link.sha256)) {
-              fail(`observed claim ${claim.id} cites evidence outside the frozen manifest`);
-            }
-          }
+          for (const link of claim.evidence) bindLink(`observed claim ${claim.id}`, link, true);
         }
       }
     }
+    for (const decision of pkg.brief.decisionsNeeded) {
+      for (const link of decision.evidence) bindLink(`decision ${decision.id}`, link, false);
+    }
 
-    // 5) If the package carries a correction receipt, verify the chain (generic, content-attested).
-    let correctionVerified: boolean | null = null;
+    // 4b) Receipt trust labels are OUTSIDE the semantic hash (they describe the mint environment,
+    //     not brief content), so a tampered package could display "public"/"not-run"/inflated
+    //     counts. Enforce the values the engine guarantees, and recompute the unsupported-observed
+    //     count from the claims themselves (PM finding #4).
+    if (pkg.brief.receipt.publication !== "local_only") {
+      fail(`brief receipt publication must be "local_only" (got ${JSON.stringify(pkg.brief.receipt.publication)})`);
+    }
+    if (pkg.brief.receipt.secretScan !== "pass") {
+      fail(`brief receipt secretScan must be "pass" (got ${JSON.stringify(pkg.brief.receipt.secretScan)})`);
+    }
+    const observedWithoutEvidence = claimGroups
+      .flat()
+      .filter((c) => c.status === "observed" && !c.evidence.length).length;
+    if (pkg.brief.receipt.unsupportedObservedClaimCount !== observedWithoutEvidence) {
+      fail("brief receipt unsupportedObservedClaimCount does not match the claims (tampered receipt)");
+    }
+
+    // 5) Correction receipt handling. PM finding #3: a bare correctionReceipt cannot prove a
+    //    correction. verifyChain(pkg.brief, receipt) mistakes THIS brief for the original and, with
+    //    no corrected brief supplied, returns true for a receipt that merely *claims* an arbitrary
+    //    successor — a false positive. Sound verification requires BOTH the immutable original and
+    //    the successor bound together (previousCheckpointId + old/new semantic and manifest hashes,
+    //    verified with both sides). A single-brief WorkstreamCheckpointPackage cannot carry both, so
+    //    the current contract cannot attest a correction chain at all.
+    //
+    //    Therefore, until the correction/export slice extends the package to carry a verifiable
+    //    original snapshot, we FAIL CLOSED on any correctionReceipt rather than return a misleading
+    //    correctionVerified:true. We still validate what is checkable so the error is precise: the
+    //    receipt must be internally consistent (hash recomputes) and must bind THIS brief as the
+    //    successor (correctionOf + correctedCheckpointId + correctedSemanticBriefSha256). Whatever
+    //    the outcome, correctionVerified is never set true here.
+    const correctionVerified: boolean | null = null;
     if (pkg.correctionReceipt) {
-      correctionVerified = verifyChain(pkg.brief, pkg.correctionReceipt);
+      const receipt = pkg.correctionReceipt;
+      const { correctionReceiptSha256, ...core } = receipt;
+      if (hash(stable(core)) !== correctionReceiptSha256) {
+        fail("correction receipt hash does not recompute (tampered correction receipt)");
+      }
+      const thisIsSuccessor =
+        receipt.correctedCheckpointId === pkg.brief.checkpointId &&
+        pkg.brief.correctionOf === receipt.originalCheckpointId &&
+        receipt.correctedSemanticBriefSha256 === pkg.brief.receipt.semanticBriefSha256;
+      if (!thisIsSuccessor) {
+        fail(
+          "correction receipt does not bind this package as the corrected successor " +
+            "(correctedCheckpointId / correctionOf / correctedSemanticBriefSha256 must reference this brief)",
+        );
+      }
+      // Well-formed successor receipt, but the original snapshot is not carried by this package
+      // contract, so the chain cannot be verified end-to-end. Fail closed rather than overclaim.
+      fail(
+        "correction verification requires the immutable original to be bound in the package; " +
+          "the single-brief contract cannot attest a correction chain (pending the correction/export slice)",
+      );
     }
 
     // 6) Secret scan the full package (defense in depth; the engine already scanned on mint).
