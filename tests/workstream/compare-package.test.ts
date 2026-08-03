@@ -138,6 +138,15 @@ describe("comparison → WorkstreamCheckpointPackage adapter", () => {
     expect(() => comparisonToPackage(artifact, right, left)).toThrow(/do not match artifact\.capsules|capsuleHashes/i);
   });
 
+  it("fails closed on a SELF-comparison (identical capsule ids collapse the bilateral invariant)", async () => {
+    const cases = await loadCases();
+    const c = cases[0];
+    // Compare the left capsule to itself. If the adapter accepted equal ids, a single run's
+    // evidence would satisfy the both-sides requirement and render as a fully-observed comparison.
+    const { artifact, left } = compareCapsules(c.left, c.left, "self");
+    expect(() => comparisonToPackage(artifact, left, left)).toThrow(/self-comparison|distinct ids/i);
+  });
+
   it("fails closed when a side is MISSING", async () => {
     const cases = await loadCases();
     const c = cases[0];

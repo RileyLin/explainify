@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { captureRun } from "./comparative/capsule.mjs";
-import { compareRunFiles, writeComparison } from "./comparative/compare.mjs";
+import { compareCapsules, compareRunFiles, writeComparison } from "./comparative/compare.mjs";
+import { comparisonToPackage } from "./comparative/workstream-package.mjs";
 import { loadComparativeFixtures, verifyFrozenCase } from "./comparative/fixtures.mjs";
 import { captureAndCompareRealPair } from "./comparative/real-capture.mjs";
 
@@ -39,13 +40,23 @@ async function compareCase(caseId, outputDir) {
 
 async function main() {
   if (command === "compare-runs") {
-    const result = await compareRunFiles({
-      leftPath: path.resolve(required("--left")),
-      rightPath: path.resolve(required("--right")),
-      question: required("--question"),
-      outputDir: path.resolve(flag("--output") || "comparison-output/run"),
-    });
-    console.log(JSON.stringify(result, null, 2));
+    const leftPath = path.resolve(required("--left"));
+    const rightPath = path.resolve(required("--right"));
+    const question = required("--question");
+    const outputDir = path.resolve(flag("--output") || "comparison-output/run");
+    // Legacy comparison artifacts (index.html / manifest.json / receipt.json) for the standalone view.
+    const result = await compareRunFiles({ leftPath, rightPath, question, outputDir });
+    // PM red-team #5: also emit the portable WorkstreamCheckpointPackage the Phase B reader imports.
+    // The adapter recomputes the canonical comparison from the two capsules itself (it does not trust
+    // a supplied artifact) and fails closed on any integrity violation, so this is the trustworthy
+    // product output. We hand it a fresh canonical artifact from the same two capsules.
+    const left = JSON.parse(await readFile(leftPath, "utf8"));
+    const right = JSON.parse(await readFile(rightPath, "utf8"));
+    const { artifact, left: vLeft, right: vRight } = compareCapsules(left, right, question);
+    const pkg = comparisonToPackage(artifact, vLeft, vRight);
+    const packagePath = path.join(outputDir, "workstream-package.json");
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+    console.log(JSON.stringify({ ...result, packagePath, workstreamId: pkg.workstreamId }, null, 2));
     return;
   }
   if (command === "capture-run") {

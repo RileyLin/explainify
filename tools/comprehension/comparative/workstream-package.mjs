@@ -23,8 +23,8 @@
 import { buildSourceManifest } from "../../workstream-brief/freeze.mjs";
 import { validateManifestAgainstBundle, buildCoverageReceipt } from "../../workstream-brief/brief.mjs";
 import { sha256, stableStringify } from "../util.mjs";
-import { scanOutput } from "../evidence.mjs";
-import { validateCapsule } from "./capsule.mjs";
+import { publicSecretScan } from "./capsule.mjs";
+import { compareCapsules } from "./compare.mjs";
 
 const RECEIPT_ATTESTED = "receipt_attested";
 
@@ -33,6 +33,9 @@ const RECEIPT_ATTESTED = "receipt_attested";
 // the receipt-backed engine kinds whose evidenceLink locator is `<id>#receipt:<id>`. The ORIGINAL
 // capsule kind is preserved verbatim inside each source's content envelope (below), so the mapping
 // is lossless — nothing about the source is discarded, only its engine-kind label is normalized.
+// This must cover EVERY receipt kind a validated capsule can carry (PM red-team #3): sources are
+// minted from ALL receipts on both capsules, not only those an artifact ref happens to cite, so a
+// missing kind here would drop a real receipt and misreport coverage.
 const RECEIPT_KIND_MAP = {
   command: "command_receipt",
   load_profile: "command_receipt",
@@ -44,9 +47,20 @@ const RECEIPT_KIND_MAP = {
   metric: "command_receipt",
   cost: "command_receipt",
   agent_note: "command_receipt",
+  provider_export: "command_receipt",
   test: "test_receipt",
   deployment: "deployment_receipt",
 };
+
+// The exactly-one-aws-plus-one-gcp provider pair a cross-provider recommendation is allowed to rest
+// on (PM red-team #1 + precision). Any other pairing — self, same-provider, or a pair involving
+// azure/local/other — can never yield an AWS/GCP provider recommendation; the outcome degrades to an
+// evidence-bearing not_comparable. Role order (which side is aws) does not matter: {aws,gcp} is a
+// set, so a role-swapped AWS/GCP pair stays semantically equivalent.
+function isAwsGcpPair(left, right) {
+  const providers = new Set([left.environment.provider, right.environment.provider]);
+  return providers.size === 2 && providers.has("aws") && providers.has("gcp");
+}
 
 function fail(message) {
   throw new Error(`Invalid comparison→package mapping: ${message}`);
@@ -86,31 +100,37 @@ function collectRefs(node, out) {
   }
 }
 
-// Re-verify the artifact and both capsules from CONTENT before minting. We only ever mint from a
-// genuine, untampered, local-only artifact whose receipt hashes recompute and whose capsule hashes
-// match the embedded capsules.
-function verifyArtifact(artifact, left, right) {
-  validateCapsule(left);
-  validateCapsule(right);
-  if (!Array.isArray(artifact.capsules) || artifact.capsules.length !== 2) {
-    fail("artifact must reference exactly two capsules");
-  }
-  const [leftId, rightId] = artifact.capsules;
-  if (left.id !== leftId || right.id !== rightId) {
-    fail("provided capsules do not match artifact.capsules order (left,right)");
-  }
-  const expectedHashes = [left.provenance.capsuleSha256, right.provenance.capsuleSha256];
-  if (stableStringify(artifact.receipt?.capsuleHashes) !== stableStringify(expectedHashes)) {
-    fail("artifact capsuleHashes do not match the provided capsules (swapped or tampered)");
-  }
+// The semantic core of a comparison artifact: everything EXCEPT the non-deterministic generatedAt
+// timestamp and the receipt (which carries the self-hash). Mirrors compare.mjs's own semanticArtifact
+// so the two hash the same bytes. Used only to compare a caller-supplied artifact against the
+// canonical one we recompute — the caller's derived semantics are never trusted directly.
+function semanticArtifact(artifact) {
   const semantic = { ...artifact };
   delete semantic.generatedAt;
   delete semantic.receipt;
-  if (sha256(stableStringify(semantic)) !== artifact.receipt?.semanticArtifactSha256) {
-    fail("artifact semanticArtifactSha256 does not recompute (tampered artifact)");
+  return semantic;
+}
+
+// PM red-team #2: the ONLY trustworthy comparison for two capsules is the one the validated engine
+// derives from them. We recompute the canonical artifact from the two validated capsules + the
+// question and require the caller-supplied artifact to be SEMANTICALLY IDENTICAL. A forged
+// recommendation, an inflated evidenceLabel, dropped confounders, or injected prose (an ARN, a
+// private-map id) all differ from the canonical bytes and fail closed here — the caller cannot smuggle
+// derived semantics past the engine. generatedAt and the receipt self-hash are excluded (they are not
+// semantic), so a legitimately re-generated artifact still matches.
+function verifyMatchesCanonical(provided, canonical) {
+  if (stableStringify(semanticArtifact(provided)) !== stableStringify(semanticArtifact(canonical))) {
+    fail(
+      "provided comparison artifact does not match the canonical comparison recomputed from the two " +
+        "capsules (tampered or forged artifact semantics)",
+    );
   }
-  if (artifact.receipt.publication !== "local_only") fail("artifact publication must be local_only");
-  if (artifact.receipt.providerApiCalled !== false) fail("artifact must not have called a provider API");
+  // Trust labels live outside the semantic core, so pin them explicitly to what the engine guarantees.
+  if (provided.evidenceLevel !== RECEIPT_ATTESTED) {
+    fail(`artifact evidenceLevel must be ${RECEIPT_ATTESTED} (a local comparison is never provider-verified)`);
+  }
+  if (canonical.receipt?.publication !== "local_only") fail("canonical artifact publication must be local_only");
+  if (canonical.receipt?.providerApiCalled !== false) fail("canonical artifact must not have called a provider API");
 }
 
 // The deterministic evidence link the Phase B reader expects for a receipt-backed source (mirrors
@@ -136,53 +156,82 @@ function linkFor(source) {
  * @returns {object} a WorkstreamCheckpointPackage (packageVersion 1).
  */
 export function comparisonToPackage(artifact, leftInput, rightInput) {
-  const left = structuredClone(leftInput);
-  const right = structuredClone(rightInput);
-  verifyArtifact(artifact, left, right);
+  if (!leftInput || !rightInput) fail("a comparison needs two capsules (a side is missing)");
+  // PM red-team #2: recompute the CANONICAL comparison from the two capsules ourselves and trust
+  // only that. compareCapsules re-validates both capsules from content (a tampered/dirty/leaky
+  // capsule fails closed here) and derives the equivalence gate, claims, confounders, and
+  // recommendation deterministically — the caller's supplied `artifact` is then required to match it
+  // semantically (below), so no forged recommendation/label/prose can pass. We use the VALIDATED
+  // capsules compareCapsules returns as the authoritative sides.
+  const { artifact: canonical, left, right } = compareCapsules(leftInput, rightInput, artifact.question);
+  if (!Array.isArray(canonical.capsules) || canonical.capsules.length !== 2) {
+    fail("artifact must reference exactly two capsules");
+  }
+  if (left.id !== artifact.capsules?.[0] || right.id !== artifact.capsules?.[1]) {
+    fail("provided capsules do not match artifact.capsules order (left,right)");
+  }
+  // PM red-team #1: the two sides must be DISTINCT runs — reject identical ids AND identical content
+  // hashes BEFORE the source map can collapse. isBilateral() keys on capsule id, so equal ids let one
+  // run's evidence satisfy the both-sides requirement; equal content hashes are the same run under two
+  // ids. Either collapse would render a self/duplicate comparison as a fully-observed, recommendation-
+  // supported result. (Two genuinely DIFFERENT runs remain a legitimate comparison.)
+  if (left.id === right.id) {
+    fail("cannot compare a run to itself: the two capsules must have distinct ids (self-comparison)");
+  }
+  if (left.provenance.capsuleSha256 === right.provenance.capsuleSha256) {
+    fail("cannot compare a run to itself: the two capsules have identical content hashes (self-comparison)");
+  }
+  verifyMatchesCanonical(artifact, canonical);
+  // From here on we mint ONLY from the canonical artifact and the validated capsules.
+  artifact = canonical;
 
-  const capsuleById = new Map([
-    [left.id, left],
-    [right.id, right],
-  ]);
   const evidenceLabel = artifact.evidenceLabel || "receipt_attested, not provider-verified";
 
-  // 1) Resolve EVERY referenced ref to exactly one manifest source. Each source's content is a
-  //    self-describing, provenance-bound envelope of the exact capsule receipt (binding capsule +
-  //    receipt + original kind + verbatim content), so a swapped capsule or mutated receipt changes
-  //    the source hash and fails closed. The manifest locator preserves the original artifact ref
-  //    for auditability (the reader derives the evidence-link locator independently from the id).
+  // 1) Mint a manifest source for EVERY receipt on BOTH capsules (PM red-team #3), not only the
+  //    receipts an artifact ref happens to cite — otherwise coverage reports fullyCovered while
+  //    silently dropping real receipts. Each source's content is a self-describing, provenance-bound
+  //    envelope of the exact capsule receipt (binding capsule + receipt + original kind + verbatim
+  //    content), so a swapped capsule or mutated receipt changes the source hash and fails closed.
+  //    Evidence refs are then resolved against this COMPLETE set (below).
+  const sourceById = new Map();
+  for (const capsule of [left, right]) {
+    for (const receipt of capsule.receipts || []) {
+      const engineKind = RECEIPT_KIND_MAP[receipt.kind];
+      if (!engineKind) fail(`capsule receipt kind ${JSON.stringify(receipt.kind)} has no engine-kind mapping`);
+      const id = `cmp:${capsule.id}:${receipt.id}`;
+      if (sourceById.has(id)) fail(`duplicate receipt id ${receipt.id} on capsule ${capsule.id}`);
+      const content = stableStringify({
+        capsuleId: capsule.id,
+        capsuleSha256: capsule.provenance.capsuleSha256,
+        provider: capsule.environment.provider,
+        receiptId: receipt.id,
+        kind: receipt.kind,
+        content: receipt.content,
+      });
+      sourceById.set(id, {
+        id,
+        kind: engineKind,
+        // Deterministic <capsuleId>#<receiptId> locator (the reader derives the evidence-link locator
+        // independently from the source id for receipt-backed kinds; this manifest locator only needs
+        // to re-derive identically from raw content, which it does).
+        locator: `${capsule.id}#${receipt.id}`,
+        evidenceLevel: RECEIPT_ATTESTED,
+        evidenceLabel,
+        captured: true,
+        content,
+      });
+    }
+  }
+  if (!sourceById.size) fail("capsules carry no receipts to mint");
+  // Every evidence ref anywhere in the artifact must resolve to one of these minted sources.
   const refs = new Set();
   collectRefs(artifact, refs);
-  const sourceById = new Map();
   for (const ref of refs) {
-    const { capsuleId, receiptId } = splitRef(ref);
-    const capsule = capsuleById.get(capsuleId);
-    if (!capsule) fail(`evidence ref ${ref} names capsule ${capsuleId} not in this comparison`);
-    const receipt = (capsule.receipts || []).find((r) => r.id === receiptId);
-    if (!receipt) fail(`evidence ref ${ref} names receipt ${receiptId} absent from capsule ${capsuleId}`);
-    const engineKind = RECEIPT_KIND_MAP[receipt.kind];
-    if (!engineKind) fail(`capsule receipt kind ${JSON.stringify(receipt.kind)} has no engine-kind mapping`);
-    const id = `cmp:${capsuleId}:${receiptId}`;
-    if (sourceById.has(id)) continue;
-    const content = stableStringify({
-      capsuleId,
-      capsuleSha256: capsule.provenance.capsuleSha256,
-      provider: capsule.environment.provider,
-      receiptId,
-      kind: receipt.kind,
-      content: receipt.content,
-    });
-    sourceById.set(id, {
-      id,
-      kind: engineKind,
-      locator: ref,
-      evidenceLevel: RECEIPT_ATTESTED,
-      evidenceLabel,
-      captured: true,
-      content,
-    });
+    if (!sourceById.has(sourceIdForRef(ref))) {
+      const { capsuleId, receiptId } = splitRef(ref);
+      fail(`evidence ref ${ref} names receipt ${receiptId} absent from capsule ${capsuleId}`);
+    }
   }
-  if (!sourceById.size) fail("artifact carries no resolvable evidence refs");
 
   // Sorted for deterministic manifest ordering; buildSourceManifest hashes the content and pins the
   // whole set. validateManifestAgainstBundle re-derives it byte-for-byte.
@@ -254,7 +303,16 @@ export function comparisonToPackage(artifact, leftInput, rightInput) {
   // block it (or the engine did not support it). Bilateral evidence from the recommendation.
   const rec = artifact.recommendation || {};
   const recRefs = [...(rec.leftEvidence || []), ...(rec.rightEvidence || [])];
-  const recBlocked = (artifact.confounders || []).length > 0 || rec.supported === false;
+  // PM red-team #1 precision: a provider recommendation may ONLY rest on exactly one aws plus one gcp
+  // capsule. Same-provider, azure/local/other, or any other pairing can never yield an AWS/GCP
+  // provider recommendation, so it degrades to an evidence-bearing not_comparable regardless of what
+  // the recommendation claims. Role order does not matter ({aws,gcp} is a set), so a role-swapped
+  // AWS/GCP pair stays observed-eligible. This is defense in depth over the canonical-artifact match:
+  // even if the engine ever supported a same-provider recommendation, the package never renders it as
+  // an observed provider winner.
+  const providerPairAllowed = isAwsGcpPair(left, right);
+  const recBlocked =
+    (artifact.confounders || []).length > 0 || rec.supported === false || !providerPairAllowed;
   const recBilateral = isBilateral(recRefs);
   const currentOutcome = (() => {
     let status = recBlocked || !recBilateral ? "not_comparable" : "observed";
@@ -270,9 +328,13 @@ export function comparisonToPackage(artifact, leftInput, rightInput) {
     };
     if (status !== "observed") {
       const conf = (artifact.confounders || []).map((c) => c.dimension || c);
+      // When the only reason we degraded is the provider pairing (no confounders, engine supported
+      // it), give an explicit reason rather than a misleading "no bilateral evidence".
       claim.unknownReason = conf.length
         ? `No provider can be recommended: comparison blocked by non-equivalent dimensions (${conf.join(", ")}).`
-        : "No provider recommendation is supported from the current bilateral evidence.";
+        : !providerPairAllowed
+          ? `A cross-provider recommendation requires exactly one aws and one gcp run; this pair is ${left.environment.provider} vs ${right.environment.provider}, so no provider winner is asserted.`
+          : "No provider recommendation is supported from the current bilateral evidence.";
       if (conf.length) claim.confounders = conf;
     }
     return claim;
@@ -447,8 +509,11 @@ export function comparisonToPackage(artifact, leftInput, rightInput) {
     rawSources,
   };
 
-  // Defense in depth: secret-scan the whole package before returning (the reader scans again).
-  scanOutput(stableStringify(pkg));
+  // Defense in depth (PM red-team #4): scan the whole package with the STRICTER publicSecretScan
+  // (ARN / 12-digit account / private-key / bearer / private-map-canary patterns), not just the
+  // generic scanOutput. Any private identifier that reached a claim's prose — even one that recomputes
+  // its own hashes — is caught here and fails closed.
+  publicSecretScan(pkg);
   return pkg;
 }
 
