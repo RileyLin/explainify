@@ -213,6 +213,59 @@ describe("validatePackage — fails closed on tamper", () => {
     if (!r.ok) expect(r.error).toMatch(/decision .* absent from the frozen manifest/i);
   });
 
+  it("rejects a decisionsNeeded link citing an uncaptured (excluded) source", () => {
+    // PM ruling (msg 1e30fbbe): an active decision must be supported by CAPTURED evidence; an
+    // excluded input belongs in the coverage caveat, not as a decision's cited link. m3-owner-approval
+    // is policy-excluded (captured=false), so a decision citing it must fail closed.
+    const t = clone(PORTABLE);
+    const excluded = t.manifest.sources.find((s) => s.id === "m3-owner-approval")!;
+    t.brief.decisionsNeeded = [
+      {
+        id: "decision-uncaptured",
+        question: "Proceed with the cutover based on the owner's (excluded) approval?",
+        owner: "@owner",
+        status: "needed",
+        evidence: [
+          {
+            sourceId: excluded.id,
+            locator: `${excluded.id}#receipt:${excluded.id}`,
+            receiptId: `receipt:${excluded.id}`,
+            sha256: excluded.sha256,
+            evidenceLevel: excluded.evidenceLevel,
+            evidenceLabel: excluded.evidenceLabel,
+          },
+        ],
+      },
+    ];
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/not captured/i);
+  });
+
+  it("binds evidence on a non-observed claim (relabeling cannot hide behind a non-green badge)", () => {
+    // PM ruling (msg b6ef351f): integrity follows the PRESENCE of an evidence link, not the badge.
+    // Give an unknown-status claim a link whose sha256 belongs to a different source; it must fail
+    // exactly as an observed claim would, so a future not_comparable/inferred state can't relabel.
+    const t = clone(PORTABLE);
+    const other = t.manifest.sources.find((s) => s.id === "m2-cutover-test")!;
+    const unknown = t.brief.unknowns.find((c) => c.id === "unknown-approval")!;
+    expect(unknown.status).toBe("unknown");
+    unknown.evidence = [
+      {
+        sourceId: "m1-migration-commit",
+        locator: "m1-migration-commit",
+        sha256: other.sha256, // m2's hash under m1's id, on a non-observed claim
+        evidenceLevel: other.evidenceLevel,
+        evidenceLabel: other.evidenceLabel,
+      },
+    ];
+    refinalizeBrief(t);
+    const r = validatePackage(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/does not match manifest source|relabeled/i);
+  });
+
   it("rejects a brief whose workstreamId disagrees with its manifest", () => {
     const t = clone(PORTABLE);
     t.brief.workstreamId = "different-workstream";

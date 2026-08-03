@@ -249,19 +249,21 @@ export function validatePackage(input: unknown): ValidatePackageResult {
     //    alone is not enough: it would let a link cite sourceId "A" while carrying source B's hash
     //    (or any hash present in the bundle), relabeling evidence while still "looking cited".
     //    Binding sourceId -> the exact manifest entry ties each link to the real source it names.
-    //    - Observed CLAIM evidence additionally requires captured=true (you cannot "observe" an
-    //      uncaptured source).
-    //    - decisionsNeeded evidence must still resolve to a real manifest source (PM finding #1
-    //      extension), but MAY reference an uncaptured/excluded source — a decision can legitimately
-    //      hinge on evidence outside coverage, which the brief marks with a coverage caveat.
+    //    Provenance integrity is governed by the PRESENCE of an evidence link, not by the claim's
+    //    status badge (PM ruling msg b6ef351f): ANY present link on ANY claim OR decision must
+    //    resolve to a captured manifest source with an exact hash/locator/receiptId/revision/level/
+    //    label match. Status controls badge semantics, not whether integrity applies — otherwise a
+    //    future non-observed state (`not_comparable`/`inferred`) could carry a relabeled link and
+    //    bypass the check. Empty evidence is allowed only for the non-observed states (which surface
+    //    their own explicit reason/confounder); an observed claim must carry at least one link.
     const manifestById = new Map(pkg.manifest.sources.map((s) => [s.id, s]));
-    function bindLink(ownerLabel: string, link: WorkstreamBrief["currentOutcome"]["evidence"][number], requireCaptured: boolean): void {
+    function bindLink(ownerLabel: string, link: WorkstreamBrief["currentOutcome"]["evidence"][number]): void {
       const source = manifestById.get(link.sourceId);
       if (!source) {
         fail(`${ownerLabel} cites sourceId ${link.sourceId} absent from the frozen manifest`);
       }
-      if (requireCaptured && !source.captured) {
-        fail(`${ownerLabel} cites ${link.sourceId}, which was not captured (cannot be observed evidence)`);
+      if (!source.captured) {
+        fail(`${ownerLabel} cites ${link.sourceId}, which was not captured (uncaptured sources cannot back a claim or decision)`);
       }
       if (link.sha256 !== source.sha256) {
         fail(`${ownerLabel} evidence hash does not match manifest source ${link.sourceId} (relabeled evidence)`);
@@ -299,14 +301,19 @@ export function validatePackage(input: unknown): ValidatePackageResult {
     ];
     for (const group of claimGroups) {
       for (const claim of group) {
-        if (claim.status === "observed") {
-          if (!claim.evidence.length) fail(`observed claim ${claim.id} has no evidence`);
-          for (const link of claim.evidence) bindLink(`observed claim ${claim.id}`, link, true);
+        // Observed claims MUST carry evidence; other states may be empty (they surface a reason).
+        if (claim.status === "observed" && !claim.evidence.length) {
+          fail(`observed claim ${claim.id} has no evidence`);
         }
+        // Any present link is bound regardless of status — integrity follows evidence, not badge.
+        for (const link of claim.evidence) bindLink(`claim ${claim.id}`, link);
       }
     }
+    // decisionsNeeded evidence is bound identically: any present link must resolve to a captured
+    // manifest source (PM ruling msg 1e30fbbe — an active decision is supported by captured
+    // evidence; excluded inputs belong in the coverage caveat, not as a decision's cited link).
     for (const decision of pkg.brief.decisionsNeeded) {
-      for (const link of decision.evidence) bindLink(`decision ${decision.id}`, link, false);
+      for (const link of decision.evidence) bindLink(`decision ${decision.id}`, link);
     }
 
     // 4b) Receipt trust labels are OUTSIDE the semantic hash (they describe the mint environment,
