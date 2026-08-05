@@ -1,0 +1,104 @@
+{
+  "note": "Acceptance gate #6: a FRESH, context-blind evaluator answers >=90% of the eight comprehension questions from the artifact ALONE. Each grader saw ONLY the rendered artifact text (no source, no transcript, no task-thread context, no other grader's score). The exact artifact-only inputs each grader received are preserved verbatim in ./eval-artifacts/*.txt so the grading is auditable and reproducible.",
+  "phase": "1C integration — context-blind comprehension gate",
+  "eightQuestions": ["objective", "outcome", "important changes", "rationale", "current system behavior", "verification", "review-first item", "unknowns"],
+  "scoring": "ANSWERABLE=1.0, PARTIAL=0.5, UNANSWERABLE=0.0; score = sum/8; threshold = 90%.",
+  "graderIsolation": "Each grader is a fresh agent with no access to this repo, the transcript, this thread, or any other grader's result. The S1c successor grader was NOT shown the failed S1 artifact or its 87.5% score (per PM directive: a new grader who has not seen the failed S1 artifact or its score).",
+  "evaluations": [
+    {
+      "scenario": "S1 (feature) — FAILED, superseded",
+      "artifactSeenByGrader": "./eval-artifacts/S1-failed_87.5pct-artifact-as-seen-by-grader.txt",
+      "score": "87.5%",
+      "result": "FAIL",
+      "perQuestion": {
+        "objective": "ANSWERABLE",
+        "outcome": "PARTIAL — the mandated final step (run the test with node) never executed; success asserted only conditionally ('should print All tests passed'), never confirmed.",
+        "importantChanges": "ANSWERABLE",
+        "rationale": "PARTIAL — only 'keep changes minimal'; artifact states 'no explicit design decision was selected'.",
+        "currentSystemBehavior": "ANSWERABLE",
+        "verification": "ANSWERABLE (as a negative: 'No verification receipt captured' — honestly reports it was not verified)",
+        "reviewFirst": "ANSWERABLE",
+        "unknowns": "ANSWERABLE"
+      },
+      "whyItFailed": "A real product failure, not a grading artifact: the S1 dogfood's test never ran (the headless session hit a Bash approval gate), so Outcome and Verification cannot claim verified completion; and the trivial 'add subtract' task created no meaningful rationale evidence. Preserved here so the improvement is auditable.",
+      "session": {
+        "id": "b37a5fcd-3535-4a11-b9ab-f617472f8b17",
+        "transcriptSha256": "e4f80b13a96e782d7e9d744b61dd55f3e1e86bc30c1981491dc1f85dc8629184"
+      }
+    },
+    {
+      "scenario": "S1c (feature) — SUCCESSOR, replaces S1",
+      "artifactSeenByGrader": "./eval-artifacts/S1c-successor_93.75pct-artifact-as-seen-by-grader.txt",
+      "score": "93.75%",
+      "result": "PASS",
+      "perQuestion": {
+        "objective": "ANSWERABLE",
+        "outcome": "ANSWERABLE — 'node slugify.test.js: succeeded. All tests passed.'",
+        "importantChanges": "ANSWERABLE",
+        "rationale": "ANSWERABLE — the truncate-then-trim correctness reasoning is captured verbatim from the session ('the slice is the last operation that can introduce a trailing hyphen, so a single replace(/-+$/,\"\") is guaranteed to clean it up').",
+        "currentSystemBehavior": "ANSWERABLE",
+        "verification": "ANSWERABLE — executed test receipt, status observed.",
+        "reviewFirst": "PARTIAL — the 'Review first' line is generic boilerplate; no specific concern surfaced. (Product note: the objective's requested edge-case caveats are present in the quotes but the brief's review-first line does not elevate them.)",
+        "unknowns": "ANSWERABLE"
+      },
+      "compliesWithDirective": "New session (2f72a1f4), new grader blind to the failed S1 artifact/score, an ACTUALLY EXECUTED test receipt (test:succeeded, verification observed), and an explicit evidence-backed design choice (truncate-then-trim rationale) that was produced BY THE SESSION and quoted from it — the explanation was NOT rewritten to manufacture rationale.",
+      "session": {
+        "id": "2f72a1f4-8d2a-478b-8f42-0b03fa325d64",
+        "transcriptSha256": "76c4e64acb7e982ba0a97592eedc63360f6dd0c6bc6a428c3202ce39a5a6bc28",
+        "startedAt": "2026-08-05T16:06:34.118Z",
+        "endedAt": "2026-08-05T16:06:53.631Z",
+        "finalMessageSha256": "da123adbdb6deaccf97feffe878bd2967086b607e61a1b859a6af2086755df28"
+      },
+      "counts": { "excerpts": 4, "toolEvents": 4, "receipts": 1, "changedFiles": 5, "quotes": 4, "viewSteps": 4, "unknowns": 2, "verification": 1 },
+      "toolStatuses": ["Read:succeeded", "Edit:succeeded", "Write:succeeded", "Bash:succeeded"],
+      "receiptStatuses": ["test:succeeded"],
+      "verificationStatuses": ["observed"],
+      "privacy": { "manualPaste": false, "publication": "local_only", "secretScan": "pass", "redactionCount": 0, "deniedPathCount": 0 },
+      "browser": { "widths": [320, 390, 1440], "result": "no overflow (0px), no JS errors" },
+      "lineage": {
+        "bundleSha256": "27dd6170820098ab64fd12810606cf59d5a541a4673d538835c5cc857ef48b92",
+        "captureContentSha256": "86979c7c6edbf6e1e1bf15fc81eb5551d847637fd46ee2b708636cb5a3d9c8ec",
+        "packageSha256": "846d91d13ea6afcf703d5db08f75734a5b73565fb4d151e666f03be0f5018ab7",
+        "artifactSha256": "9988ea654da68fc337337a29eebd561a61a00c981155ec0811bafff6e7f0b5ba",
+        "htmlReceiptSha256": "beba15462fadb0102911fd6177803a04040947ade89896740ab8677164b19999",
+        "checkpointId": "checkpoint-21ad46dd8d1c",
+        "sessionSha256": "99e0defb8ec25579a93d60f2f391cb594b6bbce93fbc99edba1b1944ebee767b",
+        "lineageReceiptSha256": "3af0998edc347d4c7b599743df66054955e53d9414ad2be65fd2b07614f19b7f"
+      },
+      "lineageVerified": { "bundleMatches": true, "htmlMatches": true }
+    },
+    {
+      "scenario": "S2 (debugging) — PASS",
+      "artifactSeenByGrader": "./eval-artifacts/S2-debugging_93.75pct-artifact-as-seen-by-grader.txt",
+      "score": "93.75%",
+      "result": "PASS",
+      "perQuestion": {
+        "objective": "ANSWERABLE",
+        "outcome": "ANSWERABLE — 'succeeded. All tests passed.'",
+        "importantChanges": "ANSWERABLE — start = page*pageSize -> (page-1)*pageSize.",
+        "rationale": "ANSWERABLE — '0-based indexing but the API contract is 1-indexed'.",
+        "currentSystemBehavior": "ANSWERABLE",
+        "verification": "ANSWERABLE — explicit failed->passed transition preserved.",
+        "reviewFirst": "PARTIAL — boilerplate; the requested page-0/negative edge cases are in the quotes but not elevated to a review-first item.",
+        "unknowns": "ANSWERABLE"
+      },
+      "session": {
+        "id": "bd7fa5b4-74d2-4007-806f-b7b2e513d852",
+        "transcriptSha256": "e10bdef19c9bbf4ae07b524c40adf12c657108129f8b2308fe35f1352a339c47"
+      },
+      "detail": "Full structural receipt in ./session-1c-s2-debugging-receipt.json (committed at 0777a03)."
+    }
+  ],
+  "gateOutcome": {
+    "s1c": "PASS 93.75%",
+    "s2": "PASS 93.75%",
+    "s1_superseded": "FAIL 87.5% (preserved for auditability)",
+    "conclusion": "Both current scenarios (S1c feature + S2 debugging) clear the >=90% context-blind comprehension gate. The superseded S1 failure is preserved alongside its successor."
+  },
+  "knownProductGapNotBlocking": "Both PASSING artifacts score PARTIAL only on 'review-first item' because the brief's Review-first line is generic boilerplate that does not elevate a session's own stated caveats (e.g. the edge cases the agent explicitly named) into a concrete attention item. This is a synthesis-layer improvement opportunity (populate review-first from unresolved/edge-case excerpts), recorded as follow-up, not a blocker for the single-session path.",
+  "honestLimits": [
+    "Graders are LLM agents constrained to artifact-only input; this operationalizes 'context-blind reviewer' faithfully but is not a human panel.",
+    "The rationale evidence in S1c and S2 is quoted verbatim from the actual session — no explanation text was rewritten to manufacture rationale.",
+    "S3 multi-session remains OPTIONAL and deferred; it does not gate the single-session path."
+  ]
+}
