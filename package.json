@@ -16,7 +16,8 @@
     "session:capture": "node tools/session/session-cli.mjs capture",
     "session:validate": "node tools/session/session-cli.mjs validate",
     "session:mcp": "node tools/session/mcp-server.mjs",
-    "test:session": "node --test tools/session/__tests__/*.test.mjs"
+    "test:session": "node --test tools/session/__tests__/*.test.mjs",
+    "explain:session": "node tools/session-synthesis/cli.mjs synthesize"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1101.0",
