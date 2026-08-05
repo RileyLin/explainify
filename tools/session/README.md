@@ -24,18 +24,28 @@ calls a hosted API, or publishes.
 
 ## How capture flows
 
-1. A Claude Code **hook** (`plugin/hooks/capture-pointer.mjs`) fires at Stop /
-   SessionEnd and writes a **pointer only** to
-   `.explainify/sessions/<session-id>/pointer.json` — session id, transcript
-   path, cwd, event. The transcript content is never copied.
+1. A Claude Code **hook** (`plugin/hooks/capture-pointer.mjs`) fires:
+   - at **SessionStart** it records an immutable repository baseline (start
+     commit + dirty flag) to `.explainify/sessions/<session-id>/start.json`;
+   - at **Stop / SessionEnd** it writes a **pointer only** to
+     `.explainify/sessions/<session-id>/pointer.json` — session id, transcript
+     path, cwd, event, and the SHA-256 of the final assistant message. The
+     transcript content is never copied.
 2. The session (or user) calls the **MCP tool** `explainify.explain_session`
-   (or the CLI). It resolves the pointer, reads the transcript once it is
-   **stable** (the file lags the live turn), collects **git** facts, and runs
-   the **adapter**.
+   (or the CLI). It resolves the pointer, waits until the transcript is
+   **quiescent and contains that recorded final message** (the file lags the
+   live turn; a timeout is an error, never a partial "verified" bundle),
+   collects **git** facts against the SessionStart baseline, and runs the
+   **adapter**.
 3. The adapter emits a validated `SessionEvidenceBundle` + a **capture receipt**
    under `.explainify/out/<session-id>/`. The receipt proves `manualPaste:false`,
-   records the whole-file transcript hash, bundle hash, secret-scan result,
-   redaction/denied-path counts, and `publication: local_only`.
+   records the whole-file transcript hash, the bound final-message hash, bundle
+   hash, secret-scan result, redaction/denied-path counts, and
+   `publication: local_only`.
+
+The caller's `question`/`audience` is **request context**, not evidence: it
+lands in `bundle.request` and never becomes the observed `objective`, whose
+`sourceId` always resolves to a selected excerpt.
 
 ## Scripts
 
@@ -54,8 +64,20 @@ Point Claude Code at `tools/session/plugin/` (it contains `.claude-plugin/`,
 hook paths. The plugin adds:
 
 - MCP server `explainify-session` with tool `explainify.explain_session`;
-- narrow `Stop` / `SessionEnd` hooks that record the session pointer;
+- a `SessionStart` hook that records the immutable repository baseline, plus
+  narrow `Stop` / `SessionEnd` hooks that record the session pointer +
+  final-message hash;
 - the `/explain-session` skill.
+
+**Real-client discovery, verified.** Registering the server with Claude Code
+`v2.1.220` (`claude mcp add explainify-session -- node .../mcp-server.mjs`)
+health-checks as **✔ Connected**, and a headless session
+(`claude -p … --allowedTools mcp__explainify-session__explainify_explain_session`)
+discovers and **calls** the tool, returning a `verified` local bundle. Note
+Claude Code normalizes the SDK-registered dotted name `explainify.explain_session`
+to the invocation handle `mcp__explainify-session__explainify_explain_session`.
+A redacted structural receipt of one real capture is committed at
+[`docs/product/session-1a-real-capture-receipt.json`](../../docs/product/session-1a-real-capture-receipt.json).
 
 ## Guarantees (contract §Privacy Boundary)
 

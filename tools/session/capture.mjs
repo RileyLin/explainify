@@ -1,13 +1,18 @@
 // Session capture plumbing: resolve the hook-written session pointer, read the
-// transcript with async-stability handling, collect repository facts, and drive
-// the adapter. This is the non-transport core shared by the CLI and the MCP
-// server.
+// transcript with quiescence + final-message binding, collect repository facts,
+// and drive the adapter. This is the non-transport core shared by the CLI and
+// the MCP server.
 //
 // Hook boundary (contract §Capture Architecture): a Claude Code hook writes only
-// a POINTER + event receipt under .explainify/sessions/<session-id>/pointer.json
-// — never the raw transcript. This module resolves that pointer. Because the
-// transcript file is written asynchronously and can lag the live turn, we wait
-// for the file size to stabilize before hashing/parsing.
+// a POINTER + event receipt under .explainify/sessions/<session-id>/ — never the
+// raw transcript. A SessionStart hook records the immutable starting commit and
+// dirty-state baseline; Stop/SessionEnd records the ending state plus the hook's
+// final assistant message hash. This module resolves those, and because the
+// transcript file is written asynchronously and can lag the live turn, it waits
+// until the transcript is QUIESCENT and CONTAINS that final message before
+// hashing/parsing. A timeout produces an error, never a partial "verified"
+// bundle. Session IDs and all derived .explainify paths are validated and must
+// remain inside the intended local Explainify directory.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -16,13 +21,56 @@ import path from "node:path";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-export function pointerDir(root, sessionId) {
-  return path.join(root, ".explainify", "sessions", sessionId);
+// --- path / id confinement (fail-closed) ---
+
+// A session id must be a safe token: no separators, no traversal, bounded
+// length. This is the first gate before any id is interpolated into a path.
+const SAFE_SESSION_ID = /^[A-Za-z0-9._-]{1,200}$/;
+
+export function assertSafeSessionId(sessionId) {
+  if (typeof sessionId !== "string" || !SAFE_SESSION_ID.test(sessionId) || sessionId === "." || sessionId === "..") {
+    throw new Error(`Unsafe session id: ${JSON.stringify(sessionId)}`);
+  }
+  return sessionId;
 }
 
-// Write the local pointer + event receipt a hook produces. Stores metadata
-// only; the transcript stays where Claude wrote it and is referenced by path.
-export async function writePointer(root, { sessionId, transcriptPath, cwd, captureEvent }) {
+// The Explainify root: the single local directory all pointers/outputs live
+// under. Every derived path must resolve to inside it.
+export function explainifyRoot(root) {
+  return path.resolve(root, ".explainify");
+}
+
+// Resolve `segments` under the Explainify root and assert the result does not
+// escape it (defends against traversal / absolute-path injection in a session
+// id or output dir that slipped a check). Returns the confined absolute path.
+export function resolveWithinExplainify(root, ...segments) {
+  const base = explainifyRoot(root);
+  const resolved = path.resolve(base, ...segments);
+  const rel = path.relative(base, resolved);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    throw new Error(`Path escapes the Explainify root: ${resolved}`);
+  }
+  return resolved;
+}
+
+export function pointerDir(root, sessionId) {
+  assertSafeSessionId(sessionId);
+  return resolveWithinExplainify(root, "sessions", sessionId);
+}
+
+export function outDir(root, sessionId) {
+  assertSafeSessionId(sessionId);
+  return resolveWithinExplainify(root, "out", sessionId);
+}
+
+// --- pointer + baseline I/O ---
+
+// Write the local pointer + event receipt a Stop/SessionEnd hook produces.
+// Stores metadata only; the transcript stays where Claude wrote it and is
+// referenced by path. `finalMessageSha256` binds the last assistant message the
+// hook observed, so capture can prove the transcript it later reads is the same
+// completed turn.
+export async function writePointer(root, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256 }) {
   const dir = pointerDir(root, sessionId);
   await mkdir(dir, { recursive: true });
   const pointer = {
@@ -31,46 +79,156 @@ export async function writePointer(root, { sessionId, transcriptPath, cwd, captu
     transcriptPath,
     cwd,
     captureEvent,
-    // No timestamp field is generated here on purpose: the value would be
-    // non-deterministic. The hook may pass one in transcriptPath's own mtime.
+    ...(finalMessageSha256 ? { finalMessageSha256 } : {}),
   };
   await writeFile(path.join(dir, "pointer.json"), `${JSON.stringify(pointer, null, 2)}\n`, "utf8");
   return pointer;
 }
 
+// Validate and read the pointer. Fail closed on a missing/malformed pointer or
+// one whose shape does not match — a dangling reference must never silently
+// degrade to a partial capture.
 export async function readPointer(root, sessionId) {
+  assertSafeSessionId(sessionId);
   const file = path.join(pointerDir(root, sessionId), "pointer.json");
-  const raw = await readFile(file, "utf8");
-  return JSON.parse(raw);
+  let raw;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    throw new Error(`No session pointer at ${file}; run the capture hook or write-pointer first.`);
+  }
+  let pointer;
+  try {
+    pointer = JSON.parse(raw);
+  } catch {
+    throw new Error(`Malformed session pointer at ${file}.`);
+  }
+  if (!pointer || typeof pointer !== "object" || pointer.sessionId !== sessionId || typeof pointer.transcriptPath !== "string") {
+    throw new Error(`Invalid session pointer shape at ${file}.`);
+  }
+  return pointer;
 }
 
-// Read the transcript, waiting for the async-written file to stabilize. We poll
-// the file size a few times; when two consecutive reads agree, the file is
-// considered settled. Bounded so it never hangs a hook.
-export async function readStableTranscript(transcriptPath, { attempts = 5, intervalMs = 120 } = {}) {
-  let prevSize = -1;
-  let settledText = null;
-  for (let i = 0; i < attempts; i += 1) {
-    let size;
+// SessionStart baseline: the immutable starting commit + dirty flag, captured
+// before the session did any work. Recorded by the SessionStart hook and read
+// back so the bundle's repository.baseRevision is the true starting point, not
+// re-derived at capture time.
+export async function writeBaseline(root, { sessionId, baseRevision, dirty }) {
+  const dir = pointerDir(root, sessionId);
+  await mkdir(dir, { recursive: true });
+  const baseline = { schemaVersion: 1, sessionId, baseRevision: baseRevision || "", dirty: Boolean(dirty) };
+  await writeFile(path.join(dir, "start.json"), `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
+  return baseline;
+}
+
+export async function readBaseline(root, sessionId) {
+  assertSafeSessionId(sessionId);
+  const file = path.join(pointerDir(root, sessionId), "start.json");
+  try {
+    const raw = await readFile(file, "utf8");
+    const b = JSON.parse(raw);
+    if (b && typeof b === "object" && b.sessionId === sessionId) return b;
+  } catch {
+    /* baseline is optional; absence means "no SessionStart hook ran" */
+  }
+  return null;
+}
+
+// --- transcript stability (quiescence + final-message binding) ---
+
+// Extract the last assistant text message from a transcript and return its
+// sha-256, or null if there is no assistant text yet. This is what the hook
+// records as finalMessageSha256 and what capture re-derives to confirm the
+// completed turn is present.
+export function finalAssistantMessageHash(transcriptText) {
+  const lines = transcriptText.split("\n");
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const raw = lines[i];
+    if (!raw.trim()) continue;
+    let obj;
     try {
-      size = (await stat(transcriptPath)).size;
+      obj = JSON.parse(raw);
     } catch {
-      // Not present yet; wait and retry.
-      await delay(intervalMs);
       continue;
     }
-    if (size === prevSize) {
-      settledText = await readFile(transcriptPath, "utf8");
-      break;
+    if (obj?.type !== "assistant") continue;
+    const content = obj?.message?.content;
+    const blocks = Array.isArray(content) ? content : typeof content === "string" ? [{ type: "text", text: content }] : [];
+    const text = blocks
+      .filter((bl) => (bl?.type === "text" || bl?.type === undefined) && typeof (bl?.text ?? bl) === "string")
+      .map((bl) => (typeof bl === "string" ? bl : bl.text))
+      .join("");
+    if (text.trim().length > 0) return sha256(text);
+  }
+  return null;
+}
+
+// Read the transcript only once it is QUIESCENT and CONTAINS the completed turn.
+// Quiescence = size AND mtime identical across `stableChecks` consecutive polls.
+// Completion = at least one assistant text message present, and — when the hook
+// recorded one — the final assistant message hash matches `expectFinalHash`.
+// If the deadline passes before both hold, throw: we never return a partial,
+// mislabeled "verified" transcript.
+export async function readStableTranscript(
+  transcriptPath,
+  { pollMs = 120, stableChecks = 3, timeoutMs = 5000, expectFinalHash = null } = {},
+) {
+  // The transcript must be a regular file (not a directory / device / dangling
+  // symlink target). Resolve then stat.
+  let realTranscript;
+  try {
+    realTranscript = await realpath(transcriptPath);
+  } catch {
+    realTranscript = transcriptPath;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  let prev = null;
+  let stableRun = 0;
+  let lastText = null;
+
+  // Time budget is bounded by timeoutMs; each poll advances by pollMs. We do not
+  // use wall-clock beyond the deadline comparison, so behavior stays test-stable.
+  for (let elapsed = 0; ; elapsed += pollMs) {
+    let st;
+    try {
+      st = await stat(realTranscript);
+    } catch {
+      if (Date.now() > deadline) throw new Error(`Transcript not present at ${transcriptPath} within ${timeoutMs}ms.`);
+      await delay(pollMs);
+      continue;
     }
-    prevSize = size;
-    settledText = await readFile(transcriptPath, "utf8");
-    await delay(intervalMs);
+    if (!st.isFile()) throw new Error(`Transcript path is not a regular file: ${transcriptPath}`);
+
+    const sig = `${st.size}:${st.mtimeMs}`;
+    if (sig === prev) stableRun += 1;
+    else {
+      stableRun = 0;
+      prev = sig;
+    }
+
+    if (stableRun + 1 >= stableChecks) {
+      // File looks settled; read it and check it contains the completed turn.
+      lastText = await readFile(realTranscript, "utf8");
+      const finalHash = finalAssistantMessageHash(lastText);
+      const hasFinal = finalHash !== null;
+      const matchesExpected = expectFinalHash ? finalHash === expectFinalHash : true;
+      if (hasFinal && matchesExpected) {
+        return { text: lastText, transcriptSha256: sha256(lastText), finalMessageSha256: finalHash };
+      }
+      // Settled but incomplete (or not yet the expected turn) — keep waiting.
+      stableRun = 0;
+      prev = null;
+    }
+
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Transcript did not reach a quiescent, completed state at ${transcriptPath} within ${timeoutMs}ms` +
+          (expectFinalHash ? " (final assistant message not present or did not match the recorded hook message)." : "."),
+      );
+    }
+    await delay(pollMs);
   }
-  if (settledText == null) {
-    throw new Error(`Transcript not readable at ${transcriptPath}`);
-  }
-  return { text: settledText, transcriptSha256: sha256(settledText) };
 }
 
 function delay(ms) {
@@ -85,10 +243,21 @@ function git(root, args) {
   }
 }
 
+// Read just the starting commit + dirty flag (used by the SessionStart hook).
+export function gitBaseline(root) {
+  const isRepo = git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
+  if (!isRepo) return { baseRevision: "", dirty: false };
+  return {
+    baseRevision: git(root, ["rev-parse", "HEAD"]),
+    dirty: git(root, ["status", "--porcelain"]).length > 0,
+  };
+}
+
 // Collect repository facts: base/head revisions, dirty flag, and changed files.
 // If baseRef/headRef are provided we diff that range; otherwise we report the
-// working-tree status against HEAD.
-export async function collectRepository(rootInput, { baseRef, headRef } = {}) {
+// working-tree status against HEAD. A recorded SessionStart baseline supplies
+// baseRevision when no explicit baseRef is given.
+export async function collectRepository(rootInput, { baseRef, headRef, baseline } = {}) {
   let root;
   try {
     root = await realpath(rootInput);
@@ -97,7 +266,7 @@ export async function collectRepository(rootInput, { baseRef, headRef } = {}) {
   }
   const isRepo = git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
   if (!isRepo) {
-    return { dirty: false, changedFiles: [] };
+    return { dirty: false, changedFiles: [], ...(baseline?.baseRevision ? { baseRevision: baseline.baseRevision } : {}) };
   }
   const statusOut = git(root, ["status", "--porcelain"]);
   const dirty = statusOut.length > 0;
@@ -128,6 +297,8 @@ export async function collectRepository(rootInput, { baseRef, headRef } = {}) {
   } else {
     const head = git(root, ["rev-parse", "HEAD"]);
     if (head) result.headRevision = head;
+    // Prefer the immutable SessionStart baseline as the base when available.
+    if (baseline?.baseRevision) result.baseRevision = baseline.baseRevision;
     for (const line of statusOut.split("\n").filter(Boolean)) {
       const code = line.slice(0, 2).trim()[0] || "M";
       const filePath = line.slice(3).trim();

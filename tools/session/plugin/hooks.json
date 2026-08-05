@@ -1,6 +1,16 @@
 {
-  "//": "Narrow hook config for the Explainify session plugin. Only Stop and SessionEnd fire, and each only records a local pointer (session id + transcript path) — never the transcript content. CLAUDE_PROJECT_DIR is provided by Claude Code.",
+  "//": "Narrow hook config for the Explainify session plugin. SessionStart records an immutable repository baseline (start commit + dirty flag); Stop and SessionEnd record a local pointer (session id + transcript path + final-message hash) — never the transcript content. CLAUDE_PROJECT_DIR is provided by Claude Code.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/tools/session/plugin/hooks/capture-pointer.mjs\""
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

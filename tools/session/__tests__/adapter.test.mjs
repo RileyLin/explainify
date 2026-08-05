@@ -62,6 +62,43 @@ test("keeps change/inspect tool events and pairs their results by tool_use_id", 
   assert.ok(bash, "Bash tool kept");
 });
 
+test("tool events carry distinct input and output locators (output never borrows input)", () => {
+  const bundle = buildFeature();
+  const write = bundle.toolEvents.find((t) => t.toolName === "Write");
+  assert.match(write.inputLocator, /^jsonl:a2#content\[0\]$/);
+  assert.match(write.outputLocator, /^jsonl:u2#content\[0\]$/);
+  assert.notEqual(write.inputLocator, write.outputLocator);
+  assert.match(write.inputSha256, /^[0-9a-f]{64}$/);
+  assert.match(write.outputSha256, /^[0-9a-f]{64}$/);
+});
+
+test("derives an honest test receipt from the Bash test command", () => {
+  const bundle = buildFeature();
+  const rc = bundle.receipts.find((r) => r.kind === "test");
+  assert.ok(rc, "test receipt derived from `npm test`");
+  assert.equal(rc.status, "succeeded"); // tool_result was is_error:false
+  assert.equal(rc.exitCode, undefined, "no exit code is fabricated");
+  assert.match(rc.commandLocator, /^jsonl:a5#content\[0\]$/);
+  assert.match(rc.sha256, /^[0-9a-f]{64}$/);
+});
+
+test("caller question is request context, distinct from the observed objective", () => {
+  const bundle = buildBundleFromTranscript({
+    transcript: FEATURE_CHANGE_JSONL,
+    transcriptSha256: sha256(FEATURE_CHANGE_JSONL),
+    session: { id: "sess-q", cwd: "/repo", captureEvent: "stop" },
+    request: { question: "Is this production ready?", audience: { role: "reviewer", technicalDepth: "expert" } },
+    repository: FIXED_REPOSITORY,
+  }).bundle;
+  assert.equal(bundle.request.question, "Is this production ready?");
+  assert.equal(bundle.request.audience.technicalDepth, "expert");
+  // The objective is the session's own requirement, NOT the caller's question.
+  assert.match(bundle.objective.text, /rate limiter/i);
+  assert.notEqual(bundle.objective.text, bundle.request.question);
+  const src = bundle.excerpts.find((e) => e.id === bundle.objective.sourceId);
+  assert.ok(src, "objective.sourceId resolves to a selected excerpt");
+});
+
 test("fail-closed: unknown tool payloads are excluded, not coerced", () => {
   const bundle = buildFeature();
   assert.ok(!bundle.toolEvents.some((t) => t.toolName === "ToolSearch"));
@@ -132,7 +169,10 @@ test("deterministic: identical immutable inputs produce a byte-identical bundle"
 test("locators reference exact transcript records, not line numbers", () => {
   const bundle = buildFeature();
   for (const e of bundle.excerpts) assert.match(e.locator, /^jsonl:[^#]+#content\[\d+\]$/);
-  for (const t of bundle.toolEvents) assert.match(t.locator, /^jsonl:[^#]+#content\[\d+\]$/);
+  for (const t of bundle.toolEvents) {
+    assert.match(t.inputLocator, /^jsonl:[^#]+#content\[\d+\]$/);
+    if (t.outputLocator) assert.match(t.outputLocator, /^jsonl:[^#]+#content\[\d+\]$/);
+  }
 });
 
 test("raw transcript is referenced by whole-file hash, never embedded", () => {
@@ -170,6 +210,69 @@ test("validator rejects a bad sha-256 hex", () => {
   const bundle = buildFeature();
   bundle.excerpts[0].sha256 = "not-a-hash";
   assert.equal(validateBundle(bundle).ok, false);
+});
+
+test("validator rejects an excerpt hash that does not bind its text", () => {
+  const bundle = buildFeature();
+  bundle.excerpts[0].text = `${bundle.excerpts[0].text} tampered`;
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /hash mismatch/.test(e)));
+});
+
+test("validator rejects an unknown field anywhere in the bundle", () => {
+  const bundle = buildFeature();
+  bundle.excerpts[0].surprise = "extra";
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /unknown field/.test(e)));
+});
+
+test("validator rejects a dangling objective.sourceId", () => {
+  const bundle = buildFeature();
+  bundle.objective.sourceId = "excerpt-does-not-exist";
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /dangling reference/.test(e)));
+});
+
+test("validator rejects a tool output that borrows its input locator", () => {
+  const bundle = buildFeature();
+  const write = bundle.toolEvents.find((t) => t.outputLocator);
+  write.outputLocator = write.inputLocator;
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /borrow its input locator/.test(e)));
+});
+
+test("validator rejects an over-limit text field", () => {
+  const bundle = buildFeature();
+  bundle.excerpts[0].text = "x".repeat(9000);
+  bundle.excerpts[0].sha256 = sha256(bundle.excerpts[0].text);
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /exceeds .* chars/.test(e)));
+});
+
+test("validator rejects a receipt whose canonical hash does not bind it", () => {
+  const bundle = buildFeature();
+  const rc = bundle.receipts[0];
+  assert.ok(rc, "there is at least one derived receipt");
+  rc.content = `${rc.content} tampered`;
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /hash mismatch/.test(e)));
+});
+
+test("validator rejects an exit code on an unknown-status receipt", () => {
+  const bundle = buildFeature();
+  const rc = bundle.receipts[0];
+  rc.status = "unknown";
+  rc.exitCode = 0;
+  rc.sha256 = undefined; // force through to the exitCode rule regardless of hash
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must be absent when status is unknown/.test(e)));
 });
 
 // --- safety unit tests ---

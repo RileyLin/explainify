@@ -1,0 +1,84 @@
+{
+  "note": "Structural proof only. No transcript/excerpt text is included. The full bundle stays local under .explainify/ (gitignored). Regenerate with: node tools/session/session-cli.mjs capture --session-id <id> --root <repo>.",
+  "capturedVia": "CLI + real Claude Code v2.1.220 (claude mcp add explainify-session; claude -p invoked mcp__explainify-session__explainify_explain_session; status verified).",
+  "toolNameNote": "Claude Code normalizes the SDK-registered tool name explainify.explain_session to the invocation handle mcp__explainify-session__explainify_explain_session (dot -> underscore).",
+  "schemaVersion": 1,
+  "request": {
+    "question": "What did this session do?",
+    "audience": {
+      "role": "engineer",
+      "technicalDepth": "working"
+    }
+  },
+  "session": {
+    "id": "8af396f5-1d2e-42b8-a570-f875289743b4",
+    "source": "claude_code",
+    "captureEvent": "session_end",
+    "transcriptSha256": "27a5197f1d11ef7862c7f787899985654b75e8796ca3980357315b75c7158ccc",
+    "finalMessageSha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982"
+  },
+  "objective": {
+    "sourceId": "excerpt-objective",
+    "textChars": 37
+  },
+  "counts": {
+    "excerpts": 2,
+    "toolEvents": 0,
+    "receipts": 0,
+    "exclusionEvents": 7
+  },
+  "excerptShape": [
+    {
+      "id": "excerpt-objective",
+      "kind": "user_requirement",
+      "role": "user",
+      "textChars": 37,
+      "locator": "jsonl:f081ad5a-7ae2-43bf-a229-e0811aed42f4#content[0]",
+      "sha256": "479b16953727d07ed4960028223a765d1d13745ad78363dc43a979e5b91ac4f0"
+    },
+    {
+      "id": "excerpt-1",
+      "kind": "agent_explanation",
+      "role": "assistant",
+      "textChars": 17,
+      "locator": "jsonl:667f6144-73fe-48dc-beea-e508c622ac8e#content[0]",
+      "sha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982"
+    }
+  ],
+  "exclusions": [
+    {
+      "count": 1,
+      "kind": "record_type:ai-title",
+      "reason": "Non-message record is metadata, not trusted evidence."
+    },
+    {
+      "count": 3,
+      "kind": "record_type:attachment",
+      "reason": "Non-message record is metadata, not trusted evidence."
+    },
+    {
+      "count": 1,
+      "kind": "record_type:last-prompt",
+      "reason": "Non-message record is metadata, not trusted evidence."
+    },
+    {
+      "count": 2,
+      "kind": "record_type:queue-operation",
+      "reason": "Non-message record is metadata, not trusted evidence."
+    }
+  ],
+  "privacy": {
+    "deniedPathCount": 0,
+    "publication": "local_only",
+    "redactionCount": 0,
+    "secretScan": "pass"
+  },
+  "captureReceipt": {
+    "manualPaste": false,
+    "bundleSha256": "9827c5bdfd4e365afc2e47d78f6612fa75aa014b08d9ddf1f3f2314d88bd08a4",
+    "transcriptSha256": "27a5197f1d11ef7862c7f787899985654b75e8796ca3980357315b75c7158ccc",
+    "finalMessageSha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982",
+    "secretScan": "pass",
+    "publication": "local_only"
+  }
+}

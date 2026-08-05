@@ -26,9 +26,12 @@ import { validateBundle } from "./bundle-schema.mjs";
 import {
   readPointer,
   writePointer,
+  readBaseline,
   readStableTranscript,
   collectRepository,
   hashChangedFiles,
+  outDir as sessionOutDir,
+  assertSafeSessionId,
 } from "./capture.mjs";
 import { stableStringify, sha256Of } from "./receipt.mjs";
 
@@ -54,34 +57,41 @@ async function cmdCapture(args) {
   const sessionId = args["session-id"];
   const rootInput = args.root || process.cwd();
   if (!sessionId) throw new Error("capture requires --session-id");
+  assertSafeSessionId(sessionId);
   const root = await realpath(rootInput).catch(() => rootInput);
 
   // Resolve transcript path: explicit flag, else the hook-written pointer.
   let transcriptPath = args.transcript;
   let captureEvent = args.event || "stop";
   let cwd = root;
+  let expectFinalHash = null;
   if (!transcriptPath) {
     const pointer = await readPointer(root, sessionId);
     transcriptPath = pointer.transcriptPath;
     captureEvent = args.event || pointer.captureEvent || "stop";
     cwd = pointer.cwd || root;
+    expectFinalHash = pointer.finalMessageSha256 || null;
   }
+  const baseline = await readBaseline(root, sessionId);
 
-  const { text, transcriptSha256 } = await readStableTranscript(transcriptPath);
+  const { text, transcriptSha256, finalMessageSha256 } = await readStableTranscript(transcriptPath, { expectFinalHash });
 
-  const repoBase = await collectRepository(root, { baseRef: args.base, headRef: args.head });
+  const repoBase = await collectRepository(root, { baseRef: args.base, headRef: args.head, baseline });
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
   const repository = { ...repoBase, changedFiles };
 
   const { bundle } = buildBundleFromTranscript({
     transcript: text,
     transcriptSha256,
-    session: { id: sessionId, cwd, captureEvent },
+    session: { id: sessionId, cwd, captureEvent, finalMessageSha256 },
+    request: { question: args.question, audience: { role: args.role, technicalDepth: args.depth } },
     repository,
     receipts: [],
   });
 
-  const outDir = args.out || path.join(root, ".explainify", "out", sessionId);
+  const outDir = args.out
+    ? await realpath(args.out).catch(() => args.out)
+    : sessionOutDir(root, sessionId);
   await mkdir(outDir, { recursive: true });
   const bundlePath = path.join(outDir, "bundle.json");
   const bundleText = `${stableStringify(bundle)}\n`;
@@ -96,6 +106,7 @@ async function cmdCapture(args) {
     captureEvent,
     transcriptPath,
     transcriptSha256,
+    finalMessageSha256,
     bundlePath,
     bundleSha256: sha256Of(bundleText),
     manualPaste: false,
@@ -142,11 +153,13 @@ async function cmdWritePointer(args) {
   const sessionId = args["session-id"];
   const root = await realpath(args.root || process.cwd()).catch(() => args.root || process.cwd());
   if (!sessionId || !args.transcript) throw new Error("write-pointer requires --session-id and --transcript");
+  assertSafeSessionId(sessionId);
   const pointer = await writePointer(root, {
     sessionId,
     transcriptPath: args.transcript,
     cwd: args.cwd || root,
     captureEvent: args.event || "stop",
+    finalMessageSha256: typeof args["final-message-sha"] === "string" ? args["final-message-sha"] : undefined,
   });
   process.stdout.write(`${JSON.stringify(pointer, null, 2)}\n`);
 }

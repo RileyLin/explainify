@@ -2,28 +2,37 @@
 //
 // Reads a Claude Code session transcript (JSONL, one record per line) plus the
 // repository state and emits the provider-neutral SessionEvidenceBundle defined
-// in docs/product/session-to-explain-v1.md. Synthesis (Phase 1B) consumes the
-// bundle and never parses a transcript directly.
+// in docs/product/session-to-explain-v1.md (@444de0a). Synthesis (Phase 1B)
+// consumes the bundle and never parses a transcript directly.
 //
 // Design invariants (contract §Evidence Selection / §Adapter Boundary):
-//  - Selection is SEMANTIC, not "last N lines": we keep the objective, explicit
+//  - The caller's `question` is request context, NOT evidence and NOT the
+//    session objective. The observed objective is derived from the session's
+//    own first requirement and `objective.sourceId` resolves to a selected
+//    excerpt.
+//  - Selection is SEMANTIC, not "last N lines": keep the objective, explicit
 //    requirements/decisions/explanations, errors, unresolved items, and tool
 //    events that changed or inspected the system. Progress chatter, permission
 //    boilerplate, model reasoning (thinking blocks), and unrelated output are
 //    excluded and counted.
-//  - Every kept item carries an exact `locator` (jsonl:<record-uuid>#<selector>)
-//    and the sha-256 of its selected+redacted content.
-//  - The raw transcript is referenced only by its whole-file hash; it is never
-//    embedded.
+//  - Every kept item carries an exact locator. A tool output never borrows its
+//    input locator. Hashes are computed by the SAME functions the validator
+//    recomputes with (imported from bundle-schema), so producer and consumer
+//    cannot disagree about what a hash binds.
+//  - The raw transcript is referenced only by its whole-file hash; never embedded.
 //  - Content is redacted and byte-size bounded before it enters the bundle.
 //  - Unknown/opaque payloads are excluded, not coerced into trusted evidence.
 //  - Deterministic for an immutable transcript + repository state.
 
-import { createHash } from "node:crypto";
 import { isDeniedPath, redact, scanClean } from "./safety.mjs";
-import { assertBundle, BUNDLE_SCHEMA_VERSION } from "./bundle-schema.mjs";
-
-const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+import {
+  assertBundle,
+  BUNDLE_SCHEMA_VERSION,
+  hashExcerptText,
+  hashToolInput,
+  hashToolOutput,
+  hashReceipt,
+} from "./bundle-schema.mjs";
 
 // Byte bounds keep any single excerpt readable and the whole bundle small.
 const DEFAULTS = {
@@ -39,6 +48,20 @@ const DEFAULTS = {
 // unknown tool payload is never coerced into trusted evidence.
 const CHANGE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 const INSPECT_TOOLS = new Set(["Bash", "Read", "Grep", "Glob", "WebFetch", "Task"]);
+
+// Bash commands that are verification evidence get a first-class receipt (in
+// addition to remaining a toolEvent). Classification is conservative; a command
+// that matches nothing stays a toolEvent only, never a fabricated receipt.
+const RECEIPT_CLASSIFIERS = [
+  { kind: "test", re: /\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bvitest\b|\bjest\b|\bmocha\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b/i },
+  { kind: "lint", re: /\blint\b|\beslint\b|\btslint\b|\bruff\b|\bflake8\b|\bclippy\b/i },
+  { kind: "build", re: /\bbuild\b|\btsc\b|\bwebpack\b|\bvite\s+build\b|\bmake\b|\bcompile\b|\btypecheck\b/i },
+];
+
+function classifyReceiptKind(command) {
+  for (const { kind, re } of RECEIPT_CLASSIFIERS) if (re.test(command)) return kind;
+  return null;
+}
 
 function clip(text, max) {
   if (typeof text !== "string") return "";
@@ -81,8 +104,8 @@ function classifyText(role, text) {
   return "agent_explanation";
 }
 
-// Parse the JSONL text into records, tracking 1-based line numbers and the
-// record uuid used for locators. Malformed lines are skipped and counted.
+// Parse the JSONL text into records, tracking the record uuid used for
+// locators. Malformed lines are skipped and counted.
 function parseRecords(jsonl) {
   const records = [];
   let malformed = 0;
@@ -105,10 +128,10 @@ function parseRecords(jsonl) {
  * @param {object} args
  * @param {string} args.transcript         raw JSONL text of the transcript
  * @param {string} args.transcriptSha256   whole-file hash of the transcript on disk
- * @param {object} args.session            { id, cwd, captureEvent, startedAt?, endedAt? }
- * @param {object} [args.objective]        { text, sourceId } override; else inferred from first user msg
+ * @param {object} args.session            { id, cwd, captureEvent, startedAt?, endedAt?, finalMessageSha256? }
+ * @param {object} [args.request]          caller context { question, audience{role,technicalDepth} } — NOT evidence
  * @param {object} args.repository         { baseRevision?, headRevision?, dirty, changedFiles[] }
- * @param {Array}  [args.receipts]         pre-collected command/test/git receipts
+ * @param {Array}  [args.receipts]         optional externally-collected receipts (merged after derived ones)
  * @param {object} [args.limits]           byte/count overrides
  * @returns {{ bundle: object }}
  */
@@ -123,21 +146,20 @@ export function buildBundleFromTranscript(args) {
   const addExclusion = (kind, n = 1) => exclusionCounts.set(kind, (exclusionCounts.get(kind) || 0) + n);
   if (malformed) addExclusion("malformed_jsonl_line", malformed);
 
-  // Redact + size-bound + hash a piece of content. Returns null if the content
-  // still holds a secret after redaction (caller counts and excludes it) — this
-  // is the fail-closed leg of the secret gate at the item level.
+  // Redact + size-bound a piece of content. Returns null if the content still
+  // holds a secret after redaction (caller counts and excludes it) — the
+  // fail-closed leg of the secret gate at the item level. Hashing is done by
+  // the caller with the field-appropriate hash function.
   const prepare = (text, max) => {
     const { text: red, count } = redact(clip(text, max));
     if (!scanClean(red)) return null;
     redactionCount += count;
-    return { text: red, sha256: sha256(red) };
+    return red;
   };
 
-  let objectiveText = null;
-  let objectiveSourceId = null;
+  let objectiveExcerptId = null;
   let excerptSeq = 0;
   let toolSeq = 0;
-  const toolNameById = new Map();
 
   for (const { obj } of records) {
     const type = obj?.type;
@@ -166,23 +188,24 @@ export function buildBundleFromTranscript(args) {
       if (btype === "text" || btype === undefined) {
         const text = blockText(block);
         const role = type === "user" ? "user" : "assistant";
-        // Capture the objective from the first substantive user requirement.
-        if (!objectiveText && role === "user" && text.trim().length >= 12) {
-          const locator = `jsonl:${uuid}#content[${b}]`;
-          const prepared = prepare(text, limits.maxExcerptChars);
-          if (prepared) {
-            objectiveText = prepared.text;
-            objectiveSourceId = `excerpt-objective`;
+        // The first substantive user requirement becomes the OBSERVED objective
+        // source (distinct from the caller's request.question).
+        if (!objectiveExcerptId && role === "user" && text.trim().length >= 12) {
+          const red = prepare(text, limits.maxExcerptChars);
+          if (red) {
+            objectiveExcerptId = "excerpt-objective";
             excerpts.push({
-              id: objectiveSourceId,
+              id: objectiveExcerptId,
               kind: "user_requirement",
               role,
-              text: prepared.text,
-              locator,
-              sha256: prepared.sha256,
+              text: red,
+              locator: `jsonl:${uuid}#content[${b}]`,
+              sha256: hashExcerptText(red),
             });
             continue;
           }
+          addExclusion("secret_bearing_excerpt");
+          continue;
         }
         const kind = classifyText(role, text);
         if (!kind) {
@@ -193,8 +216,8 @@ export function buildBundleFromTranscript(args) {
           addExclusion("excerpt_over_limit");
           continue;
         }
-        const prepared = prepare(text, limits.maxExcerptChars);
-        if (!prepared) {
+        const red = prepare(text, limits.maxExcerptChars);
+        if (!red) {
           addExclusion("secret_bearing_excerpt");
           continue;
         }
@@ -203,16 +226,15 @@ export function buildBundleFromTranscript(args) {
           id: `excerpt-${excerptSeq}`,
           kind,
           role,
-          text: prepared.text,
+          text: red,
           locator: `jsonl:${uuid}#content[${b}]`,
-          sha256: prepared.sha256,
+          sha256: hashExcerptText(red),
         });
         continue;
       }
 
       if (btype === "tool_use") {
         const toolName = block?.name || "unknown";
-        toolNameById.set(block?.id, toolName);
         const isChange = CHANGE_TOOLS.has(toolName);
         const isInspect = INSPECT_TOOLS.has(toolName);
         if (!isChange && !isInspect) {
@@ -230,8 +252,8 @@ export function buildBundleFromTranscript(args) {
           addExclusion("denied_path_tool");
           continue;
         }
-        const prepared = prepare(inputRaw, limits.maxToolSummaryChars);
-        if (!prepared) {
+        const red = prepare(inputRaw, limits.maxToolSummaryChars);
+        if (!red) {
           addExclusion("secret_bearing_tool_input");
           continue;
         }
@@ -240,17 +262,20 @@ export function buildBundleFromTranscript(args) {
           id: `tool-${toolSeq}`,
           toolName,
           status: "succeeded", // provisional; corrected when the tool_result arrives
-          inputSummary: prepared.text,
+          inputSummary: red,
           outputSummary: "",
-          locator: `jsonl:${uuid}#content[${b}]`,
-          sha256: prepared.sha256,
+          inputLocator: `jsonl:${uuid}#content[${b}]`,
+          inputSha256: hashToolInput(red),
+          // output fields attached below when the matching tool_result arrives
           _useId: block?.id,
+          _command: toolName === "Bash" ? (block?.input?.command ?? "") : "",
         });
         continue;
       }
 
       if (btype === "tool_result") {
-        // Attach output + status to the matching tool event (by tool_use_id).
+        // Attach output + status to the matching tool event (by tool_use_id),
+        // with the result record's OWN locator (never the input's).
         const useId = block?.tool_use_id;
         const ev = toolEvents.find((e) => e._useId === useId);
         if (!ev) {
@@ -258,13 +283,14 @@ export function buildBundleFromTranscript(args) {
           continue;
         }
         const outText = blockText(block);
-        ev.status = block?.is_error ? "failed" : "succeeded";
-        const prepared = prepare(outText, limits.maxToolSummaryChars);
-        if (prepared) {
-          ev.outputSummary = prepared.text;
-          // Re-hash over input+output so the event's sha covers what it now holds.
-          ev.sha256 = sha256(`${ev.inputSummary}\n${prepared.text}`);
-        } else {
+        const denied = /permission denied|not permitted|user (?:denied|rejected)/i.test(outText);
+        ev.status = denied ? "denied" : block?.is_error ? "failed" : "succeeded";
+        const red = prepare(outText, limits.maxToolSummaryChars);
+        if (red && red.length > 0) {
+          ev.outputSummary = red;
+          ev.outputLocator = `jsonl:${uuid}#content[${b}]`;
+          ev.outputSha256 = hashToolOutput(red);
+        } else if (red == null) {
           addExclusion("secret_bearing_tool_output");
         }
         continue;
@@ -278,38 +304,77 @@ export function buildBundleFromTranscript(args) {
     }
   }
 
-  // Strip internal join key before emitting.
-  for (const ev of toolEvents) delete ev._useId;
-
-  // Objective fallback: if no user text was captured, use an explicit override
-  // or a truthful placeholder pointing at the whole transcript.
-  if (args.objective?.text) {
-    objectiveText = args.objective.text;
-    objectiveSourceId = args.objective.sourceId || "objective-provided";
-  }
-  if (!objectiveText) {
-    objectiveText = "Objective not stated in session; see raw transcript.";
-    objectiveSourceId = "objective-unknown";
-  }
-
-  // Prepare receipts (already command/test/git receipts collected upstream).
+  // Derive verification receipts from Bash toolEvents BEFORE stripping internals,
+  // so command/output locators come straight from the observed tool event.
   const receipts = [];
-  for (const [i, rc] of (args.receipts || []).entries()) {
-    const prepared = prepare(rc.content ?? "", limits.maxReceiptChars);
-    if (!prepared) {
+  let receiptSeq = 0;
+  for (const ev of toolEvents) {
+    if (ev.toolName !== "Bash" || !ev._command) continue;
+    const kind = classifyReceiptKind(ev._command);
+    if (!kind) continue;
+    const command = prepare(ev._command, limits.maxReceiptChars);
+    if (command == null) {
       addExclusion("secret_bearing_receipt");
       continue;
     }
-    receipts.push({
-      id: rc.id || `receipt-${i + 1}`,
+    // Honest status: succeeded/failed follow the observed tool_result; denied or
+    // no-result tools yield "unknown". We never fabricate an exit code — the
+    // transcript does not record the process exit code, so exitCode is omitted.
+    const status = ev.status === "succeeded" ? "succeeded" : ev.status === "failed" ? "failed" : "unknown";
+    receiptSeq += 1;
+    const rc = {
+      id: `receipt-${receiptSeq}`,
+      kind,
+      command,
+      status,
+      scope: ev._command.slice(0, 120),
+      content: ev.outputSummary || "",
+      commandLocator: ev.inputLocator,
+      ...(ev.outputLocator ? { outputLocator: ev.outputLocator } : {}),
+    };
+    rc.sha256 = hashReceipt(rc);
+    receipts.push(rc);
+  }
+
+  // Merge any externally-collected receipts (e.g. a CLI-run gate), hashed the
+  // same way. These carry their own explicit status; no exit code is invented.
+  for (const rc of args.receipts || []) {
+    const content = prepare(rc.content ?? "", limits.maxReceiptChars);
+    if (content == null) {
+      addExclusion("secret_bearing_receipt");
+      continue;
+    }
+    receiptSeq += 1;
+    const status = ["succeeded", "failed", "unknown"].includes(rc.status) ? rc.status : "unknown";
+    const out = {
+      id: rc.id || `receipt-${receiptSeq}`,
       kind: rc.kind,
       command: rc.command ?? "",
-      exitCode: Number.isInteger(rc.exitCode) ? rc.exitCode : 0,
+      status,
+      ...(status !== "unknown" && Number.isInteger(rc.exitCode) ? { exitCode: rc.exitCode } : {}),
       scope: rc.scope ?? "",
-      content: prepared.text,
-      sha256: prepared.sha256,
-    });
+      content,
+      commandLocator: rc.commandLocator || `external:${rc.id || `receipt-${receiptSeq}`}`,
+      ...(rc.outputLocator ? { outputLocator: rc.outputLocator } : {}),
+    };
+    out.sha256 = hashReceipt(out);
+    receipts.push(out);
   }
+
+  // Strip internal join keys before emitting.
+  for (const ev of toolEvents) {
+    delete ev._useId;
+    delete ev._command;
+  }
+
+  // Observed objective: the first user requirement, else the first selected
+  // excerpt of any kind (so sourceId always resolves). A session with zero
+  // selectable evidence cannot be explained → fail closed.
+  if (excerpts.length === 0) {
+    throw new Error("No selectable evidence in session; cannot produce a resolvable objective.");
+  }
+  const objectiveSource = excerpts.find((e) => e.id === objectiveExcerptId) || excerpts[0];
+  const objective = { text: objectiveSource.text, sourceId: objectiveSource.id };
 
   // changedFiles: drop denied paths defensively and count them.
   let deniedPathCount = 0;
@@ -327,8 +392,21 @@ export function buildBundleFromTranscript(args) {
     .map(([kind, count]) => ({ kind, count, reason: reasonFor(kind) }))
     .sort((a, b) => a.kind.localeCompare(b.kind));
 
+  // request context (caller intent) — defaulted, never sourced from the session.
+  const rq = args.request || {};
+  const request = {
+    question: typeof rq.question === "string" ? rq.question : "What did this session do and why?",
+    audience: {
+      role: rq.audience?.role || "engineer",
+      technicalDepth: ["overview", "working", "expert"].includes(rq.audience?.technicalDepth)
+        ? rq.audience.technicalDepth
+        : "working",
+    },
+  };
+
   const bundle = {
     schemaVersion: BUNDLE_SCHEMA_VERSION,
+    request,
     session: {
       id: args.session.id,
       source: "claude_code",
@@ -337,8 +415,9 @@ export function buildBundleFromTranscript(args) {
       transcriptSha256: args.transcriptSha256,
       ...(args.session.startedAt ? { startedAt: args.session.startedAt } : {}),
       ...(args.session.endedAt ? { endedAt: args.session.endedAt } : {}),
+      ...(args.session.finalMessageSha256 ? { finalMessageSha256: args.session.finalMessageSha256 } : {}),
     },
-    objective: { text: objectiveText, sourceId: objectiveSourceId },
+    objective,
     excerpts,
     toolEvents,
     repository: {

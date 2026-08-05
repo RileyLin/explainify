@@ -22,18 +22,21 @@ import path from "node:path";
 import { buildBundleFromTranscript } from "./claude-adapter.mjs";
 import {
   readPointer,
+  readBaseline,
   readStableTranscript,
   collectRepository,
   hashChangedFiles,
+  outDir as sessionOutDir,
+  assertSafeSessionId,
 } from "./capture.mjs";
 import { stableStringify, sha256Of } from "./receipt.mjs";
 
 // Resolve the most relevant session pointer if the caller did not name one:
 // prefer an explicit id, else the single pointer under .explainify/sessions.
 async function resolveSessionId(root, requested) {
-  if (requested) return requested;
+  if (requested) return assertSafeSessionId(requested);
   const dir = path.join(root, ".explainify", "sessions");
-  const ids = await readdir(dir).catch(() => []);
+  const ids = (await readdir(dir).catch(() => [])).filter((id) => /^[A-Za-z0-9._-]+$/.test(id) && id !== "." && id !== "..");
   if (ids.length === 1) return ids[0];
   if (ids.length === 0) throw new Error("No captured session pointer found; run the hook or pass session.id.");
   throw new Error(`Multiple sessions captured (${ids.join(", ")}); specify session.id.`);
@@ -47,12 +50,18 @@ async function runCapture(input) {
   const pointer = await readPointer(root, sessionId);
   const captureEvent = pointer.captureEvent || "tool_call";
   const cwd = pointer.cwd || root;
+  const baseline = await readBaseline(root, sessionId);
 
-  const { text, transcriptSha256 } = await readStableTranscript(pointer.transcriptPath);
+  // Bind to the completed turn the hook recorded (finding #1): capture waits for
+  // a quiescent transcript that contains that exact final assistant message.
+  const { text, transcriptSha256, finalMessageSha256 } = await readStableTranscript(pointer.transcriptPath, {
+    expectFinalHash: pointer.finalMessageSha256 || null,
+  });
 
   const repoBase = await collectRepository(root, {
     baseRef: input.repository.baseRef,
     headRef: input.repository.headRef,
+    baseline,
   });
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
   const repository = { ...repoBase, changedFiles };
@@ -60,13 +69,17 @@ async function runCapture(input) {
   const { bundle } = buildBundleFromTranscript({
     transcript: text,
     transcriptSha256,
-    session: { id: sessionId, cwd, captureEvent },
-    objective: input.question ? { text: input.question, sourceId: "objective-request" } : undefined,
+    session: { id: sessionId, cwd, captureEvent, finalMessageSha256 },
+    // The caller's question/audience is REQUEST context, never the observed
+    // objective (finding #3). The adapter derives objective from the session.
+    request: { question: input.question, audience: input.audience },
     repository,
     receipts: [],
   });
 
-  const outDir = input.outputDirectory || path.join(root, ".explainify", "out", sessionId);
+  const outDir = input.outputDirectory
+    ? await realpath(input.outputDirectory).catch(() => input.outputDirectory)
+    : sessionOutDir(root, sessionId);
   await mkdir(outDir, { recursive: true });
   const bundlePath = path.join(outDir, "bundle.json");
   const bundleText = `${stableStringify(bundle)}\n`;
@@ -78,6 +91,7 @@ async function runCapture(input) {
     captureEvent,
     transcriptPath: pointer.transcriptPath,
     transcriptSha256,
+    finalMessageSha256,
     bundlePath,
     bundleSha256: sha256Of(bundleText),
     manualPaste: false,
