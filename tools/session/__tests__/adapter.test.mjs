@@ -314,6 +314,54 @@ test("attached/equal option forms and collect/list/no-run aliases mint NO receip
   assert.equal(real[0].kind, "test");
 });
 
+test("per-tool no-verification modes mint NO receipt (positive-form validation, not a denylist)", () => {
+  // PM + Codex REVISE on 20040de (msg 1d107bb9 / fa822906): a growing cross-tool
+  // info/dry-run denylist always lags. A succeeded receipt must mean the claimed
+  // verification RAN, not merely that a verification-capable binary exited zero.
+  // Each supported tool is validated against its OWN documented non-run modes;
+  // successful process exit alone is insufficient.
+  for (const command of [
+    "go test -list .", // enumerates matching tests, runs none
+    "go test -list=Foo ./pkg", // attached-value form of the same
+    "make -q", // question mode: only sets an exit code, no recipe runs
+    "make --question", // long form
+    "make -t", // touch mode: timestamps targets without building
+    "make --touch",
+    "tsc --init", // scaffolds tsconfig.json, compiles nothing
+    "tsc --listFilesOnly", // lists files then stops, no emit/verify
+    "eslint --env-info", // prints environment metadata, lints nothing
+    "eslint --inspect-config foo.js", // opens the config inspector, lints nothing
+    "pytest --fixtures", // prints available fixtures, runs no test
+    "pytest --markers", // prints registered markers, runs no test
+    "pytest --setup-plan", // shows fixture setup plan without running tests
+    "npm run test --if-present", // exits zero when no test script exists
+    "pnpm run test --if-present",
+    "yarn test --if-present",
+    "jest --showConfig", // dumps resolved config, runs no test
+    "jest --clearCache", // clears the cache, runs no test
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `no-verification mode must mint no receipt: ${command}`);
+  }
+  // Positive side of the flip: the real verification forms of the SAME tools must
+  // still mint. Positive-form validation must not over-reject a genuine run.
+  for (const [command, kind] of [
+    ["go test -run TestFoo ./pkg", "test"], // -run selects tests and RUNS them
+    ["go test ./...", "test"],
+    ["make", "build"], // a plain recipe-executing invocation
+    ["make build", "build"],
+    ["tsc --noEmit", "build"], // a real type-check compile
+    ["eslint src/", "lint"],
+    ["pytest -q", "test"],
+    ["npm test", "test"], // no --if-present → a real run
+    ["npm run test", "test"],
+  ]) {
+    const rcs = receiptsForCommand(command, { isError: false });
+    assert.equal(rcs.length, 1, `real verification run still mints: ${command}`);
+    assert.equal(rcs[0].kind, kind, `kind ${kind} for: ${command}`);
+    assert.equal(rcs[0].status, "succeeded", `observed succeeded status for: ${command}`);
+  }
+});
+
 test("executable matching is EXACT basename, not a prefix/substring (look-alike binaries mint nothing)", () => {
   // PM parser-floor probe (msg 63e960a1): `\b`/prefix matching let look-alike
   // binaries whose names merely START with a supported tool launder receipts. Only

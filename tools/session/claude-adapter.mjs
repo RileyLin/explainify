@@ -234,26 +234,61 @@ function optName(token) {
   return t.slice(0, 2); // single-dash short option, value may be attached
 }
 
-// Informational / dry-run flags that mean the tool started but performed NO
-// verification (help/version/config dumps, test collection without running,
-// dry runs). Rejected across ALL receipt kinds: evidence of verification
-// PERFORMED is required, not merely that a verification-capable binary ran.
-const INFO_FLAGS = new Set([
-  "--help", "-h", "-?", "--version", "-V", "--collect-only",
-  "--print-config", "--show-config", "--showConfig", "--dry-run",
-  // collect / list / no-run aliases: the tool starts but runs no verification.
-  "--co", // pytest short alias for --collect-only
-  "--listTests", // jest lists matching tests without running them
-  "--no-run", // cargo test --no-run compiles but executes no test
-  "--just-print", "--recon", // make aliases for -n (dry run)
-]);
-function hasInfoFlag(exe, args) {
+// Per-tool NO-VERIFICATION validation (PM/Codex review floor, msg 1d107bb9): a
+// succeeded receipt must mean the claimed verification actually RAN, not merely
+// that a verification-capable binary exited zero. A single growing cross-tool
+// denylist always lags (`go test -list`, `make -q/-t`, `tsc --init/--listFilesOnly`,
+// `eslint --env-info`, `pytest --fixtures/--markers`, `npm … --if-present` all slip
+// through). Instead each tool is validated against its OWN recognized
+// non-verification modes; anything matching mints nothing. Subcommand tools
+// (go/cargo/make/npm/deno/bun/vite/ruff) are validated positively in their
+// branches below; the flag-form modes shared by runners/linters/builders live
+// here.
+
+// The help/version floor every recognized CLI shares: these print metadata and
+// perform no verification for ANY tool. (`-V` conservatively included — a real
+// verbose run masked as version yields a safe false negative, which the contract
+// prefers over fabricated verification.)
+const HELP_VERSION_FLAGS = new Set(["--help", "-h", "-?", "--version", "-V"]);
+
+// Flag-form no-verification modes, keyed by EXACT executable basename. Checked
+// with optName() so attached/equal forms (`--print-config=foo.js`) normalize. A
+// tool absent here is validated only against the help/version floor (plus any
+// positive rule in its branch).
+const TOOL_NO_RUN_FLAGS = {
+  // test runners: collection/listing, fixture/marker/setup introspection — no test body runs.
+  pytest: ["--collect-only", "--co", "--fixtures", "--fixtures-per-test", "--funcargs", "--markers", "--setup-plan", "--setup-only"],
+  jest: ["--listTests", "--showConfig", "--init", "--clearCache", "--debug"],
+  mocha: ["--list-interfaces", "--list-reporters"],
+  // linters: environment/config introspection — no source is linted.
+  eslint: ["--env-info", "--print-config", "--inspect-config", "--init"],
+  // build: config scaffolding / file listing / config dump — no compile.
+  tsc: ["--init", "--showConfig", "--show-config", "--listFilesOnly", "--all"],
+};
+
+// True when a recognized tool invocation is a no-verification mode: the shared
+// help/version floor, or one of the tool's OWN documented non-run flags.
+function isNoVerification(exe, args) {
+  const perTool = TOOL_NO_RUN_FLAGS[exe];
+  const toolSet = perTool ? new Set(perTool) : null;
   for (const t of args) {
     const opt = optName(t);
-    if (opt && INFO_FLAGS.has(opt)) return true;
-    if (exe === "make" && opt === "-n") return true; // make -n is a dry run
+    if (!opt) continue;
+    if (HELP_VERSION_FLAGS.has(opt)) return true;
+    if (toolSet && toolSet.has(opt)) return true;
   }
   return false;
+}
+
+// The option NAME of a Go-style single-dash long flag (`-list`, `-run`, `-c`),
+// splitting an attached value (`-list=.` → `-list`). optName() cannot parse
+// these — it would read `-list` as the short option `-l`. Used only in the go
+// branch, where flags are single-dash long by convention.
+function goFlag(token) {
+  const t = String(token);
+  if (!t.startsWith("-")) return null;
+  const eq = t.indexOf("=");
+  return eq >= 0 ? t.slice(0, eq) : t;
 }
 
 // The first argument token that is not an option flag (a subcommand or a
@@ -313,6 +348,9 @@ const BUILD_BINS = new Set(["tsc", "webpack", "rollup", "esbuild"]);
 const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
 // node modes that do NOT execute a script as a test: eval / print / syntax-check.
 const NODE_NONRUN = new Set(["-e", "--eval", "-p", "--print", "--check", "-c"]);
+// make modes that execute NO build recipe: query (only sets exit status), touch
+// (updates timestamps without building), and dry-run/print aliases.
+const MAKE_NO_RECIPE = new Set(["-q", "--question", "-t", "--touch", "-n", "--just-print", "--dry-run", "--recon"]);
 const NODE_VALUE_FLAGS = new Set(["-r", "--require", "--import", "--loader", "--experimental-loader", "--conditions", "-C", "--title"]);
 const PY_VALUE_FLAGS = new Set(["-W", "-X", "-m"]);
 const RUBY_VALUE_FLAGS = new Set(["-I", "-r"]);
@@ -342,8 +380,9 @@ function segmentKind(segment) {
     args = args.slice(j + 1);
   }
 
-  // An informational/dry-run invocation of any recognized tool ran no verification.
-  if (hasInfoFlag(exe, args)) return null;
+  // A no-verification invocation of any recognized tool (help/version for all,
+  // plus each tool's OWN documented non-run modes) ran no verification.
+  if (isNoVerification(exe, args)) return null;
 
   // --- dedicated test runners (exact basename) ---
   // A `list` subcommand (`vitest list`) enumerates tests without running them.
@@ -387,6 +426,9 @@ function segmentKind(segment) {
 
   // --- package managers (npm/pnpm/yarn): a real `test`/`lint`/`build` script ---
   if (exe === "npm" || exe === "pnpm" || exe === "yarn") {
+    // `--if-present` exits zero when the script is absent, so a succeeded status
+    // does NOT prove the verification ran — mint nothing (PM/Codex msg 1d107bb9).
+    if (args.some((t) => optName(t) === "--if-present")) return null;
     const sub = firstNonFlag(args);
     if (!sub) return null;
     if (sub === "run") return runScriptKind(args.slice(args.indexOf("run") + 1));
@@ -400,18 +442,32 @@ function segmentKind(segment) {
   // --- build binaries (exact basename) ---
   if (BUILD_BINS.has(exe)) return "build";
   if (exe === "vite") return firstNonFlag(args) === "build" ? "build" : null;
-  if (exe === "make") return "build"; // make --version / -n already rejected above
+  if (exe === "make") {
+    // A recipe-executing invocation mints; make's documented NO-RECIPE query/dry
+    // modes execute nothing and must not. `-q`/`--question` only sets an exit
+    // code, `-t`/`--touch` timestamps without building, `-n`/`--just-print`/
+    // `--dry-run`/`--recon` print without running. optName() normalizes each.
+    for (const t of args) {
+      if (MAKE_NO_RECIPE.has(optName(t))) return null;
+    }
+    return "build";
+  }
 
   // --- go / cargo subcommands ---
   if (exe === "go") {
     const sub = firstNonFlag(args);
-    if (sub === "test") return "test";
+    // `go test` runs tests, but `go test -list <re>` only enumerates matching
+    // tests without executing any. Go uses single-dash long flags, so goFlag()
+    // (not optName) parses them. Other no-run go test modes are conservative
+    // false negatives, not fabricated successes.
+    if (sub === "test") return args.some((t) => goFlag(t) === "-list") ? null : "test";
     if (sub === "build") return "build";
     return null;
   }
   if (exe === "cargo") {
     const sub = firstNonFlag(args);
-    if (sub === "test") return "test";
+    // `cargo test --no-run` compiles the test binaries but executes NO test.
+    if (sub === "test") return args.some((t) => optName(t) === "--no-run") ? null : "test";
     if (sub === "clippy") return "lint";
     if (sub === "build") return "build";
     return null;
