@@ -160,6 +160,159 @@ test("capture-pointer hook records NO final hash when last_assistant_message is 
   assert.equal(pointer.finalMessageSha256, undefined, "no transcript-derived fallback hash is recorded");
 });
 
+// --- late-append exploit (Codex HIGH): a genuinely later turn must NOT be
+// verified as an earlier completed turn. Harness: Stop(turn 1) records the
+// completed-turn hash; a hashless SessionEnd on the SAME transcript must preserve
+// that authoritative pointer (not fabricate a session_end that borrows the hash);
+// then a turn 2 is appended while the transcript "settles". Capture must fail
+// closed because the transcript's final assistant message no longer matches the
+// pointer's recorded hash — it must never return turn 1 as the whole session. ---
+
+test("late-append (Codex's exact timing): capture starts, turn 2 appends at 450ms, capture must fail closed — never return turn 1", async () => {
+  // The exploit as Codex reported it: Stop(turn 1) records the completed-turn
+  // hash, a hashless SessionEnd preserves that authoritative pointer, then capture
+  // STARTS, and only AFTER capture is already polling does a genuinely later turn
+  // 2 land (at ~450 ms). A plain 3×120 ms quiescence loop would return turn 1
+  // around 360 ms — BEFORE the append — mislabeling turn 1 as the whole session.
+  // The confirmation window must keep the match under observation long enough that
+  // the append changes the signature, invalidates the premature match, and — since
+  // turn 2 no longer matches the recorded hash — capture fails closed.
+  const root = await mkdtemp(path.join(tmpdir(), "expl-late-"));
+  const tfile = path.join(root, "t.jsonl");
+  const turn1 = "Turn one is complete.";
+  const turn2 = "Turn two changed things after capture had already started.";
+
+  // Transcript initially holds only turn 1 (what is on disk when capture begins).
+  await writeFile(tfile, transcript(turn1), "utf8");
+
+  // Stop records turn 1's authoritative hash; a hashless SessionEnd preserves it.
+  execFileSync("node", [HOOK], {
+    input: JSON.stringify({ session_id: "sess-late", cwd: root, transcript_path: tfile, hook_event_name: "Stop", last_assistant_message: turn1 }),
+    encoding: "utf8",
+  });
+  execFileSync("node", [HOOK], {
+    input: JSON.stringify({ session_id: "sess-late", cwd: root, transcript_path: tfile, hook_event_name: "SessionEnd" }),
+    encoding: "utf8",
+  });
+  const pointer = JSON.parse(await readFile(path.join(pointerDir(root, "sess-late"), "pointer.json"), "utf8"));
+  assert.equal(pointer.captureEvent, "stop", "authoritative Stop pointer preserved (not a fabricated session_end)");
+  assert.equal(pointer.finalMessageSha256, sha256(turn1));
+
+  const twoTurns =
+    [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Do the thing." }] } },
+      { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "text", text: turn1 }] } },
+      { type: "user", uuid: "u2", message: { role: "user", content: [{ type: "text", text: "Now do more." }] } },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "text", text: turn2 }] } },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join("\n") + "\n";
+
+  // Start capture FIRST (Codex's original ordering), then append turn 2 at ~450 ms
+  // while capture is still polling — NOT before capture begins.
+  const capturePromise = readStableTranscript(tfile, {
+    pollMs: 120,
+    stableChecks: 3,
+    confirmChecks: 3,
+    timeoutMs: 3000,
+    expectFinalHash: pointer.finalMessageSha256,
+  });
+  const appendTimer = setTimeout(() => {
+    writeFile(tfile, twoTurns, "utf8").catch(() => {});
+  }, 450);
+
+  await assert.rejects(
+    capturePromise,
+    /did not reach a quiescent, completed state/,
+    "capture must fail closed when a later turn appends after capture started — never return turn 1",
+  );
+  clearTimeout(appendTimer);
+
+  // Sanity: the exploit precondition held — turn 2 really did land in the file.
+  const onDisk = await readFile(tfile, "utf8");
+  assert.equal(finalAssistantMessageHash(onDisk), sha256(turn2), "turn 2 was appended (the exploit's late write actually occurred)");
+});
+
+test("provenance, not timing: turn 2 appends and FULLY SETTLES well within the timeout — capture STILL fails closed on the hash", async () => {
+  // Codex's decisive probe (msg d3f805a9): the regression must include a delay
+  // beyond any chosen quiet window so timing ALONE cannot pass. Here turn 2 lands
+  // early and the transcript then stays perfectly quiescent for the rest of a long
+  // timeout — a confirmation window of any finite length is satisfied. A
+  // timing-based fix would happily return the settled two-turn transcript. The
+  // provenance fix must REFUSE: the settled transcript's final assistant message
+  // is turn 2, whose hash can never equal the recorded turn-1 hash. The failure is
+  // owned by the hash mismatch, not by any quiet-window deadline race.
+  const root = await mkdtemp(path.join(tmpdir(), "expl-prov-"));
+  const tfile = path.join(root, "t.jsonl");
+  const turn1 = "Turn one is the recorded, completed turn.";
+  const turn2 = "Turn two superseded it after capture began.";
+
+  await writeFile(tfile, transcript(turn1), "utf8");
+  execFileSync("node", [HOOK], {
+    input: JSON.stringify({ session_id: "sess-prov", cwd: root, transcript_path: tfile, hook_event_name: "Stop", last_assistant_message: turn1 }),
+    encoding: "utf8",
+  });
+  execFileSync("node", [HOOK], {
+    input: JSON.stringify({ session_id: "sess-prov", cwd: root, transcript_path: tfile, hook_event_name: "SessionEnd" }),
+    encoding: "utf8",
+  });
+  const pointer = JSON.parse(await readFile(path.join(pointerDir(root, "sess-prov"), "pointer.json"), "utf8"));
+  assert.equal(pointer.captureEvent, "stop", "hashless SessionEnd preserved the authoritative Stop pointer (not a fabricated session_end)");
+  assert.equal(pointer.finalMessageSha256, sha256(turn1));
+
+  const twoTurns =
+    [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Do the thing." }] } },
+      { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "text", text: turn1 }] } },
+      { type: "user", uuid: "u2", message: { role: "user", content: [{ type: "text", text: "Now do more." }] } },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "text", text: turn2 }] } },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join("\n") + "\n";
+
+  // Append turn 2 very early (60 ms) so the transcript SETTLES for the remaining
+  // ~940 ms of the 1000 ms timeout — a quiet window of any finite size is met.
+  const capturePromise = readStableTranscript(tfile, {
+    pollMs: 20,
+    stableChecks: 2,
+    confirmChecks: 3,
+    timeoutMs: 1000,
+    expectFinalHash: pointer.finalMessageSha256,
+  });
+  const appendTimer = setTimeout(() => {
+    writeFile(tfile, twoTurns, "utf8").catch(() => {});
+  }, 60);
+
+  await assert.rejects(
+    capturePromise,
+    /did not reach a quiescent, completed state/,
+    "a fully-settled superseding transcript must still fail closed — the hash mismatch, not timing, owns the refusal",
+  );
+  clearTimeout(appendTimer);
+
+  const onDisk = await readFile(tfile, "utf8");
+  assert.equal(finalAssistantMessageHash(onDisk), sha256(turn2), "the transcript did settle on turn 2 (a timing-only fix would have returned it)");
+});
+
+test("confirmed single-turn session still returns promptly (no false timeout from the confirmation window)", async () => {
+  // Guard the fix's other side: a genuine, settled single-turn transcript that
+  // never advances must still be returned — the confirmation window adds latency
+  // but must not turn a legitimate capture into a timeout.
+  const root = await mkdtemp(path.join(tmpdir(), "expl-late-ok-"));
+  const tfile = path.join(root, "t.jsonl");
+  const t = transcript("The only completed turn.");
+  await writeFile(tfile, t, "utf8");
+  const out = await readStableTranscript(tfile, {
+    pollMs: 10,
+    stableChecks: 2,
+    confirmChecks: 2,
+    timeoutMs: 2000,
+    expectFinalHash: sha256("The only completed turn."),
+  });
+  assert.equal(out.finalMessageSha256, sha256("The only completed turn."));
+  assert.equal(out.transcriptSha256, sha256(t));
+});
+
 // --- finding #2: committed changes between baseline and head count, even when the
 // working tree is clean ---
 

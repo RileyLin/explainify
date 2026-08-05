@@ -76,28 +76,48 @@ async function main() {
   const captureEvent = /SessionEnd/i.test(eventName) ? "session_end" : /Stop/i.test(eventName) ? "stop" : "tool_call";
 
   // Bind the completion marker to the AUTHORITATIVE hook-provided final assistant
-  // message — never the lagging transcript on disk. If the field is absent or
-  // empty we record NO hash from THIS event; downstream capture requires the hash
-  // for Stop/SessionEnd and will fail closed rather than verify against a guess.
+  // message — never the lagging transcript on disk.
   const lastMessage = typeof input.last_assistant_message === "string" ? input.last_assistant_message : "";
-  let finalMessageSha256 = lastMessage.trim().length > 0 ? sha256(lastMessage) : undefined;
+  const freshHash = lastMessage.trim().length > 0 ? sha256(lastMessage) : undefined;
+  const pointerFile = path.join(dir, "pointer.json");
 
-  // Non-destructive across events: SessionEnd (and any event) often arrives with
-  // NO last_assistant_message even though a preceding Stop already recorded the
-  // completed-turn hash. Preserve that prior hash instead of clobbering the
-  // pointer with an unbound one — otherwise closing the app would downgrade a
-  // verifiable completed turn to an unverifiable one and break capture.
-  if (!finalMessageSha256) {
-    try {
-      const prior = JSON.parse(await readFile(path.join(dir, "pointer.json"), "utf8"));
-      if (prior && prior.transcriptPath === transcriptPath && typeof prior.finalMessageSha256 === "string") {
-        finalMessageSha256 = prior.finalMessageSha256;
-      }
-    } catch {
-      /* no prior pointer — nothing to preserve */
-    }
+  if (freshHash) {
+    // This event carries an authoritative completion marker: record it as THIS
+    // event's completed turn. A later turn's Stop overwrites an earlier one, so
+    // the pointer always names the most recently completed turn.
+    await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256: freshHash });
+    process.exit(0);
   }
 
+  // Hashless terminal event (e.g. SessionEnd when the app closes, or a headless
+  // `-p` run) — we have NO authoritative completion marker for THIS event. We must
+  // NOT fabricate one by copying a prior turn's hash into a new `session_end`
+  // pointer: that would let a genuinely-later terminal event claim to be the
+  // session end while pointing at an earlier turn's hash, and capture could then
+  // verify a stale/partial turn as the whole session (the late-append exploit).
+  //
+  // Instead, if a prior AUTHORITATIVE pointer already recorded the last completed
+  // turn for THIS transcript, preserve it EXACTLY — same captureEvent (`stop`),
+  // same hash. Capture then verifies against the turn that hash truly represents:
+  // if the transcript has advanced to a genuinely later turn, the recorded hash
+  // no longer matches the transcript's final assistant message and capture fails
+  // closed, rather than returning an earlier turn mislabeled as the session end.
+  try {
+    const prior = JSON.parse(await readFile(pointerFile, "utf8"));
+    if (prior && prior.transcriptPath === transcriptPath && typeof prior.finalMessageSha256 === "string") {
+      process.exit(0); // keep the authoritative prior pointer untouched
+    }
+  } catch {
+    /* no prior pointer — nothing authoritative to preserve */
+  }
+
+  // No prior authoritative marker for this transcript: record a hashless pointer.
+  // Capture requires a hash for Stop/SessionEnd and will fail closed on this.
+  await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent });
+  process.exit(0);
+}
+
+async function writePointerFile(file, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256 }) {
   const pointer = {
     schemaVersion: 1,
     sessionId,
@@ -106,8 +126,7 @@ async function main() {
     captureEvent,
     ...(finalMessageSha256 ? { finalMessageSha256 } : {}),
   };
-  await writeFile(path.join(dir, "pointer.json"), `${JSON.stringify(pointer, null, 2)}\n`, "utf8");
-  process.exit(0);
+  await writeFile(file, `${JSON.stringify(pointer, null, 2)}\n`, "utf8");
 }
 
 main().catch(() => process.exit(0));

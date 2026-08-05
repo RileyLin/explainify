@@ -194,15 +194,46 @@ export function transcriptTimeRange(transcriptText) {
   return range;
 }
 
-// Read the transcript only once it is QUIESCENT and CONTAINS the completed turn.
-// Quiescence = size AND mtime identical across `stableChecks` consecutive polls.
-// Completion = at least one assistant text message present, and — when the hook
-// recorded one — the final assistant message hash matches `expectFinalHash`.
-// If the deadline passes before both hold, throw: we never return a partial,
-// mislabeled "verified" transcript.
+// Read the transcript only once it is QUIESCENT and CONTAINS the exact completed
+// turn the hook recorded.
+//   Quiescence  = size AND mtime identical across `stableChecks` consecutive polls.
+//   Completion  = at least one assistant text message present, and — when the hook
+//                 recorded one — the final assistant message hash matches
+//                 `expectFinalHash`.
+//   Confirmation = after a matching quiescent state is first observed, the file
+//                 signature must remain UNCHANGED for `confirmChecks` further polls
+//                 before we return it.
+//
+// TRUST BOUNDARY = PROVENANCE, NOT TIMING (Codex/PM HIGH). The late-append exploit
+// is: a hashless terminal event inherits a prior Stop's hash, and a genuinely
+// LATER turn lands in the transcript after capture began, so a naive reader could
+// return the earlier turn as the whole "verified ended session". The guarantee
+// that defeats this is NOT the quiescence/confirmation timing — a finite quiet
+// window only moves the race. It is `expectFinalHash`: we return a transcript
+// ONLY when its final assistant message hashes to the hook-recorded completed
+// turn. The moment a later turn is on disk, the transcript's final message IS
+// that later turn, whose hash can never equal the recorded one, so capture fails
+// closed no matter how long the transcript then settles. Two provenance facts
+// establish this end to end:
+//   1. A `session_end` capture is only ever produced when SessionEnd carried its
+//      OWN authoritative final-message hash (durable same-event identity, enforced
+//      at the hook). A hashless terminal event never mints a verified ended
+//      session — it preserves the prior authoritative Stop pointer, which capture
+//      then verifies against the turn that hash truly represents.
+//   2. This function refuses any transcript whose final message ≠ `expectFinalHash`.
+//      A superseding turn therefore fails closed on the hash, independent of when
+//      it appended relative to any quiet window.
+//
+// The confirmation window here is DEFENSE IN DEPTH / latency shaping only: it lets
+// a mid-capture append be OBSERVED promptly rather than raced, but it is not what
+// makes the result trustworthy — the hash match is. It must never be read as a
+// timing threshold that "proves" a hashless terminal state.
+//
+// If the deadline passes before a confirmed, matching, quiescent state holds,
+// throw: we never return a partial or superseded "verified" transcript.
 export async function readStableTranscript(
   transcriptPath,
-  { pollMs = 120, stableChecks = 3, timeoutMs = 5000, expectFinalHash = null } = {},
+  { pollMs = 120, stableChecks = 3, confirmChecks = 3, timeoutMs = 5000, expectFinalHash = null } = {},
 ) {
   // The transcript must be a regular file (not a directory / device / dangling
   // symlink target). Resolve then stat.
@@ -216,11 +247,14 @@ export async function readStableTranscript(
   const deadline = Date.now() + timeoutMs;
   let prev = null;
   let stableRun = 0;
-  let lastText = null;
+  // A candidate is a quiescent state whose final message already matched. We only
+  // return it after its signature survives `confirmChecks` further polls.
+  let candidate = null; // { sig, text, finalHash }
+  let confirmRun = 0;
 
   // Time budget is bounded by timeoutMs; each poll advances by pollMs. We do not
   // use wall-clock beyond the deadline comparison, so behavior stays test-stable.
-  for (let elapsed = 0; ; elapsed += pollMs) {
+  for (;;) {
     let st;
     try {
       st = await stat(realTranscript);
@@ -232,6 +266,27 @@ export async function readStableTranscript(
     if (!st.isFile()) throw new Error(`Transcript path is not a regular file: ${transcriptPath}`);
 
     const sig = `${st.size}:${st.mtimeMs}`;
+
+    // Confirmation phase: a candidate match is only trustworthy if the file has
+    // not changed since. Any change (e.g. a later turn appended after capture
+    // began) invalidates it — we must re-evaluate the new state, never return the
+    // stale candidate.
+    if (candidate) {
+      if (sig === candidate.sig) {
+        confirmRun += 1;
+        if (confirmRun >= confirmChecks) {
+          return { text: candidate.text, transcriptSha256: sha256(candidate.text), finalMessageSha256: candidate.finalHash };
+        }
+        if (Date.now() > deadline) break;
+        await delay(pollMs);
+        continue;
+      }
+      // File advanced under us — discard the premature candidate and fall through
+      // to re-assess quiescence/match against the new signature.
+      candidate = null;
+      confirmRun = 0;
+    }
+
     if (sig === prev) stableRun += 1;
     else {
       stableRun = 0;
@@ -239,27 +294,36 @@ export async function readStableTranscript(
     }
 
     if (stableRun + 1 >= stableChecks) {
-      // File looks settled; read it and check it contains the completed turn.
-      lastText = await readFile(realTranscript, "utf8");
-      const finalHash = finalAssistantMessageHash(lastText);
+      // File looks settled; read it and check it contains the expected completed turn.
+      const text = await readFile(realTranscript, "utf8");
+      const finalHash = finalAssistantMessageHash(text);
       const hasFinal = finalHash !== null;
       const matchesExpected = expectFinalHash ? finalHash === expectFinalHash : true;
       if (hasFinal && matchesExpected) {
-        return { text: lastText, transcriptSha256: sha256(lastText), finalMessageSha256: finalHash };
+        // Provenance matched: the on-disk final message IS the hook-recorded
+        // completed turn. Promote to a candidate and let it persist through the
+        // confirmation window (defense in depth / latency shaping) before
+        // returning. The match — not the window — is what makes this trustworthy.
+        candidate = { sig, text, finalHash };
+        confirmRun = 0;
+      } else {
+        // Settled but incomplete, or the final message is NOT the recorded turn.
+        // This is the provenance backstop: a superseding later turn lands here
+        // with a finalHash that can never equal `expectFinalHash`, so it is
+        // refused no matter how long it then settles — timing cannot launder it.
+        stableRun = 0;
+        prev = null;
       }
-      // Settled but incomplete (or not yet the expected turn) — keep waiting.
-      stableRun = 0;
-      prev = null;
     }
 
-    if (Date.now() > deadline) {
-      throw new Error(
-        `Transcript did not reach a quiescent, completed state at ${transcriptPath} within ${timeoutMs}ms` +
-          (expectFinalHash ? " (final assistant message not present or did not match the recorded hook message)." : "."),
-      );
-    }
+    if (Date.now() > deadline) break;
     await delay(pollMs);
   }
+
+  throw new Error(
+    `Transcript did not reach a quiescent, completed state at ${transcriptPath} within ${timeoutMs}ms` +
+      (expectFinalHash ? " (final assistant message not present, did not match the recorded hook message, or the transcript advanced past it)." : "."),
+  );
 }
 
 function delay(ms) {

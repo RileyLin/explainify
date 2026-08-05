@@ -1,0 +1,108 @@
+{
+  "note": "Structural proof only. NO transcript or excerpt TEXT is included — only shapes, counts, statuses, and content hashes. Full artifacts stay local under .explainify/ (gitignored). This receipt documents the REVISE successor to frozen head f71b0f2, closing the PM + @codex-builder release blockers.",
+  "phase": "1C integration — REVISE successor (verification-laundering + hashless-SessionEnd + audit + hygiene)",
+  "supersedes": "session/phase-1c-integration@f71b0f2",
+  "commit": "session/phase-1c-integration (frozen successor hash recorded in the task-thread handoff; not self-referenced here to avoid an amend loop)",
+  "integrationInputs": {
+    "phase1A": "session/phase-1a-capture@6a07f82",
+    "phase1B": "codex/session-synthesis@9213374"
+  },
+  "blockersClosed": [
+    {
+      "id": "B1",
+      "severity": "HIGH",
+      "source": "PM msg cd83928a/bc4f94df/30284daa/512aeba1/1d9ed6dd + Codex #2",
+      "title": "Verification-laundering receipt classifier",
+      "problem": "The direct-test classifier matched a test/spec filename ANYWHERE in a command, minting kind:test status:succeeded for `cat paginate.test.js` and similar. Runner/lint/build MENTIONS (`echo npm test`, `printf vitest`, `cat build.log`) also minted receipts. Status-masking shapes (`|| true`, `| tee`, `; echo`, quoted separators, and a top-level background `&`) could render a masked/backgrounded run as succeeded.",
+      "fix": "Rewrote the classifier to split a command into shell segments and anchor every branch on each segment's HEAD (the actual executable), not an argument or an incidental word. A test receipt is minted only on a real execution shape: an anchored known runner (vitest/jest/mocha/ava/tap/jasmine/pytest/phpunit/rspec), a package/dedicated test|lint|build script, or a known runtime (node/deno/bun/ts-node/tsx/python(3)/ruby) actually invoking a *.test.*/*.spec.* file. The segment splitter is QUOTE-AWARE (a separator inside single/double quotes or backslash-escaped is literal data, never an operator). Status is authoritative only when the verification run is the FINAL segment, was not reached via `||`, and was not BACKGROUNDED with a single top-level `&` (redirections `2>&1`/`&>out`/`>&2` are preserved as foreground); otherwise the receipt is emitted with status `unknown` — never a fabricated success.",
+      "regressions": "tools/session/__tests__/adapter.test.mjs — negatives for cat/sed/cp/rm/grep/less/head/ls of *.test.*/*_test.py; negatives for echo/printf/sed/cat/grep of runner/lint/build words; quote-aware negatives (echo \"harmless; node quoted.test.js\", printf 'safe | npm test', etc.); status-masking negatives (|| true, | tee, ; echo, || echo, | cat) → unknown; background negatives (node x.test.js &, ... & echo done, ... & wait) → unknown; redirection positives (2>&1, &>out) stay authoritative; positives preserved (node paginate.test.js, npm/npx/pnpm/yarn/bun test, pytest, go test, cargo test, eslint, tsc, make)."
+    },
+    {
+      "id": "B2",
+      "severity": "HIGH",
+      "source": "Codex #1 + PM msg a8d60103/43def536/68cb8dd9 + Codex msg d3f805a9",
+      "title": "Hashless SessionEnd inheriting a stale Stop hash (partial-session capture)",
+      "problem": "A hashless SessionEnd on the same transcript could inherit the prior Stop hash, and capture could return the earlier completed turn as a verified ended session before a genuinely later turn appended.",
+      "fix": "TRUST BOUNDARY IS PROVENANCE, NOT TIMING. (1) At the hook: a `session_end` capture is only ever produced when SessionEnd carries its OWN authoritative last_assistant_message hash (durable same-event identity). A hashless terminal event NEVER fabricates a session_end with a borrowed hash; it preserves the prior authoritative Stop pointer EXACTLY (captureEvent:\"stop\", same hash) — an explicitly-labeled last-completed-turn capture, not a verified ended session. (2) At capture: readStableTranscript returns a transcript ONLY when its final assistant message hashes to the recorded pointer hash. Once a later turn is on disk, the final message IS that later turn, whose hash can never equal the recorded one, so capture fails closed no matter how long the transcript then settles. The confirmation window is demoted to defense-in-depth latency shaping, explicitly NOT the trust boundary.",
+      "regressions": "tools/session/__tests__/capture.test.mjs — (a) Codex's exact timing: capture starts, turn 2 appends at 450ms, capture fails closed; (b) provenance-not-timing: turn 2 appends at 60ms and FULLY SETTLES for the rest of a 1000ms timeout (a quiet window of any finite length is satisfied) — capture STILL fails closed on the hash mismatch, proving timing alone cannot pass. tools/session/__tests__/hook.test.mjs — hashless SessionEnd preserves captureEvent:\"stop\"+hash (no fabricated session_end); a genuinely later Stop(turn2) overwrites with its own authoritative hash; a different transcript never inherits a stale hash."
+    },
+    {
+      "id": "B3",
+      "severity": "MEDIUM",
+      "source": "Codex #3 + PM msg d4e534b1",
+      "title": "Production npm audit regressed 0 -> 8 via @modelcontextprotocol/sdk@1.27.1",
+      "fix": "Bumped @modelcontextprotocol/sdk ^1.27.1 -> ^1.30.0 (only dependency line changed). `npm audit --omit=dev` = 0 vulnerabilities. Existing overrides block untouched. No exception taken while fixes were available."
+    },
+    {
+      "id": "B4",
+      "severity": "LOW",
+      "source": "Codex #4",
+      "title": "Diff hygiene: new blank line at EOF in tools/session-synthesis/README.md",
+      "fix": "Removed the trailing blank line; the file now ends with a single newline. `git diff --check` clean."
+    }
+  ],
+  "terminalMarkerReRun": {
+    "requirement": "PM msg 68cb8dd9: both passing receipts recorded captureEvent:\"session_end\" with the inherited hash; re-run the real hook/capture path so the durable successor evidence reflects the corrected terminal-marker behavior, regenerate/re-score any artifact whose bytes change, keep originals as pre-fix audit trail.",
+    "method": "For each of S1c (2f72a1f4, /tmp/s1c-feature) and S2b (bd7fa5b4, /tmp/s2b-debug): backed up the old-hook pointer as pointer.json.prefix-audit, then re-ran the REAL terminal-event sequence under the corrected hook — Stop carrying the transcript's authoritative last_assistant_message, followed by a hashless SessionEnd. The corrected hook labeled both pointers captureEvent:\"stop\" (last-completed-turn), hash preserved (hashPreserved:true, labelCorrected:true). Then re-ran the full capture->synthesis pipeline via session-cli.mjs.",
+    "outcome": "The ONLY byte-level change in the successor evidence is the captureEvent provenance label flipping session_end -> stop. Proof: forcing --event session_end on the corrected pipeline reproduces the EXACT old recorded S1c bundleSha256 27dd6170820098ab64fd12810606cf59d5a541a4673d538835c5cc857ef48b92 (a one-line diff: captureEvent only). The rendered index.html and workstream-package.json are BYTE-IDENTICAL to the frozen f71b0f2 values, so the context-blind 8-question scores stand WITHOUT re-scoring (each grader saw the rendered artifact, which is unchanged)."
+  },
+  "successorEvidence": {
+    "S1c-feature": {
+      "sessionId": "2f72a1f4-8d2a-478b-8f42-0b03fa325d64",
+      "captureEvent": "stop",
+      "captureEventBefore": "session_end",
+      "finalMessageSha256": "da123adbdb6deaccf97feffe878bd2967086b607e61a1b859a6af2086755df28",
+      "receiptStatuses": ["test:succeeded"],
+      "contextBlindScore": "93.75% PASS (unchanged; rendered artifact byte-identical)",
+      "hashesUnchangedFromF71B0F2": {
+        "artifactSha256": "9988ea654da68fc337337a29eebd561a61a00c981155ec0811bafff6e7f0b5ba",
+        "packageSha256": "846d91d13ea6afcf703d5db08f75734a5b73565fb4d151e666f03be0f5018ab7",
+        "checkpointId": "checkpoint-21ad46dd8d1c"
+      },
+      "hashesChangedByCaptureEventFlip": {
+        "bundleSha256": "6f321ad5dc036b7b08fd2ad2c9fc1412e95044c5ae19c092443329af50baf634",
+        "captureContentSha256": "f77a2e7fb8a7f5fa569e5888a36f191934719eedb64e614c12590adef4e71808",
+        "htmlReceiptSha256": "beba15462fadb0102911fd6177803a04040947ade89896740ab8677164b19999",
+        "lineageReceiptSha256": "b447d93eaaba5584cc89d563fc282da5d24208845c81686c00022378b950e26c"
+      }
+    },
+    "S2b-debugging": {
+      "sessionId": "bd7fa5b4-74d2-4007-806f-b7b2e513d852",
+      "captureEvent": "stop",
+      "captureEventBefore": "session_end",
+      "finalMessageSha256": "f74a536d49d8681abd0e04d25825532d8cdf0c51fe02ed550a2be416cbd0179f",
+      "receiptStatuses": ["test:failed", "test:succeeded"],
+      "contextBlindScore": "93.75% PASS (unchanged; rendered artifact byte-identical)",
+      "hashesUnchangedFromF71B0F2": {
+        "artifactSha256": "f84fa9aae465d228e56db12c4ccbb89e06d253e92557907a418dfa4563a91f4c",
+        "packageSha256": "ac3803a6826441880f6da767407cb1ef1cfaff62a1a46517bb906b0ab0d00841",
+        "checkpointId": "checkpoint-63d02f34893e"
+      },
+      "hashesChangedByCaptureEventFlip": {
+        "bundleSha256": "6689ddf425ae818255d49f83b5d51e80cf44c3d4cd9b9f57695e1501e1c05854",
+        "captureContentSha256": "8dc89aba21ac0348d584ef6ed6162d257d8f49aed34f848958dccba145cb0208",
+        "htmlReceiptSha256": "ddca8bc584f08e7f5984fbc7f573e2975245fd6fc28e81117740ec55440c00e6",
+        "lineageReceiptSha256": "2cf8fd9f1e1478dfa1b2167b80ed595db3351972621d37d01ad943b121b572cf"
+      }
+    }
+  },
+  "tamperBoundariesRevalidated": {
+    "requirement": "PM msg d115e0ac: revalidate the capture-receipt and HTML-receipt tamper boundaries in addition to the package/bundle chain.",
+    "result": "tools/session/__tests__/integrate.test.mjs (9/9) confirms: lineage binds the capture by content identity (capture-receipt.contentSha256 == lineage.captureContentSha256, location-independent); a tampered bundle breaks lineage.bundleSha256; package/HTML edits break packageSha256/artifactSha256; the HTML receipt self-binds (receipt.receiptSha256 == lineage.htmlReceiptSha256) and a lineage edit breaks its self-hash. Live tamper check on the regenerated S2b set confirmed each intact artifact matches its bound hash and each tamper breaks it."
+  },
+  "gates": {
+    "sessionNodeTests": "79/79",
+    "vitest": "201/201",
+    "tsc": "0 errors",
+    "eslint": "0 errors (16 pre-existing baseline warnings, untouched files)",
+    "build": "clean",
+    "npmAuditOmitDev": "0 vulnerabilities"
+  },
+  "honestLimits": [
+    "The only durable-evidence byte change vs f71b0f2 is captureEvent session_end -> stop; this is the corrected, honest terminal-marker provenance (a hashless SessionEnd is a last-completed-turn Stop capture, never a verified ended session). The rendered explanation is unchanged, so the >=90% context-blind gate is preserved without re-scoring.",
+    "The classifier is conservative by design: false negatives are preferred to fabricated verification. A test run via an unconventional filename, a fully quoted compound form, a backgrounded run, or a status-masked pipeline yields no succeeded receipt (unknown or none) rather than a laundered success.",
+    "The hashless-SessionEnd guarantee is provenance-based, not timing-based: capture fails closed on a hash mismatch regardless of when a later turn appends. The confirmation window is defense-in-depth latency shaping only.",
+    "Pre-fix audit trail retained: docs/product/session-1c-integration-receipt.json and session-1c-s2-debugging-receipt.json (which record the pre-fix captureEvent:\"session_end\") remain in-repo as the auditable prior state; the old-hook pointers are preserved locally as pointer.json.prefix-audit.",
+    "Scope unchanged: no schema fork, no hosted API/model call, no remote publish (publication always local_only), no manual transcript success path, no main merge. S3 multi-session stays OPTIONAL/deferred."
+  ]
+}

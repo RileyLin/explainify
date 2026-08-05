@@ -32,7 +32,7 @@ function runHook(payload) {
 const pointerPath = (cwd, id) => path.join(cwd, ".explainify", "sessions", id, "pointer.json");
 const readJson = async (p) => JSON.parse(await readFile(p, "utf8"));
 
-test("Stop records the completed-turn hash; a later hashless SessionEnd preserves it", async () => {
+test("Stop records the completed-turn hash; a later hashless SessionEnd preserves the AUTHORITATIVE pointer exactly (no fabricated session_end)", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "explainify-hook-"));
   try {
     const id = "sess-abc_123";
@@ -52,7 +52,11 @@ test("Stop records the completed-turn hash; a later hashless SessionEnd preserve
     assert.equal(afterStop.finalMessageSha256, sha256(finalMessage), "Stop binds the completed turn");
 
     // 2) SessionEnd arrives with NO last_assistant_message (the common case when
-    //    the app closes). It must NOT clobber the hash — it preserves it.
+    //    the app closes). It must NOT clobber the hash, AND it must NOT fabricate
+    //    a new `session_end` pointer that BORROWS the prior turn's hash — that is
+    //    the late-append laundering vector. The correct behavior is to leave the
+    //    authoritative Stop pointer untouched: same event (`stop`), same hash.
+    //    Capture then verifies against the turn that hash truly represents.
     await runHook({
       session_id: id,
       transcript_path: transcriptPath,
@@ -60,9 +64,24 @@ test("Stop records the completed-turn hash; a later hashless SessionEnd preserve
       hook_event_name: "SessionEnd",
     });
     const afterEnd = await readJson(pointerPath(cwd, id));
-    assert.equal(afterEnd.captureEvent, "session_end", "event advances to session_end");
-    assert.equal(afterEnd.finalMessageSha256, sha256(finalMessage), "prior completed-turn hash is preserved, not downgraded");
+    assert.equal(afterEnd.captureEvent, "stop", "authoritative Stop pointer is preserved, not overwritten by a hashless SessionEnd");
+    assert.equal(afterEnd.finalMessageSha256, sha256(finalMessage), "prior completed-turn hash is preserved, not downgraded or borrowed into a new event");
     assert.equal(afterEnd.transcriptPath, transcriptPath);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("a genuinely LATER turn overwrites the pointer when it carries its own authoritative hash (Stop turn 2 wins)", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "explainify-hook-"));
+  try {
+    const id = "sess-two-turns";
+    const transcriptPath = "/p/t.jsonl";
+    await runHook({ session_id: id, transcript_path: transcriptPath, cwd, hook_event_name: "Stop", last_assistant_message: "turn one done" });
+    await runHook({ session_id: id, transcript_path: transcriptPath, cwd, hook_event_name: "Stop", last_assistant_message: "turn two done" });
+    const p = await readJson(pointerPath(cwd, id));
+    assert.equal(p.captureEvent, "stop");
+    assert.equal(p.finalMessageSha256, sha256("turn two done"), "the most recently completed turn's authoritative hash is recorded");
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

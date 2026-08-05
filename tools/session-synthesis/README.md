@@ -14,4 +14,3 @@ npm run explain:session -- path/to/bundle.json output/session
 
 This boundary does not read Claude transcripts, run MCP, call a model, publish,
 or compare sessions. Capture is owned by the Phase 1A adapter.
-

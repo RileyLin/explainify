@@ -50,22 +50,162 @@ const CHANGE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit"]);
 const INSPECT_TOOLS = new Set(["Bash", "Read", "Grep", "Glob", "WebFetch", "Task"]);
 
 // Bash commands that are verification evidence get a first-class receipt (in
-// addition to remaining a toolEvent). Classification is conservative; a command
-// that matches nothing stays a toolEvent only, never a fabricated receipt.
-const RECEIPT_CLASSIFIERS = [
-  // A test run via a package script / known runner, OR a direct execution of a
-  // file that follows a test/spec naming convention (`node paginate.test.js`,
-  // `python api_test.py`, `ruby foo_spec.rb`). Running a `*.test.*`/`*.spec.*`
-  // file IS a test run regardless of interpreter; still conservative because the
-  // filename itself must signal a test (a plain `node server.js` never matches).
-  { kind: "test", re: /\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bvitest\b|\bjest\b|\bmocha\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b|\b[\w./-]*[._-](test|spec)\.(c|m)?[jt]sx?\b|\b[\w./-]*[._-](test|spec)\.(py|rb|go)\b/i },
-  { kind: "lint", re: /\blint\b|\beslint\b|\btslint\b|\bruff\b|\bflake8\b|\bclippy\b/i },
-  { kind: "build", re: /\bbuild\b|\btsc\b|\bwebpack\b|\bvite\s+build\b|\bmake\b|\bcompile\b|\btypecheck\b/i },
-];
+// addition to remaining a toolEvent). Classification is conservative and keys on
+// what a segment actually EXECUTES, never on a word/filename merely appearing in
+// the command line. `cat paginate.test.js`, `rm foo_test.py`, `grep build src/`
+// name a test/build artifact but run nothing — they must NOT mint a receipt
+// (that would be verification laundering: synthesis would show a "succeeded"
+// test that never ran). A command that executes none of these stays a toolEvent
+// only, never a fabricated receipt.
 
-function classifyReceiptKind(command) {
-  for (const { kind, re } of RECEIPT_CLASSIFIERS) if (re.test(command)) return kind;
+// Split a command line into top-level segments, remembering the operator that
+// PRECEDES each segment, so a benign segment that merely names a test artifact
+// does not lend its filename to a sibling segment (`cat x.test.js && echo done`
+// executes no test) AND so we can reason about exit-status provenance (which
+// segment's status the whole Bash command actually reports). A bare newline is
+// treated as `;` (sequential, non-status-preserving for anything before it).
+//
+// The scan is QUOTE-AWARE: a separator inside single/double quotes (or one that
+// is backslash-escaped) is literal data, NOT a shell operator. Without this,
+// `echo "harmless; node quoted.test.js"` and `printf 'safe | npm test'` split at
+// the quoted `;`/`|` and the runner/test text leaks into a phantom executed
+// segment — verification laundering. Single quotes are fully literal (no escapes
+// inside them, per POSIX); inside double quotes a backslash escapes the next
+// char; outside quotes a backslash escapes the next char too. An unterminated
+// quote conservatively swallows the rest of the line into one segment.
+function segmentsWithSep(command) {
+  const src = String(command);
+  const parts = [];
+  let start = 0;
+  let prevSep = "";
+  let quote = null; // "'" | '"' | null
+  // `push` closes the segment ending at endIndex. `bg` marks it as BACKGROUNDED
+  // (terminated by a single top-level `&`): a backgrounded segment runs
+  // asynchronously and does NOT own the shell's exit status.
+  const push = (endIndex, nextSep, bg = false) => {
+    parts.push({ sep: prevSep, text: src.slice(start, endIndex).trim(), bg });
+    prevSep = nextSep;
+    start = endIndex;
+  };
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") {
+      if (c === "'") quote = null; // single quotes: no escapes, close on next '
+      continue;
+    }
+    if (quote === '"') {
+      if (c === "\\") { i += 1; continue; } // escaped char inside double quotes
+      if (c === '"') quote = null;
+      continue;
+    }
+    // Outside any quote.
+    if (c === "\\") { i += 1; continue; } // escaped operator/char is literal
+    if (c === "'" || c === '"') { quote = c; continue; }
+    if (c === "&" && src[i + 1] === "&") { push(i, "&&"); start = i + 2; i += 1; continue; }
+    if (c === "|" && src[i + 1] === "|") { push(i, "||"); start = i + 2; i += 1; continue; }
+    if (c === "|") { push(i, "|"); start = i + 1; continue; }
+    if (c === ";") { push(i, ";"); start = i + 1; continue; }
+    if (c === "\n") { push(i, ";"); start = i + 1; continue; }
+    // A single top-level `&` is the BACKGROUND operator (`node x.test.js &`,
+    // `... & echo done`, `... & wait`): the segment before it runs async and does
+    // not own the Bash exit status, so it must never mint a succeeded receipt.
+    // A `&` that is part of a REDIRECTION is NOT a separator and must be kept
+    // inside the segment: `2>&1` / `>&2` (prev char `>`), `<&3` (prev `<`), and
+    // `&>out` / `&>>out` (next char `>`) all run in the FOREGROUND.
+    if (c === "&") {
+      const next = src[i + 1];
+      const prev = src[i - 1];
+      const isRedirection = next === ">" || prev === ">" || prev === "<";
+      if (!isRedirection) { push(i, "&", true); start = i + 1; continue; }
+    }
+  }
+  parts.push({ sep: prevSep, text: src.slice(start).trim(), bg: false });
+  return parts.filter((p) => p.text.length > 0);
+}
+
+// Strip leading `NAME=value` env assignments and a leading wrapper (sudo/time/
+// env/…) so classification sees the real executable token at the segment head.
+function commandHead(segment) {
+  let s = segment.replace(/^(?:[A-Za-z_]\w*=(?:'[^']*'|"[^"]*"|\S+)\s+)+/, "");
+  s = s.replace(/^(?:sudo|time|command|env|nice|nohup|exec|xvfb-run)\s+(?:-\S+\s+)*/i, "");
+  return s.trim();
+}
+
+// A file ARGUMENT whose basename follows a test/spec naming convention. Only
+// consulted AFTER the segment head is confirmed to be a language runtime, so a
+// test filename can never by itself imply execution.
+const TEST_FILE_ARG =
+  /(?:^|[\s'"=/])[\w@.-]*[._-](?:test|spec)\.(?:c|m)?[jt]sx?\b|(?:^|[\s'"=/])[\w@.-]*[._-](?:test|spec)\.(?:py|rb|go)\b/i;
+
+// General language runtimes that EXECUTE a file passed as an argument. A test
+// run via one of these is a test only when it actually runs a test/spec file.
+const RUNTIME_HEAD = /^(?:[\w./-]*\/)?(?:node|deno|bun|ts-node|tsx|babel-node|python3?|ruby)\b/i;
+
+// Classify a SINGLE executed segment by its head command. Returns a receipt kind
+// or null. Every branch anchors on the segment head (`^`), i.e. the program that
+// actually runs, not an argument or an incidental word.
+function segmentKind(segment) {
+  const head = commandHead(segment);
+  if (!head) return null;
+
+  // --- test: a dedicated runner / package test script, or a runtime running a test file ---
+  if (/^(?:[\w./-]*\/)?(?:npx\s+|pnpm\s+dlx\s+|yarn\s+dlx\s+)?(?:vitest|jest|mocha|ava|tap|jasmine|pytest|phpunit|rspec)\b/i.test(head)) return "test";
+  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b/i.test(head)) return "test";
+  if (/^(?:deno|bun)\s+test\b/i.test(head)) return "test";
+  if (/^go\s+test\b/i.test(head)) return "test";
+  if (/^cargo\s+test\b/i.test(head)) return "test";
+  if (/^python3?\s+-m\s+(?:pytest|unittest)\b/i.test(head)) return "test";
+  if (RUNTIME_HEAD.test(head) && TEST_FILE_ARG.test(head)) return "test";
+
+  // --- lint: the linter binary or a package lint script ---
+  if (/^(?:[\w./-]*\/)?(?:npx\s+)?(?:eslint|tslint|ruff|flake8|pylint|standard|biome|golangci-lint)\b/i.test(head)) return "lint";
+  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint\b/i.test(head)) return "lint";
+  if (/^cargo\s+clippy\b/i.test(head)) return "lint";
+
+  // --- build / typecheck: the build tool or a package build script ---
+  if (/^(?:[\w./-]*\/)?(?:npx\s+)?(?:tsc|webpack|rollup|esbuild)\b/i.test(head)) return "build";
+  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:build|typecheck|compile)\b/i.test(head)) return "build";
+  if (/^vite\s+build\b/i.test(head)) return "build";
+  if (/^(?:go|cargo)\s+build\b/i.test(head)) return "build";
+  if (/^make\b/i.test(head)) return "build";
+
   return null;
+}
+
+// A Bash command is verification evidence if an executed segment is a recognized
+// run. We report BOTH the receipt kind and whether the Bash tool-result exit
+// status authoritatively reflects that run's outcome. The shell reports the exit
+// status of the LAST executed command in a list/pipeline, so a verification run
+// only "owns" the Bash status when it is the final segment and was not reached
+// through `||` (a fallback). Otherwise a trailing `echo`/`tee`/`true`
+// (`node x.test.js | tee out`, `... ; echo done`) or a masking `... || true`
+// would let a FAILING test render as succeeded — verification laundering by
+// status. When a real verification segment ran but does NOT own the final
+// status, we still emit a receipt (the run happened) but force status
+// "unknown" — never a fabricated success.
+//
+// Returns { kind, statusAuthoritative } or null when nothing executed a run.
+function classifyReceipt(command) {
+  const segs = segmentsWithSep(command);
+  if (segs.length === 0) return null;
+  const kinds = segs.map((s) => segmentKind(s.text));
+  if (!kinds.some(Boolean)) return null; // no segment actually ran a verification
+
+  const lastKind = kinds[kinds.length - 1];
+  const lastSep = segs[segs.length - 1].sep;
+  const lastBg = segs[segs.length - 1].bg;
+  // The final segment owns the Bash exit status. Trust it only when that final
+  // segment is itself the verification run, was not reached via `||`, and was not
+  // BACKGROUNDED with `&` (a backgrounded run finishes asynchronously and does not
+  // own the shell result — `node x.test.js &` / `... & wait` must not launder).
+  if (lastKind && lastSep !== "||" && !lastBg) {
+    return { kind: lastKind, statusAuthoritative: true };
+  }
+  // A verification ran earlier but a later (or ||-guarded) segment owns the exit
+  // status. Report the last verification segment's kind with an unknown status.
+  let i = kinds.length - 1;
+  while (i >= 0 && !kinds[i]) i -= 1;
+  return { kind: kinds[i], statusAuthoritative: false };
 }
 
 function clip(text, max) {
@@ -330,17 +470,29 @@ export function buildBundleFromTranscript(args) {
   let receiptSeq = 0;
   for (const ev of toolEvents) {
     if (ev.toolName !== "Bash" || !ev._command) continue;
-    const kind = classifyReceiptKind(ev._command);
-    if (!kind) continue;
+    const classified = classifyReceipt(ev._command);
+    if (!classified) continue;
+    const { kind, statusAuthoritative } = classified;
     const command = prepare(ev._command, limits.maxReceiptChars);
     if (command == null) {
       addExclusion("secret_bearing_receipt");
       continue;
     }
-    // Honest status: succeeded/failed follow the observed tool_result; denied or
-    // no-result tools yield "unknown". We never fabricate an exit code — the
-    // transcript does not record the process exit code, so exitCode is omitted.
-    const status = ev.status === "succeeded" ? "succeeded" : ev.status === "failed" ? "failed" : "unknown";
+    // Honest status: succeeded/failed follow the observed tool_result ONLY when
+    // the verification run authoritatively owns the Bash exit status. When the
+    // run's outcome is masked by a trailing/`||`-guarded segment (e.g.
+    // `node x.test.js | tee out`, `... || true`, `... ; echo done`), the Bash
+    // tool-result status reflects that other segment, not the test — so we force
+    // "unknown" rather than launder a possibly-failing run into "succeeded".
+    // Denied or no-result tools also yield "unknown". We never fabricate an exit
+    // code — the transcript does not record the process exit code.
+    const status = !statusAuthoritative
+      ? "unknown"
+      : ev.status === "succeeded"
+        ? "succeeded"
+        : ev.status === "failed"
+          ? "failed"
+          : "unknown";
     receiptSeq += 1;
     const rc = {
       id: `receipt-${receiptSeq}`,

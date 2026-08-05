@@ -121,6 +121,164 @@ test("derives a test receipt from a direct test-file run (node x.test.js), not j
   assert.equal(notTest.receipts.filter((r) => r.kind === "test").length, 0, "a plain `node server.js` is not a test receipt");
 });
 
+// --- verification-laundering regressions (PM + Codex REVISE on f71b0f2) ---
+// The classifier must key on what a command actually EXECUTES, never on a
+// word/filename merely appearing in the line, and must not inherit a masked exit
+// status. Helper: build a one-Bash-command session and return its receipts.
+function receiptsForCommand(command, { isError = false, output = "ok" } = {}) {
+  const jsonl = [
+    { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Please run the verification for this change." }] } },
+    { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command } }] } },
+    { type: "user", uuid: "u2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", is_error: isError, content: output }] } },
+  ].map((r) => JSON.stringify(r)).join("\n") + "\n";
+  return buildBundleFromTranscript({
+    transcript: jsonl,
+    transcriptSha256: sha256(jsonl),
+    session: { id: "sess-cmd", cwd: "/repo", captureEvent: "stop" },
+    repository: { dirty: false, changedFiles: [] },
+  }).bundle.receipts;
+}
+
+test("reading/copying/deleting a test file mints NO receipt (verification-laundering negatives)", () => {
+  // The exploit: `cat paginate.test.js` minted kind:test, status:succeeded even
+  // though nothing ran. Reads/copies/deletes execute no test — no receipt.
+  for (const command of [
+    "cat paginate.test.js",
+    "sed -n '1,20p' paginate.test.js",
+    "cp paginate.test.js backup.test.js",
+    "rm foo_test.py",
+    "sed -i 's/x/y/' api_test.py",
+    "cat foo.spec.ts",
+    "grep -n assert paginate.test.js",
+    "less server.test.js",
+    "head -5 build.log",
+    "ls -la src/*.test.js",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `no receipt for non-executing command: ${command}`);
+  }
+});
+
+test("naming a runner/package script/lint/build word without executing it mints NO receipt", () => {
+  // Anchor the ENTIRE classifier, not just the filename branch (PM probe): a
+  // runner/script/lint/build word echoed or logged is not an execution.
+  for (const command of [
+    "echo npm test",
+    "printf vitest",
+    "sed -n 1p pytest.log",
+    "cat build.log",
+    "echo lint",
+    "echo 'run npm run build to ship'",
+    "grep eslint .github/workflows/ci.yml",
+    "cat > notes.txt <<EOF\nremember to run jest\nEOF",
+    "# npm test",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `no receipt for non-executing mention: ${command}`);
+  }
+});
+
+test("a separator INSIDE QUOTES is literal data, not an executed segment (quote-aware split negatives)", () => {
+  // PM probe (msg 512aeba1): the segment splitter was not quote-aware, so
+  // `echo "harmless; node quoted.test.js"` split at the quoted `;` and the runner
+  // text leaked into a phantom executed segment that minted test:succeeded — a
+  // pure fabrication (echo runs nothing). A quoted `|`/`;`/`&&`/`||` is a byte of
+  // an argument, never a shell operator, so the whole thing is one `echo`/`printf`
+  // segment and mints NO receipt.
+  for (const command of [
+    'echo "harmless; node quoted.test.js"',
+    "printf 'safe | npm test'",
+    'echo "run && npm run build"',
+    "echo 'pytest -q || true'",
+    'printf "%s\\n" "vitest run; done"',
+    "echo \"a; b\" && echo 'c | d'",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `quoted separator must not mint a receipt: ${command}`);
+  }
+  // Guard the other side: an ACTUAL operator outside quotes after a quoted arg is
+  // still honored — `echo "x" && node paginate.test.js` really runs the test.
+  const real = receiptsForCommand('echo "starting tests" && node paginate.test.js', { isError: false });
+  assert.equal(real.length, 1, "an unquoted operator after a quoted arg still splits");
+  assert.equal(real[0].kind, "test");
+  assert.equal(real[0].status, "succeeded");
+});
+
+test("real execution shapes DO mint a receipt with the observed status (positives preserved)", () => {
+  const positives = [
+    ["node paginate.test.js", "test"],
+    ["node ./src/paginate.test.js", "test"],
+    ["npm test", "test"],
+    ["npm run test", "test"],
+    ["pnpm test", "test"],
+    ["yarn test", "test"],
+    ["npx vitest run", "test"],
+    ["jest --ci", "test"],
+    ["pytest -q", "test"],
+    ["python3 -m pytest", "test"],
+    ["python api_test.py", "test"],
+    ["ruby foo_spec.rb", "test"],
+    ["go test ./...", "test"],
+    ["cargo test", "test"],
+    ["eslint .", "lint"],
+    ["npm run lint", "lint"],
+    ["ruff check .", "lint"],
+    ["tsc --noEmit", "build"],
+    ["npm run build", "build"],
+    ["make", "build"],
+  ];
+  for (const [command, kind] of positives) {
+    const rcs = receiptsForCommand(command);
+    assert.equal(rcs.length, 1, `one receipt for: ${command}`);
+    assert.equal(rcs[0].kind, kind, `kind ${kind} for: ${command}`);
+    assert.equal(rcs[0].status, "succeeded", `observed succeeded status for: ${command}`);
+  }
+});
+
+test("a status-preserving compound command still binds the real test status", () => {
+  // `cd sub && node x.test.js` — the test is the final, status-owning segment.
+  const passed = receiptsForCommand("cd packages/api && node paginate.test.js", { isError: false });
+  assert.equal(passed.length, 1);
+  assert.equal(passed[0].kind, "test");
+  assert.equal(passed[0].status, "succeeded");
+  // `node x.test.js 2>&1` — redirection is not a separator; status is authoritative.
+  const failed = receiptsForCommand("node paginate.test.js 2>&1", { isError: true });
+  assert.equal(failed[0].status, "failed", "a real failing run is reported as failed");
+});
+
+test("status-masking compound shapes yield a receipt with status 'unknown', never a laundered success", () => {
+  // These shapes can hide a FAILING test behind a trailing/`||`-guarded segment
+  // that owns the Bash exit status. The run happened (receipt emitted) but its
+  // outcome is not authoritative → status must be 'unknown', not 'succeeded'.
+  for (const command of [
+    "node paginate.test.js || true",
+    "node paginate.test.js | tee out.log",
+    "node paginate.test.js ; echo done",
+    "node paginate.test.js || echo 'ignored failure'",
+    "pytest -q | cat",
+    // Backgrounded runs (PM probe msg 1d9ed6dd): a single top-level `&` detaches
+    // the test; it does not own the Bash exit status and may not have finished.
+    "node paginate.test.js &",
+    "node paginate.test.js & echo done",
+    "node paginate.test.js & wait",
+  ]) {
+    const rcs = receiptsForCommand(command, { isError: false, output: "…" });
+    assert.equal(rcs.length, 1, `receipt still emitted for: ${command}`);
+    assert.equal(rcs[0].kind, "test", `kind test for: ${command}`);
+    assert.equal(rcs[0].status, "unknown", `masked status must be unknown, not laundered: ${command}`);
+  }
+});
+
+test("a `&` that is part of a REDIRECTION is not a background operator (status stays authoritative)", () => {
+  // `2>&1`, `&>out`, `>&2` are redirections, NOT the background operator, so the
+  // foreground test still owns the Bash exit status. (Guards the fix against
+  // over-broadening `&` handling and swallowing a real, status-owning run.)
+  const r1 = receiptsForCommand("node paginate.test.js 2>&1", { isError: false });
+  assert.equal(r1.length, 1);
+  assert.equal(r1[0].kind, "test");
+  assert.equal(r1[0].status, "succeeded", "2>&1 is a redirection, not backgrounding — status authoritative");
+  const r2 = receiptsForCommand("node paginate.test.js &>out.log", { isError: true });
+  assert.equal(r2.length, 1);
+  assert.equal(r2[0].status, "failed", "&>file is a redirection, not backgrounding — real failure preserved");
+});
+
 test("caller question is request context, distinct from the observed objective", () => {
   const bundle = buildBundleFromTranscript({
     transcript: FEATURE_CHANGE_JSONL,

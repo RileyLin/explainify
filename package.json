@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1101.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@stripe/stripe-js": "^8.9.0",
     "@supabase/supabase-js": "^2.111.0",
     "@types/dagre": "^0.7.54",
