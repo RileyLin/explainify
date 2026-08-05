@@ -238,6 +238,29 @@ test("command substitution and heredocs mint NO receipt (ambiguous shell form)",
   }
 });
 
+test("a shell comment is data, not execution (commented-out runner mints NO receipt)", () => {
+  // PM probe (msg f495ce56): top-level comments were not recognized, so
+  // `echo safe # ; npm test` split at the commented-out `;` and the runner text
+  // leaked into a phantom executed segment. An unquoted `#` at a word start
+  // begins a comment to end-of-line — the runner after it never runs.
+  for (const command of [
+    "echo safe # ; npm test",
+    "echo safe # | vitest",
+    "true # && node paginate.test.js",
+    "ls # pytest -q",
+    "# npm run build",
+    "echo done   #node foo.test.js",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `commented-out runner must mint no receipt: ${command}`);
+  }
+  // Guard the other side: a `#` INSIDE quotes or mid-word is a literal char, not a
+  // comment — a real runner after a quoted `#` still runs.
+  const quotedHash = receiptsForCommand('echo "a # b" && node paginate.test.js', { isError: false });
+  assert.equal(quotedHash.length, 1, "a quoted # is literal; the real run after && still counts");
+  assert.equal(quotedHash[0].kind, "test");
+  assert.equal(quotedHash[0].status, "succeeded");
+});
+
 test("informational / dry-run modes mint NO receipt across all kinds", () => {
   // Codex probe (msg 7a750a0e): an executable head can still be a help/version/
   // config-dump/collect-only/dry-run mode — the tool started but performed NO
@@ -382,6 +405,31 @@ test("status-masking compound shapes yield a receipt with status 'unknown', neve
     assert.equal(rcs[0].kind, "test", `kind test for: ${command}`);
     assert.equal(rcs[0].status, "unknown", `masked status must be unknown, not laundered: ${command}`);
   }
+});
+
+test("a verification reached via a conditional guard mints NO receipt when it may have been skipped", () => {
+  // PM probe (msg 632d4192): `false && node x.test.js` used to emit test:failed and
+  // `true || node x.test.js` used to emit test:unknown, even though the test never
+  // ran. A run reached via `&&`/`||` may be SKIPPED; a single aggregate status
+  // cannot distinguish "predicate failed, run skipped" from "run failed". Emit a
+  // receipt ONLY when the aggregate PROVES the branch executed — otherwise none.
+  // `false && node …` aggregates to a failure (predicate short-circuits): can't
+  // prove the run happened → no receipt.
+  assert.equal(receiptsForCommand("false && node paginate.test.js", { isError: true }).length, 0,
+    "&&-guarded run that may have been skipped mints nothing (never test:failed)");
+  // `true || node …` aggregates to success (predicate short-circuits): the run was
+  // skipped → no receipt.
+  assert.equal(receiptsForCommand("true || node paginate.test.js", { isError: false }).length, 0,
+    "||-guarded run that was skipped mints nothing (never test:unknown)");
+  // Proven-executed conditionals still mint the honest status:
+  // `pred && run` with a succeeded aggregate proves the whole chain ran and passed.
+  const ranAndPassed = receiptsForCommand("test -f package.json && npm test", { isError: false });
+  assert.equal(ranAndPassed.length, 1, "&&-run proven to have executed still mints a receipt");
+  assert.equal(ranAndPassed[0].status, "succeeded");
+  // `pred || run` with a failed aggregate proves pred failed, so run executed and failed.
+  const fallbackRan = receiptsForCommand("test -f missing.txt || node paginate.test.js", { isError: true });
+  assert.equal(fallbackRan.length, 1, "||-fallback run proven to have executed still mints a receipt");
+  assert.equal(fallbackRan[0].status, "failed");
 });
 
 test("a `&` that is part of a REDIRECTION is not a background operator (status stays authoritative)", () => {

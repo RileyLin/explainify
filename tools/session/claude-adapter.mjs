@@ -73,6 +73,43 @@ const INSPECT_TOOLS = new Set(["Bash", "Read", "Grep", "Glob", "WebFetch", "Task
 // inside them, per POSIX); inside double quotes a backslash escapes the next
 // char; outside quotes a backslash escapes the next char too. An unterminated
 // quote conservatively swallows the rest of the line into one segment.
+// Remove shell comments (quote-aware) before segmenting. POSIX: an unquoted `#`
+// that begins a word (start of input, or preceded by whitespace or a shell
+// metacharacter `;`/`&`/`|`/`(`) starts a comment that runs to the next newline.
+// Without this, `echo safe # ; npm test`, `echo safe # | vitest`, and
+// `true # && node paginate.test.js` split at the commented-out separator and the
+// runner text leaks into a phantom executed segment — verification laundering.
+// A `#` inside quotes, or one mid-word (`foo#bar`), is a literal character.
+function stripComments(command) {
+  const src = String(command);
+  let out = "";
+  let quote = null; // "'" | '"' | null
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") { out += c; if (c === "'") quote = null; continue; }
+    if (quote === '"') {
+      out += c;
+      if (c === "\\") { const n = src[i + 1]; if (n !== undefined) { out += n; i += 1; } continue; }
+      if (c === '"') quote = null;
+      continue;
+    }
+    if (c === "\\") { out += c; const n = src[i + 1]; if (n !== undefined) { out += n; i += 1; } continue; }
+    if (c === "'" || c === '"') { quote = c; out += c; continue; }
+    if (c === "#") {
+      const prev = src[i - 1];
+      const atWordStart = prev === undefined || prev === " " || prev === "\t"
+        || prev === "\n" || prev === ";" || prev === "&" || prev === "|" || prev === "(";
+      if (atWordStart) {
+        while (i < src.length && src[i] !== "\n") i += 1; // discard to end of line
+        if (i < src.length) out += "\n"; // preserve the newline as a separator
+        continue;
+      }
+    }
+    out += c;
+  }
+  return out;
+}
+
 function segmentsWithSep(command) {
   const src = String(command);
   const parts = [];
@@ -408,42 +445,69 @@ function hasAmbiguousShellForm(command) {
 }
 
 // A Bash command is verification evidence if an executed segment is a recognized
-// run. We report BOTH the receipt kind and whether the Bash tool-result exit
-// status authoritatively reflects that run's outcome. The shell reports the exit
-// status of the LAST executed command in a list/pipeline, so a verification run
-// only "owns" the Bash status when it is the final segment and was not reached
-// through `||` (a fallback). Otherwise a trailing `echo`/`tee`/`true`
-// (`node x.test.js | tee out`, `... ; echo done`) or a masking `... || true`
-// would let a FAILING test render as succeeded — verification laundering by
-// status. When a real verification segment ran but does NOT own the final
-// status, we still emit a receipt (the run happened) but force status
-// "unknown" — never a fabricated success.
+// run. Given the observed AGGREGATE exit status of the whole Bash command, we
+// decide (a) whether a receipt should be minted at all — a verification run
+// reached through a conditional may never have executed — and (b) its honest
+// status. The shell reports the exit status of the LAST executed command, so a
+// run only owns that status when it is the final foreground segment.
 //
-// Returns { kind, statusAuthoritative } or null when nothing executed a run.
-function classifyReceipt(command) {
+// The conditional guards (PM msg 632d4192): a run reached via `&&`/`||` mints a
+// receipt ONLY when the aggregate result PROVES that branch executed —
+//  - `pred && run`: a succeeded aggregate proves the whole chain (incl. run)
+//    executed and passed; any other aggregate cannot tell "pred failed, run
+//    skipped" from "run failed" -> no receipt (never `test:failed` for a
+//    skipped run, as `false && node x.test.js` used to mint).
+//  - `pred || run`: a failed aggregate proves pred failed (so run executed) and
+//    carries run's failing status; a succeeded aggregate means pred succeeded
+//    and run was SKIPPED -> no receipt (never `test:unknown` for a skipped run,
+//    as `true || node x.test.js` used to mint).
+// `unknown` is reserved for a run that DEFINITELY executed but whose outcome is
+// masked by a later/piped segment (`node x.test.js | tee out`, `... ; echo`);
+// it must never mean "may have been skipped". A backgrounded run (`... &`) does
+// not own the shell result either -> `unknown`.
+//
+// Returns { kind, status } (status: succeeded | failed | unknown) or null.
+function classifyReceipt(rawCommand, aggregateStatus) {
+  // Strip shell comments first (quote-aware): a commented-out separator/runner
+  // (`echo safe # ; npm test`) must not leak into a phantom executed segment.
+  const command = stripComments(rawCommand);
   // Command substitution / heredocs make it ambiguous what actually executes —
   // emit no receipt rather than misread substituted or heredoc text as a run.
   if (hasAmbiguousShellForm(command)) return null;
   const segs = segmentsWithSep(command);
   if (segs.length === 0) return null;
   const kinds = segs.map((s) => segmentKind(s.text));
-  if (!kinds.some(Boolean)) return null; // no segment actually ran a verification
 
-  const lastKind = kinds[kinds.length - 1];
-  const lastSep = segs[segs.length - 1].sep;
-  const lastBg = segs[segs.length - 1].bg;
-  // The final segment owns the Bash exit status. Trust it only when that final
-  // segment is itself the verification run, was not reached via `||`, and was not
-  // BACKGROUNDED with `&` (a backgrounded run finishes asynchronously and does not
-  // own the shell result — `node x.test.js &` / `... & wait` must not launder).
-  if (lastKind && lastSep !== "||" && !lastBg) {
-    return { kind: lastKind, statusAuthoritative: true };
+  // The last segment that is itself a recognized verification run.
+  let vIdx = kinds.length - 1;
+  while (vIdx >= 0 && !kinds[vIdx]) vIdx -= 1;
+  if (vIdx < 0) return null; // no segment actually ran a verification
+
+  const kind = kinds[vIdx];
+  const vSep = segs[vIdx].sep; // the operator that PRECEDES (gates) this run
+  const isFinalForeground = vIdx === kinds.length - 1 && !segs[vIdx].bg;
+  const succeeded = aggregateStatus === "succeeded";
+  const failed = aggregateStatus === "failed";
+
+  if (isFinalForeground) {
+    // The run is the final foreground segment: it owns the aggregate exit status.
+    // Whether that status is meaningful depends on how the run was REACHED.
+    if (vSep === "" || vSep === ";" || vSep === "|") {
+      // Unconditional position → the run executed; the aggregate is its status.
+      return { kind, status: succeeded ? "succeeded" : failed ? "failed" : "unknown" };
+    }
+    if (vSep === "&&") return succeeded ? { kind, status: "succeeded" } : null;
+    if (vSep === "||") return failed ? { kind, status: "failed" } : null;
+    return null;
   }
-  // A verification ran earlier but a later (or ||-guarded) segment owns the exit
-  // status. Report the last verification segment's kind with an unknown status.
-  let i = kinds.length - 1;
-  while (i >= 0 && !kinds[i]) i -= 1;
-  return { kind: kinds[i], statusAuthoritative: false };
+
+  // The run is NOT the final foreground segment (a later segment owns the exit
+  // status, or the run was backgrounded). In an unconditional position it
+  // definitely RAN but its outcome is masked → `unknown`. Reached via a
+  // conditional it MAY have been skipped, and `unknown` must never mean that →
+  // emit nothing.
+  if (vSep === "&&" || vSep === "||") return null;
+  return { kind, status: "unknown" };
 }
 
 function clip(text, max) {
@@ -708,29 +772,20 @@ export function buildBundleFromTranscript(args) {
   let receiptSeq = 0;
   for (const ev of toolEvents) {
     if (ev.toolName !== "Bash" || !ev._command) continue;
-    const classified = classifyReceipt(ev._command);
+    // The classifier decides — from the command shape AND the observed aggregate
+    // exit status — whether a real verification run happened and what its honest
+    // status is. It returns null when nothing ran, when the run may have been
+    // skipped by a conditional guard, or when the shape is ambiguous. It never
+    // fabricates a success/failure: `unknown` means "definitely ran, outcome
+    // masked", never "may have been skipped". We never invent an exit code.
+    const classified = classifyReceipt(ev._command, ev.status);
     if (!classified) continue;
-    const { kind, statusAuthoritative } = classified;
+    const { kind, status } = classified;
     const command = prepare(ev._command, limits.maxReceiptChars);
     if (command == null) {
       addExclusion("secret_bearing_receipt");
       continue;
     }
-    // Honest status: succeeded/failed follow the observed tool_result ONLY when
-    // the verification run authoritatively owns the Bash exit status. When the
-    // run's outcome is masked by a trailing/`||`-guarded segment (e.g.
-    // `node x.test.js | tee out`, `... || true`, `... ; echo done`), the Bash
-    // tool-result status reflects that other segment, not the test — so we force
-    // "unknown" rather than launder a possibly-failing run into "succeeded".
-    // Denied or no-result tools also yield "unknown". We never fabricate an exit
-    // code — the transcript does not record the process exit code.
-    const status = !statusAuthoritative
-      ? "unknown"
-      : ev.status === "succeeded"
-        ? "succeeded"
-        : ev.status === "failed"
-          ? "failed"
-          : "unknown";
     receiptSeq += 1;
     const rc = {
       id: `receipt-${receiptSeq}`,
