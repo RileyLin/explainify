@@ -12,7 +12,8 @@
     "capture:run": "node tools/comprehension/compare-cli.mjs capture-run",
     "compare:runs": "node tools/comprehension/compare-cli.mjs compare-runs",
     "test:comparative": "node --test tools/comprehension/comparative/__tests__/*.test.mjs",
-    "spike:comparative": "node tools/comprehension/compare-cli.mjs verify-comparative"
+    "spike:comparative": "node tools/comprehension/compare-cli.mjs verify-comparative",
+    "explain:session": "node tools/session-synthesis/cli.mjs synthesize"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1101.0",
