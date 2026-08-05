@@ -234,50 +234,193 @@ function optName(token) {
   return t.slice(0, 2); // single-dash short option, value may be attached
 }
 
-// Per-tool NO-VERIFICATION validation (PM/Codex review floor, msg 1d107bb9): a
-// succeeded receipt must mean the claimed verification actually RAN, not merely
-// that a verification-capable binary exited zero. A single growing cross-tool
-// denylist always lags (`go test -list`, `make -q/-t`, `tsc --init/--listFilesOnly`,
-// `eslint --env-info`, `pytest --fixtures/--markers`, `npm … --if-present` all slip
-// through). Instead each tool is validated against its OWN recognized
-// non-verification modes; anything matching mints nothing. Subcommand tools
-// (go/cargo/make/npm/deno/bun/vite/ruff) are validated positively in their
-// branches below; the flag-form modes shared by runners/linters/builders live
-// here.
+// STRICT POSITIVE run grammars (PM msg f13c6e9d + Codex msg b584356f): a
+// succeeded receipt must mean the claimed verification actually RAN. A
+// "recognized binary MINUS a denylist of no-run flags = verification" fallback
+// always lags — every freeze drew a new no-run probe that the binary accepted by
+// default (`go test -c`, `mocha --dry-run`, `webpack configtest`, `cargo test --
+// --list`, `make -p`, `npm test -- --listTests`, `python -m pytest --fixtures`,
+// `biome version`, `golangci-lint linters`, `tsc --build --clean`, …). So each
+// supported binary is matched against a narrow POSITIVE run form: mint ONLY when
+// the parsed invocation is a recognized real execution; leave every unrecognized
+// flag, subcommand, or `--` passthrough as a tool event only (no receipt). In
+// this phase false negatives are explicitly preferable to fabricated verification.
 
-// The help/version floor every recognized CLI shares: these print metadata and
-// perform no verification for ANY tool. (`-V` conservatively included — a real
-// verbose run masked as version yields a safe false negative, which the contract
-// prefers over fabricated verification.)
-const HELP_VERSION_FLAGS = new Set(["--help", "-h", "-?", "--version", "-V"]);
+// Run-compatible flags per family — ALLOWLISTS, not denylists. A flag NOT listed
+// makes the whole invocation unrecognized (→ no receipt), so a new no-run flag can
+// never slip through by default. Kept intentionally small: only flags that a real
+// verification run legitimately carries. optName() normalizes attached/equal forms.
+const RUNNER_RUN_SAFE = new Set([
+  "-q", "--quiet", "-v", "--verbose", "--ci", "--run", "--runInBand", "-i",
+  "--coverage", "--silent", "--color", "--no-color", "--bail", "--watch",
+  "-w", "-x", "-k", "-s", "--reporter", "--reporters", "--config", "-c",
+  "--maxWorkers", "--forceExit", "-o", "--passWithNoTests", "--shard",
+]);
+const DENO_TEST_RUN_SAFE = new Set([
+  "--allow-read", "--allow-net", "--allow-write", "--allow-env", "--allow-run",
+  "--allow-all", "-A", "--allow-sys", "--allow-ffi", "--coverage", "--filter",
+  "--parallel", "--no-check", "--reload", "--quiet", "-q", "--jobs", "--doc",
+]);
+const LINT_RUN_SAFE = new Set([
+  "--fix", "--quiet", "-q", "--max-warnings", "--cache", "--no-cache", "--ext",
+  "--color", "--no-color", "--format", "-f", "--config", "-c", "--rulesdir",
+]);
+const TSC_RUN_SAFE = new Set([
+  "--noEmit", "--build", "-b", "--project", "-p", "--incremental", "--strict",
+  "--pretty", "--outDir", "--declaration", "--sourceMap", "--composite",
+  "--watch", "-w", "--force",
+]);
+const WEBPACK_RUN_SAFE = new Set([
+  "--mode", "--config", "-c", "--env", "--progress", "--color", "--no-color",
+  "--watch", "-w", "--devtool", "--output-path",
+]);
+const BUILD_RUN_SAFE = new Set([ // rollup / esbuild
+  "--config", "-c", "--bundle", "--outfile", "--outdir", "--minify", "--format",
+  "--platform", "--target", "--sourcemap", "--watch", "-w", "-o", "--file",
+  "--dir", "--environment",
+]);
+const GO_TEST_RUN_SAFE = new Set([
+  "-run", "-v", "-count", "-race", "-cover", "-covermode", "-coverprofile",
+  "-timeout", "-short", "-tags", "-parallel", "-bench", "-benchmem", "-cpu",
+  "-failfast", "-shuffle", "-json", "-vet",
+]);
+const GO_BUILD_RUN_SAFE = new Set([
+  "-o", "-v", "-race", "-tags", "-ldflags", "-gcflags", "-mod", "-a",
+  "-trimpath", "-buildmode", "-p", "-work",
+]);
+const CARGO_TEST_RUN_SAFE = new Set([
+  "--release", "--all", "--workspace", "--lib", "--bin", "--bins", "--test",
+  "--tests", "--features", "--all-features", "--no-default-features", "-p",
+  "--package", "-j", "--jobs", "--quiet", "-q", "--verbose", "-v", "--doc",
+  "--all-targets", "--target",
+]);
+const CARGO_BUILD_RUN_SAFE = new Set([
+  "--release", "--all", "--workspace", "--lib", "--bin", "--bins", "--features",
+  "--all-features", "--no-default-features", "-p", "--package", "-j", "--jobs",
+  "--quiet", "-q", "--verbose", "-v", "--target", "--all-targets",
+]);
+// make: run-safe short-flag CHARACTERS and long flags. Short flags can bundle
+// (`-kj4`), and some consume the rest of the cluster as a value (`-j4`, `-C dir`),
+// so make needs its own cluster-aware validator (makeFlagsRunSafe). Any flag
+// outside these sets (e.g. -n/-q/-t/-p, --just-print, --print-data-base) makes
+// the invocation unrecognized → no receipt.
+const MAKE_SHORT_RUN_SAFE = new Set(["j", "C", "f", "k", "s", "w", "B", "l", "e", "i", "o", "I", "W", "L"]);
+const MAKE_SHORT_VALUE = new Set(["j", "C", "f", "l", "o", "I", "W"]); // consume the rest of the cluster as a value
+const MAKE_LONG_RUN_SAFE = new Set([
+  "--jobs", "--directory", "--file", "--makefile", "--keep-going", "--silent",
+  "--always-make", "--load-average", "--print-directory", "--no-print-directory",
+  "--environment-overrides", "--warn-undefined-variables", "--output-sync",
+]);
+// Bare-word POSITIONAL subcommands that MEAN "run/verify" for a family. A bare
+// positional that is not one of these (and is not a pathy target) makes the
+// invocation unrecognized — this is what rejects `vitest list`, `biome version`,
+// `golangci-lint linters`, `webpack configtest`, `webpack help` without a denylist.
+const RUNNER_RUN_KEYWORDS = new Set(["run", "watch", "bench"]);
+const LINT_RUN_KEYWORDS = new Set(["run", "check", "lint", "ci"]);
+const WEBPACK_RUN_KEYWORDS = new Set(["build", "watch", "bundle"]);
+const EMPTY_SET = new Set();
 
-// Flag-form no-verification modes, keyed by EXACT executable basename. Checked
-// with optName() so attached/equal forms (`--print-config=foo.js`) normalize. A
-// tool absent here is validated only against the help/version floor (plus any
-// positive rule in its branch).
-const TOOL_NO_RUN_FLAGS = {
-  // test runners: collection/listing, fixture/marker/setup introspection — no test body runs.
-  pytest: ["--collect-only", "--co", "--fixtures", "--fixtures-per-test", "--funcargs", "--markers", "--setup-plan", "--setup-only"],
-  jest: ["--listTests", "--showConfig", "--init", "--clearCache", "--debug"],
-  mocha: ["--list-interfaces", "--list-reporters"],
-  // linters: environment/config introspection — no source is linted.
-  eslint: ["--env-info", "--print-config", "--inspect-config", "--init"],
-  // build: config scaffolding / file listing / config dump — no compile.
-  tsc: ["--init", "--showConfig", "--show-config", "--listFilesOnly", "--all"],
-};
+// Linters that lint file/dir TARGETS directly, with no run subcommand.
+const LINT_TARGET_BINS = new Set(["eslint", "tslint", "flake8", "pylint", "standard"]);
 
-// True when a recognized tool invocation is a no-verification mode: the shared
-// help/version floor, or one of the tool's OWN documented non-run flags.
-function isNoVerification(exe, args) {
-  const perTool = TOOL_NO_RUN_FLAGS[exe];
-  const toolSet = perTool ? new Set(perTool) : null;
-  for (const t of args) {
-    const opt = optName(t);
-    if (!opt) continue;
-    if (HELP_VERSION_FLAGS.has(opt)) return true;
-    if (toolSet && toolSet.has(opt)) return true;
+// Value-taking flags per family: a SEPARATE value token (`--reporter json`) is
+// consumed so it is not mistaken for a bare-word non-run subcommand.
+const RUNNER_VALUE_FLAGS = new Set(["--reporter", "--reporters", "--config", "-c", "--maxWorkers", "--shard", "-o", "-k", "-s"]);
+const LINT_VALUE_FLAGS = new Set(["--format", "-f", "--config", "-c", "--ext", "--max-warnings", "--rulesdir"]);
+const TSC_VALUE_FLAGS = new Set(["--project", "-p", "--outDir"]);
+const WEBPACK_VALUE_FLAGS = new Set(["--mode", "--config", "-c", "--devtool", "--output-path"]);
+const BUILD_VALUE_FLAGS = new Set(["--config", "-c", "--outfile", "--outdir", "--format", "--platform", "--target", "-o", "--file", "--dir", "--environment"]);
+
+// A positional that looks like a file/dir/glob TARGET (contains `/`, `.`, or `*`,
+// or is the cwd `.`/`..`) rather than a bare-word subcommand. Test files
+// (`paginate.test.js`) and target dirs (`src/`, `./...`, `tests/`) are targets; a
+// bare word (`list`, `version`, `configtest`) is a subcommand to be validated.
+function isTargetPositional(token) {
+  const t = String(token);
+  return t.includes("/") || t.includes(".") || t.includes("*");
+}
+
+// STRICT POSITIVE run validator shared by the runner/lint/build grammars. Mints
+// (returns true) ONLY when the invocation is a recognized real run: no `--`
+// passthrough carrying tokens; EVERY flag's option name is in `flags`; and every
+// bare-word POSITIONAL (not a pathy target, not a value consumed by a value-taking
+// flag) is an allowed run KEYWORD. Any unrecognized flag or subcommand → false, so
+// a new no-run mode can never pass by default (false negatives preferred).
+function strictRun(args, { flags, keywords = EMPTY_SET, valueFlags = EMPTY_SET }) {
+  if (hasPassthroughTokens(args)) return false;
+  for (let k = 0; k < args.length; k += 1) {
+    const t = args[k];
+    if (t === "--") break;
+    if (t.startsWith("-")) {
+      const opt = optName(t);
+      if (!flags.has(opt)) return false;
+      // A value-taking flag with a SEPARATE value (`--config x`, `-k expr`) consumes
+      // the next token so it is not read as a bare-word subcommand. An attached value
+      // (`--config=x`, `-kexpr`) is self-contained and consumes nothing.
+      const attached = t.includes("=") || (!t.startsWith("--") && t.length > 2);
+      if (valueFlags.has(opt) && !attached) k += 1;
+      continue;
+    }
+    if (isTargetPositional(t)) continue; // a file/dir/glob target
+    if (!keywords.has(t)) return false; // a bare-word non-run subcommand
   }
-  return false;
+  return true;
+}
+
+// Every FLAG token's option name is in `allowed`; a flag outside it (or a `--`
+// passthrough) makes the invocation unrecognized. Positionals (targets, patterns,
+// flag values) are ignored here. Stops at a standalone `--` (passthrough is
+// handled separately by hasPassthroughTokens).
+function flagsAllowed(args, allowed) {
+  for (const t of args) {
+    if (t === "--") break;
+    const opt = optName(t);
+    if (opt && !allowed.has(opt)) return false;
+  }
+  return true;
+}
+
+// Go variant: Go uses single-dash long flags (`-run`, `-list`), so goFlag() (not
+// optName) parses them.
+function goFlagsAllowed(args, allowed) {
+  for (const t of args) {
+    if (t === "--") break;
+    const opt = goFlag(t);
+    if (opt && !allowed.has(opt)) return false;
+  }
+  return true;
+}
+
+// A standalone `--` separator followed by at least one token: an argument
+// passthrough whose content we do not interpret. `npm test -- --listTests`,
+// `cargo test -- --list` carry no-run modes into the passthrough, so a passthrough
+// carrying tokens conservatively yields no receipt (a real filtered run like
+// `npm test -- rate-limiter` becomes a false negative, which this phase prefers).
+function hasPassthroughTokens(args) {
+  const i = args.indexOf("--");
+  return i >= 0 && i < args.length - 1;
+}
+
+// make short-flag clusters are run-safe: every character is a run-safe short flag,
+// except a value-taking short (`-j4`, `-Cdir`) whose remainder is a value and ends
+// the cluster. A no-run short (n/q/t/p/d) anywhere makes the cluster unrecognized.
+function makeFlagsRunSafe(args) {
+  for (const t of args) {
+    if (t === "--") break;
+    if (!t.startsWith("-")) continue; // positional target (recipe name)
+    if (t.startsWith("--")) {
+      const opt = optName(t);
+      if (!MAKE_LONG_RUN_SAFE.has(opt)) return false;
+      continue;
+    }
+    // short-flag cluster: `-kj4` → k, then j consumes "4"
+    for (let c = 1; c < t.length; c += 1) {
+      const ch = t[c];
+      if (MAKE_SHORT_VALUE.has(ch)) break; // rest of the token is this flag's value
+      if (!MAKE_SHORT_RUN_SAFE.has(ch)) return false;
+    }
+  }
+  return true;
 }
 
 // The option NAME of a Go-style single-dash long flag (`-list`, `-run`, `-c`),
@@ -343,14 +486,9 @@ function headExecutable(tokens) {
 }
 
 const TEST_RUNNERS = new Set(["vitest", "jest", "mocha", "ava", "tap", "jasmine", "pytest", "phpunit", "rspec"]);
-const LINT_BINS = new Set(["eslint", "tslint", "flake8", "pylint", "standard", "biome", "golangci-lint"]);
-const BUILD_BINS = new Set(["tsc", "webpack", "rollup", "esbuild"]);
 const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
 // node modes that do NOT execute a script as a test: eval / print / syntax-check.
 const NODE_NONRUN = new Set(["-e", "--eval", "-p", "--print", "--check", "-c"]);
-// make modes that execute NO build recipe: query (only sets exit status), touch
-// (updates timestamps without building), and dry-run/print aliases.
-const MAKE_NO_RECIPE = new Set(["-q", "--question", "-t", "--touch", "-n", "--just-print", "--dry-run", "--recon"]);
 const NODE_VALUE_FLAGS = new Set(["-r", "--require", "--import", "--loader", "--experimental-loader", "--conditions", "-C", "--title"]);
 const PY_VALUE_FLAGS = new Set(["-W", "-X", "-m"]);
 const RUBY_VALUE_FLAGS = new Set(["-I", "-r"]);
@@ -380,13 +518,21 @@ function segmentKind(segment) {
     args = args.slice(j + 1);
   }
 
-  // A no-verification invocation of any recognized tool (help/version for all,
-  // plus each tool's OWN documented non-run modes) ran no verification.
-  if (isNoVerification(exe, args)) return null;
+  // Every branch below is a STRICT POSITIVE run grammar: it mints ONLY when the
+  // parsed invocation matches a recognized real-execution form for that exact
+  // binary. There is no "recognized binary MINUS a denylist = verification"
+  // fallback — an unrecognized flag, subcommand, or `--` passthrough carrying
+  // tokens leaves the command a tool event with no receipt (false negatives are
+  // preferred this phase over fabricated verification).
 
-  // --- dedicated test runners (exact basename) ---
-  // A `list` subcommand (`vitest list`) enumerates tests without running them.
-  if (TEST_RUNNERS.has(exe)) return firstNonFlag(args) === "list" ? null : "test";
+  // --- dedicated test runners (exact basename): a real run form only ---
+  // Mints only when every flag is run-compatible and every bare positional is a
+  // target or a run keyword. Rejects `vitest list`, `jest --listTests`,
+  // `pytest --collect-only/--fixtures/--markers`, `mocha --dry-run`,
+  // `rspec --dry-run`, `phpunit --list-tests`, `--help`/`--version`, etc.
+  if (TEST_RUNNERS.has(exe)) {
+    return strictRun(args, { flags: RUNNER_RUN_SAFE, keywords: RUNNER_RUN_KEYWORDS, valueFlags: RUNNER_VALUE_FLAGS }) ? "test" : null;
+  }
 
   // --- language runtimes: only a real script/module RUN of a test counts ---
   // Option matching normalizes attached/equal value forms (`-e"code"`,
@@ -402,8 +548,13 @@ function segmentKind(segment) {
     const mIdx = opts.indexOf("-m");
     if (mIdx >= 0) {
       // `-m` value may be attached (`-mpytest`) or the next token (`-m pytest`).
-      const mod = args[mIdx].length > 2 ? args[mIdx].slice(2) : args[mIdx + 1];
-      return mod === "pytest" || mod === "unittest" ? "test" : null; // py_compile etc → not a test
+      const attached = args[mIdx].length > 2;
+      const mod = attached ? args[mIdx].slice(2) : args[mIdx + 1];
+      if (mod !== "pytest" && mod !== "unittest") return null; // py_compile etc → not a test
+      // The args AFTER the module are the runner's own args — a real run form only
+      // (rejects `python -m pytest --fixtures`, `python -mpytest --collect-only`).
+      const runnerArgs = attached ? args.slice(mIdx + 1) : args.slice(mIdx + 2);
+      return strictRun(runnerArgs, { flags: RUNNER_RUN_SAFE, keywords: RUNNER_RUN_KEYWORDS, valueFlags: RUNNER_VALUE_FLAGS }) ? "test" : null;
     }
     const script = firstPositional(args, PY_VALUE_FLAGS);
     return script && isTestFileToken(script) ? "test" : null;
@@ -415,19 +566,24 @@ function segmentKind(segment) {
     return script && isTestFileToken(script) ? "test" : null;
   }
   if (exe === "deno") {
-    return firstNonFlag(args) === "test" ? "test" : null; // `deno fmt`/`deno lint`/… are not test runs
+    // Only `deno test` with run-compatible flags; `deno fmt`/`lint`/`--help` → null.
+    if (firstNonFlag(args) !== "test") return null;
+    return flagsAllowed(args, DENO_TEST_RUN_SAFE) && !hasPassthroughTokens(args) ? "test" : null;
   }
   if (exe === "bun") {
     const sub = firstNonFlag(args);
-    if (sub === "test") return "test";
+    if (sub === "test") return flagsAllowed(args, RUNNER_RUN_SAFE) && !hasPassthroughTokens(args) ? "test" : null;
     if (sub === "run") return runScriptKind(args.slice(args.indexOf("run") + 1)); // `bun build` → not a test
     return null;
   }
 
   // --- package managers (npm/pnpm/yarn): a real `test`/`lint`/`build` script ---
   if (exe === "npm" || exe === "pnpm" || exe === "yarn") {
-    // `--if-present` exits zero when the script is absent, so a succeeded status
-    // does NOT prove the verification ran — mint nothing (PM/Codex msg 1d107bb9).
+    // A `--` passthrough carrying tokens can smuggle a no-run mode into the script
+    // (`npm test -- --listTests`), so it yields no receipt. `--if-present` exits
+    // zero when the script is absent, so a succeeded status does not prove the
+    // verification ran.
+    if (hasPassthroughTokens(args)) return null;
     if (args.some((t) => optName(t) === "--if-present")) return null;
     const sub = firstNonFlag(args);
     if (!sub) return null;
@@ -435,41 +591,65 @@ function segmentKind(segment) {
     return runScriptKind([sub]); // `npm test`, `yarn lint`, `pnpm build`
   }
 
-  // --- lint binaries (exact basename) ---
-  if (LINT_BINS.has(exe)) return "lint";
-  if (exe === "ruff") return firstNonFlag(args) === "check" ? "lint" : null; // `ruff format` is not lint
-
-  // --- build binaries (exact basename) ---
-  if (BUILD_BINS.has(exe)) return "build";
-  if (exe === "vite") return firstNonFlag(args) === "build" ? "build" : null;
-  if (exe === "make") {
-    // A recipe-executing invocation mints; make's documented NO-RECIPE query/dry
-    // modes execute nothing and must not. `-q`/`--question` only sets an exit
-    // code, `-t`/`--touch` timestamps without building, `-n`/`--just-print`/
-    // `--dry-run`/`--recon` print without running. optName() normalizes each.
-    for (const t of args) {
-      if (MAKE_NO_RECIPE.has(optName(t))) return null;
-    }
-    return "build";
+  // --- linters that lint TARGETS directly (no subcommand) ---
+  // A real run form only: run-compatible flags + file/dir targets. Rejects
+  // `eslint --env-info/--print-config/--init`, `tslint --init`,
+  // `flake8 --bug-report`, `pylint --generate-rcfile`, `--help`/`--version`.
+  if (LINT_TARGET_BINS.has(exe)) {
+    return strictRun(args, { flags: LINT_RUN_SAFE, valueFlags: LINT_VALUE_FLAGS }) ? "lint" : null;
+  }
+  if (exe === "ruff") return firstNonFlag(args) === "check" ? "lint" : null; // `ruff format`/`ruff --version` are not lint
+  if (exe === "biome") {
+    const sub = firstNonFlag(args); // `biome check`/`lint`/`ci` lint; `biome version`/`format` do not
+    return sub && LINT_RUN_KEYWORDS.has(sub) ? "lint" : null;
+  }
+  if (exe === "golangci-lint") {
+    return firstNonFlag(args) === "run" ? "lint" : null; // `golangci-lint linters`/`version`/`help` → null
   }
 
-  // --- go / cargo subcommands ---
+  // --- build binaries (exact basename): a real compile form only ---
+  if (exe === "tsc") {
+    // A real type-check/compile: run-compatible flags only. Rejects `tsc --init`,
+    // `--showConfig`, `--listFilesOnly`, `--build --clean`, `--build --dry`,
+    // `--version`, `--help` (none are in TSC_RUN_SAFE).
+    return strictRun(args, { flags: TSC_RUN_SAFE, valueFlags: TSC_VALUE_FLAGS }) ? "build" : null;
+  }
+  if (exe === "webpack") {
+    // A real bundle: run-compatible flags + optional build keyword. Rejects
+    // `webpack configtest`, `webpack help`, `webpack --configtest x`.
+    return strictRun(args, { flags: WEBPACK_RUN_SAFE, keywords: WEBPACK_RUN_KEYWORDS, valueFlags: WEBPACK_VALUE_FLAGS }) ? "build" : null;
+  }
+  if (exe === "rollup" || exe === "esbuild") {
+    return strictRun(args, { flags: BUILD_RUN_SAFE, valueFlags: BUILD_VALUE_FLAGS }) ? "build" : null;
+  }
+  if (exe === "vite") return firstNonFlag(args) === "build" ? "build" : null;
+  if (exe === "make") {
+    // A recipe-executing invocation only. make's query/print/dry modes execute no
+    // recipe and must mint nothing: `-q`/`--question`, `-t`/`--touch`,
+    // `-n`/`--just-print`, `-p`/`--print-data-base`, `-d`, and bundled clusters
+    // carrying any of them. makeFlagsRunSafe is cluster-aware (`-kj4` is run-safe).
+    return makeFlagsRunSafe(args) && !hasPassthroughTokens(args) ? "build" : null;
+  }
+
+  // --- go / cargo subcommands: a real run form only ---
   if (exe === "go") {
     const sub = firstNonFlag(args);
-    // `go test` runs tests, but `go test -list <re>` only enumerates matching
-    // tests without executing any. Go uses single-dash long flags, so goFlag()
-    // (not optName) parses them. Other no-run go test modes are conservative
-    // false negatives, not fabricated successes.
-    if (sub === "test") return args.some((t) => goFlag(t) === "-list") ? null : "test";
-    if (sub === "build") return "build";
+    // `go test` runs tests, but only with run-compatible flags. Go uses single-dash
+    // long flags, so goFlag()/goFlagsAllowed parse them. Rejects `go test -c`
+    // (compiles a binary, runs nothing), `go test -list` (enumerates only).
+    if (sub === "test") return goFlagsAllowed(args, GO_TEST_RUN_SAFE) ? "test" : null;
+    if (sub === "build") return goFlagsAllowed(args, GO_BUILD_RUN_SAFE) ? "build" : null;
     return null;
   }
   if (exe === "cargo") {
     const sub = firstNonFlag(args);
-    // `cargo test --no-run` compiles the test binaries but executes NO test.
-    if (sub === "test") return args.some((t) => optName(t) === "--no-run") ? null : "test";
-    if (sub === "clippy") return "lint";
-    if (sub === "build") return "build";
+    // `cargo test` runs tests, but `--no-run` compiles without running and a `--`
+    // passthrough can smuggle `-- --list` (list mode). Run-compatible flags only.
+    if (sub === "test") {
+      return flagsAllowed(args, CARGO_TEST_RUN_SAFE) && !hasPassthroughTokens(args) ? "test" : null;
+    }
+    if (sub === "clippy") return flagsAllowed(args, CARGO_TEST_RUN_SAFE) ? "lint" : null;
+    if (sub === "build") return flagsAllowed(args, CARGO_BUILD_RUN_SAFE) ? "build" : null;
     return null;
   }
 

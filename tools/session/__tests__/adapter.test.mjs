@@ -314,51 +314,115 @@ test("attached/equal option forms and collect/list/no-run aliases mint NO receip
   assert.equal(real[0].kind, "test");
 });
 
-test("per-tool no-verification modes mint NO receipt (positive-form validation, not a denylist)", () => {
-  // PM + Codex REVISE on 20040de (msg 1d107bb9 / fa822906): a growing cross-tool
-  // info/dry-run denylist always lags. A succeeded receipt must mean the claimed
-  // verification RAN, not merely that a verification-capable binary exited zero.
-  // Each supported tool is validated against its OWN documented non-run modes;
-  // successful process exit alone is insufficient.
-  for (const command of [
-    "go test -list .", // enumerates matching tests, runs none
-    "go test -list=Foo ./pkg", // attached-value form of the same
-    "make -q", // question mode: only sets an exit code, no recipe runs
-    "make --question", // long form
-    "make -t", // touch mode: timestamps targets without building
-    "make --touch",
-    "tsc --init", // scaffolds tsconfig.json, compiles nothing
-    "tsc --listFilesOnly", // lists files then stops, no emit/verify
-    "eslint --env-info", // prints environment metadata, lints nothing
-    "eslint --inspect-config foo.js", // opens the config inspector, lints nothing
-    "pytest --fixtures", // prints available fixtures, runs no test
-    "pytest --markers", // prints registered markers, runs no test
-    "pytest --setup-plan", // shows fixture setup plan without running tests
-    "npm run test --if-present", // exits zero when no test script exists
-    "pnpm run test --if-present",
-    "yarn test --if-present",
-    "jest --showConfig", // dumps resolved config, runs no test
-    "jest --clearCache", // clears the cache, runs no test
-  ]) {
-    assert.equal(receiptsForCommand(command).length, 0, `no-verification mode must mint no receipt: ${command}`);
+test("STRICT POSITIVE run grammar: only a recognized real-execution form mints; unknown modes mint nothing (not a denylist)", () => {
+  // PM + Codex REVISE on 7259a9f (msg b584356f / f13c6e9d): the prior round was
+  // still `recognized binary MINUS a denylist of no-run flags = verification`, so
+  // every new no-run mode a binary accepts by default slipped through. The fix is
+  // a strict POSITIVE grammar per binary — mint ONLY on a recognized run form;
+  // reject every unrecognized flag, subcommand, and `--` passthrough carrying
+  // tokens. False negatives are explicitly preferred this phase.
+  const negatives = [
+    // Codex b584356f — modes the binary accepts by default but run no verification.
+    "go test -c", // compiles a test binary, runs nothing
+    "mocha --dry-run",
+    "webpack configtest", // validates config, builds nothing
+    "webpack --configtest webpack.config.js",
+    "cargo test -- --list", // passthrough list mode
+    "make -p", // print database, runs no recipe
+    "make --print-data-base",
+    "npm test -- --listTests", // passthrough list mode
+    // PM f13c6e9d — extended across module wrappers, linters, build tools.
+    "python -m pytest --fixtures", // runner arg after `-m pytest` is a no-run mode
+    "python -mpytest --collect-only",
+    "rspec --dry-run",
+    "phpunit --list-tests",
+    "biome version", // bare-word non-run subcommand
+    "golangci-lint linters", // lists linters, lints nothing
+    "flake8 --bug-report",
+    "pylint --generate-rcfile",
+    "tslint --init",
+    "webpack help", // bare-word non-run subcommand
+    "tsc --build --clean", // clean, not compile
+    "tsc --build --dry",
+    "make -np", // bundled short cluster carrying -n (just-print)
+  ];
+  for (const command of negatives) {
+    assert.equal(receiptsForCommand(command).length, 0, `unknown/no-run mode must mint no receipt: ${command}`);
   }
-  // Positive side of the flip: the real verification forms of the SAME tools must
-  // still mint. Positive-form validation must not over-reject a genuine run.
+  // Positive side: the real run forms of the SAME binaries must still mint — the
+  // strict grammar must not over-reject a genuine verification.
   for (const [command, kind] of [
-    ["go test -run TestFoo ./pkg", "test"], // -run selects tests and RUNS them
+    ["go test -run TestFoo ./pkg", "test"],
     ["go test ./...", "test"],
-    ["make", "build"], // a plain recipe-executing invocation
+    ["go build ./...", "build"],
+    ["make", "build"],
     ["make build", "build"],
-    ["tsc --noEmit", "build"], // a real type-check compile
+    ["make -j4", "build"], // parallel jobs is a real recipe run
+    ["make -kj4 all", "build"], // bundled run-safe short cluster
+    ["tsc --noEmit", "build"],
+    ["tsc --build", "build"], // a real project build (only --clean/--dry are no-run)
     ["eslint src/", "lint"],
     ["pytest -q", "test"],
-    ["npm test", "test"], // no --if-present → a real run
+    ["python -m pytest tests/", "test"],
+    ["python -mpytest", "test"],
+    ["rspec spec/", "test"],
+    ["phpunit tests/", "test"],
+    ["mocha test/", "test"],
+    ["biome check", "lint"],
+    ["golangci-lint run", "lint"],
+    ["webpack --mode production", "build"],
+    ["cargo build", "build"],
+    ["cargo clippy", "lint"],
+    ["npm test", "test"],
     ["npm run test", "test"],
+    ["npm test rate-limiter", "test"], // a positional test-name filter is a real run
+    ["deno test --allow-read", "test"],
   ]) {
     const rcs = receiptsForCommand(command, { isError: false });
     assert.equal(rcs.length, 1, `real verification run still mints: ${command}`);
     assert.equal(rcs[0].kind, kind, `kind ${kind} for: ${command}`);
     assert.equal(rcs[0].status, "succeeded", `observed succeeded status for: ${command}`);
+  }
+});
+
+test("implementation-level: an UNKNOWN mode for each supported binary returns null (no mint-by-default fallback)", () => {
+  // The trust-boundary invariant Codex/PM required proving directly (msg b584356f
+  // / f13c6e9d): for every supported binary, an invented/unrecognized subcommand or
+  // flag must mint NOTHING. This asserts the grammar is positive (allowlist), not a
+  // binary-minus-denylist. If a future edit reintroduces a mint-by-default branch,
+  // this fails even before a specific real-world no-run mode is discovered.
+  const unknownModes = [
+    "vitest --totally-made-up-flag",
+    "jest --invented-mode",
+    "pytest --no-such-option",
+    "mocha --fictional",
+    "rspec --unknownflag",
+    "phpunit --nope",
+    "eslint --imaginary-flag",
+    "tslint --fake",
+    "flake8 --does-not-exist",
+    "pylint --unheard-of",
+    "tsc --unknownflag",
+    "webpack --fabricated",
+    "rollup --nonexistent",
+    "esbuild --madeup",
+    "make --invented-long-flag",
+    "make -Z", // unknown short flag
+    "go test -unknownflag",
+    "go build -unknownflag",
+    "cargo test --invented",
+    "cargo build --nope",
+    "cargo clippy --fictional",
+    "deno test --invented-permission",
+    "bun test --unknownflag",
+    "npm run frobnicate", // not a verification script name
+    "biome frobnicate", // unknown subcommand
+    "golangci-lint frobnicate",
+    "ruff frobnicate",
+    "vite frobnicate",
+  ];
+  for (const command of unknownModes) {
+    assert.equal(receiptsForCommand(command).length, 0, `unknown mode for a supported binary must return null: ${command}`);
   }
 });
 
