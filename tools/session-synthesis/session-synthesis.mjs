@@ -4,85 +4,16 @@ import { buildSourceManifest } from "../workstream-brief/freeze.mjs";
 import { buildCoverageReceipt } from "../workstream-brief/brief.mjs";
 import { scanOutput } from "../comprehension/evidence.mjs";
 import { sha256, stableStringify } from "../comprehension/util.mjs";
+import { assertBundle, canonicalReceipt } from "../session/bundle-schema.mjs";
 
 const RECEIPT_KINDS = new Set(["command_receipt", "test_receipt", "deployment_receipt", "raft_message", "raft_task_state"]);
-const VALID_DEPTHS = new Set(["overview", "working", "expert"]);
-const VALID_EXCERPT_KINDS = new Set(["user_requirement", "agent_decision", "agent_explanation", "error", "unresolved"]);
-const VALID_ROLES = new Set(["user", "assistant", "tool"]);
-const VALID_TOOL_STATUSES = new Set(["succeeded", "failed", "denied", "unknown"]);
-const VALID_RECEIPT_KINDS = new Set(["test", "lint", "build", "command", "git_status"]);
-const VALID_RECEIPT_STATUSES = new Set(["succeeded", "failed", "unknown"]);
-const MAX_BUNDLE_BYTES = 196_608;
-const MAX_TEXT_BYTES = 32_768;
 
 function fail(message) {
   throw new Error(`Invalid SessionEvidenceBundle: ${message}`);
 }
 
-function bytes(value) {
-  return new TextEncoder().encode(value).length;
-}
-
-function exactKeys(value, allowed, label) {
-  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length) fail(`${label} has unknown fields: ${unknown.join(", ")}`);
-}
-
-function requireHash(content, digest, label) {
-  if (sha256(content) !== digest) fail(`${label} sha256 does not bind its canonical record`);
-}
-
-function receiptContent(receipt) {
-  return JSON.stringify(["receipt", receipt.id ?? "", receipt.kind ?? "", receipt.command ?? "", receipt.status ?? "", receipt.exitCode ?? null, receipt.scope ?? "", receipt.content ?? "", receipt.commandLocator ?? "", receipt.outputLocator ?? ""]);
-}
-
 export function validateSessionBundle(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) fail("bundle must be an object");
-  if (bytes(stableStringify(input)) > MAX_BUNDLE_BYTES) fail("bundle exceeds the maximum size");
-  exactKeys(input, ["schemaVersion", "request", "session", "objective", "excerpts", "toolEvents", "repository", "receipts", "exclusions", "privacy"], "bundle");
-  if (input.schemaVersion !== 1) fail("schemaVersion must be 1");
-  if (!input.request?.question || !VALID_DEPTHS.has(input.request?.audience?.technicalDepth)) fail("request question/audience is invalid");
-  if (!input.session?.id || !["claude_code", "generic_agent"].includes(input.session.source)) fail("session identity/source is invalid");
-  if (!/^[a-f0-9]{64}$/.test(input.session.transcriptSha256 || "")) fail("session transcriptSha256 is invalid");
-  if (!Array.isArray(input.excerpts) || !Array.isArray(input.toolEvents) || !Array.isArray(input.receipts)) fail("evidence collections must be arrays");
-  if (input.privacy?.secretScan !== "pass" || input.privacy?.publication !== "local_only") fail("privacy boundary must be pass/local_only");
-
-  const ids = new Set();
-  const excerpts = new Map();
-  for (const excerpt of input.excerpts) {
-    exactKeys(excerpt, ["id", "kind", "role", "text", "locator", "sha256"], `excerpt ${excerpt.id}`);
-    if (!excerpt.id || ids.has(excerpt.id)) fail(`duplicate or missing evidence id ${excerpt.id}`);
-    ids.add(excerpt.id);
-    if (!VALID_EXCERPT_KINDS.has(excerpt.kind) || !VALID_ROLES.has(excerpt.role)) fail(`excerpt ${excerpt.id} has invalid kind/role`);
-    if (!excerpt.locator || !excerpt.text || bytes(excerpt.text) > MAX_TEXT_BYTES) fail(`excerpt ${excerpt.id} is empty or oversized`);
-    requireHash(JSON.stringify(["excerpt", excerpt.id, excerpt.kind, excerpt.role, excerpt.text, excerpt.locator]), excerpt.sha256, `excerpt ${excerpt.id}`);
-    excerpts.set(excerpt.id, excerpt);
-  }
-  if (!excerpts.has(input.objective?.sourceId)) fail("objective.sourceId does not resolve to an excerpt");
-  if (excerpts.get(input.objective.sourceId).text !== input.objective.text) fail("objective text does not match its source excerpt");
-
-  for (const event of input.toolEvents) {
-    exactKeys(event, ["id", "toolName", "status", "inputSummary", "outputSummary", "inputLocator", "inputSha256", "outputLocator", "outputSha256"], `tool event ${event.id}`);
-    if (!event.id || ids.has(event.id)) fail(`duplicate or missing evidence id ${event.id}`);
-    ids.add(event.id);
-    if (!VALID_TOOL_STATUSES.has(event.status) || !event.inputLocator) fail(`tool event ${event.id} is invalid`);
-    requireHash(JSON.stringify(["tool_input", event.id, event.toolName, event.status, event.inputSummary, event.inputLocator]), event.inputSha256, `tool event ${event.id} input`);
-    if (event.outputSummary) {
-      if (!event.outputLocator || !event.outputSha256) fail(`tool event ${event.id} output lacks its own locator/hash`);
-      requireHash(JSON.stringify(["tool_output", event.id, event.status, event.outputSummary, event.outputLocator]), event.outputSha256, `tool event ${event.id} output`);
-    } else if (event.status !== "unknown") {
-      fail(`tool event ${event.id} without output evidence must remain unknown`);
-    }
-  }
-  for (const receipt of input.receipts) {
-    exactKeys(receipt, ["id", "kind", "command", "status", "exitCode", "scope", "content", "commandLocator", "outputLocator", "sha256"], `receipt ${receipt.id}`);
-    if (!receipt.id || ids.has(receipt.id)) fail(`duplicate or missing evidence id ${receipt.id}`);
-    ids.add(receipt.id);
-    if (!VALID_RECEIPT_KINDS.has(receipt.kind) || !VALID_RECEIPT_STATUSES.has(receipt.status)) fail(`receipt ${receipt.id} has invalid kind/status`);
-    if (receipt.exitCode !== undefined && !Number.isInteger(receipt.exitCode)) fail(`receipt ${receipt.id} exitCode is invalid`);
-    requireHash(receiptContent(receipt), receipt.sha256, `receipt ${receipt.id}`);
-  }
-  return input;
+  return assertBundle(structuredClone(input));
 }
 
 function evidenceLink(source) {
@@ -172,7 +103,7 @@ export function synthesizeSession(input) {
     add({ id: `file:${file.path}`, kind: "git_span", locator: file.path, ...(bundle.repository.headRevision ? { revision: bundle.repository.headRevision } : {}), content: stableStringify(file) });
   }
   for (const receipt of bundle.receipts) {
-    add({ id: `receipt:${receipt.id}`, kind: receipt.kind === "test" ? "test_receipt" : "command_receipt", locator: receipt.commandLocator, ...(bundle.repository.headRevision ? { revision: bundle.repository.headRevision } : {}), content: receiptContent(receipt) });
+    add({ id: `receipt:${receipt.id}`, kind: receipt.kind === "test" ? "test_receipt" : "command_receipt", locator: receipt.commandLocator, ...(bundle.repository.headRevision ? { revision: bundle.repository.headRevision } : {}), content: canonicalReceipt(receipt) });
   }
   for (const exclusion of bundle.exclusions) {
     sources.push({

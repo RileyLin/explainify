@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validatePackage } from "@/lib/workstream/package";
+import { hashToolInput } from "../../tools/session/bundle-schema.mjs";
 import { featureFixture, debuggingFixture } from "../../tools/session-synthesis/fixtures.mjs";
 import { synthesizeSession, validateSessionBundle } from "../../tools/session-synthesis/session-synthesis.mjs";
 
@@ -49,7 +50,29 @@ describe("session-to-explain synthesis boundary", () => {
     expect(() => validateSessionBundle(tampered)).toThrow(/sha256/);
     const dangling = featureFixture();
     dangling.objective.sourceId = "ghost";
-    expect(() => validateSessionBundle(dangling)).toThrow(/does not resolve/);
+    expect(() => validateSessionBundle(dangling)).toThrow(/dangling reference/);
+  });
+
+  it("uses the producer validator for nested shapes and resultless tool status", () => {
+    const unknownField = featureFixture();
+    (unknownField.request as typeof unknownField.request & { injected?: boolean }).injected = true;
+    expect(() => validateSessionBundle(unknownField)).toThrow(/request\.injected: unknown field/);
+
+    const resultless = featureFixture();
+    const event = {
+      id: "pending",
+      toolName: "Bash",
+      status: "unknown",
+      inputSummary: "Run a command whose result was not captured.",
+      outputSummary: "",
+      inputLocator: "jsonl:tool-pending#input",
+      inputSha256: "",
+    };
+    event.inputSha256 = hashToolInput(event);
+    resultless.toolEvents.push(event);
+    expect(validateSessionBundle(resultless)).toEqual(resultless);
+    resultless.toolEvents.at(-1)!.status = "succeeded";
+    expect(() => validateSessionBundle(resultless)).toThrow(/inputSha256.*hash mismatch/);
   });
 
   it("excludes the secret canary from package and HTML", () => {

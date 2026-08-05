@@ -1,14 +1,21 @@
-import { sha256, stableStringify } from "../comprehension/util.mjs";
+import { sha256 } from "../comprehension/util.mjs";
+import { hashExcerpt, hashReceipt, hashToolInput, hashToolOutput } from "../session/bundle-schema.mjs";
 
-const excerpt = (id, kind, role, text, locator) => ({ id, kind, role, text, locator, sha256: sha256(JSON.stringify(["excerpt", id, kind, role, text, locator])) });
-const tool = (id, toolName, status, inputSummary, outputSummary, inputLocator, outputLocator) => ({
-  id, toolName, status, inputSummary, outputSummary, inputLocator,
-  inputSha256: sha256(JSON.stringify(["tool_input", id, toolName, status, inputSummary, inputLocator])),
-  ...(outputSummary ? { outputLocator, outputSha256: sha256(JSON.stringify(["tool_output", id, status, outputSummary, outputLocator])) } : {}),
-});
+const excerpt = (id, kind, role, text, locator) => {
+  const value = { id, kind, role, text, locator };
+  return { ...value, sha256: hashExcerpt(value) };
+};
+const tool = (id, toolName, status, inputSummary, outputSummary, inputLocator, outputLocator) => {
+  const value = { id, toolName, status, inputSummary, outputSummary, inputLocator, ...(outputSummary ? { outputLocator } : {}) };
+  return {
+    ...value,
+    inputSha256: hashToolInput(value),
+    ...(outputSummary ? { outputSha256: hashToolOutput(value) } : {}),
+  };
+};
 const receipt = (id, kind, command, status, exitCode, scope, content, commandLocator, outputLocator) => {
   const value = { id, kind, command, status, ...(exitCode !== undefined ? { exitCode } : {}), scope, content, commandLocator, ...(outputLocator ? { outputLocator } : {}) };
-  return { ...value, sha256: sha256(JSON.stringify(["receipt", id, kind, command, status, exitCode ?? null, scope, content, commandLocator, outputLocator ?? ""])) };
+  return { ...value, sha256: hashReceipt(value) };
 };
 
 export function featureFixture() {
