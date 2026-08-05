@@ -120,11 +120,13 @@ It does not copy or upload the complete transcript. The MCP tool resolves that
 pointer, the repository root, and bounded evidence when invoked.
 
 A `SessionStart` hook records the immutable starting commit and dirty-state
-receipt. `Stop` / `SessionEnd` records the ending state plus the hook's final
-assistant message. Capture waits until the transcript is quiescent and contains
-that final message before verification. A timeout produces an error, never a
-partial "verified" bundle. Session IDs and all derived paths are validated and
-must remain inside the intended local Explainify directory.
+receipt. `Stop` / `SessionEnd` records the ending state plus the hook-provided
+`last_assistant_message`; capture must not derive this marker from the possibly
+lagging transcript. Capture waits until the transcript is quiescent and
+contains that final message before verification. The completion marker is
+required for a Stop/SessionEnd capture. A timeout or missing marker produces an
+error, never a partial "verified" bundle. Session IDs and all derived paths are
+validated and must remain inside the intended local Explainify directory.
 
 ### Evidence Selection
 
@@ -197,7 +199,7 @@ interface SessionEvidenceBundle {
   toolEvents: Array<{
     id: string;
     toolName: string;
-    status: "succeeded" | "failed" | "denied";
+    status: "succeeded" | "failed" | "denied" | "unknown";
     inputSummary: string;
     outputSummary: string;
     inputLocator: string;
@@ -247,9 +249,12 @@ Rules:
   repository source. A tool output never borrows its input locator.
 - The caller's question is request context, not evidence and not the session
   objective. `objective.sourceId` must resolve to a selected excerpt.
-- Excerpt hashes bind the UTF-8 bytes of `text`. Tool input/output hashes bind
-  their respective summaries. Receipt hashes bind the canonical serialized
-  command, status, optional exit code, scope, content, and locators.
+- Excerpt hashes bind the canonical serialized ID, kind, role, text, and
+  locator. Tool input hashes bind ID, tool name, input summary, and input
+  locator; output hashes bind ID, status, output summary, and output locator.
+  Receipt hashes bind the canonical serialized ID, kind, command, status,
+  optional exit code, scope, content, and locators. A semantic label or locator
+  can never change without invalidating its hash.
 - Bundle fields contain selected, redacted content only. The raw transcript is
   referenced by its whole-file hash but is not embedded.
 - Adapter output is byte-size bounded, schema-validated, and deterministic for
@@ -258,6 +263,10 @@ Rules:
 - Validation is strict: it rejects unknown fields, dangling references,
   duplicate IDs, hash/content mismatches, over-limit fields/bundles, and
   unsupported enum values.
+- Repository capture fails if requested refs do not resolve. With a
+  SessionStart baseline, `changedFiles` covers committed changes from the
+  starting commit to the captured head plus any remaining working-tree changes;
+  a clean committed session must not collapse to an empty change set.
 
 ### Privacy Boundary
 
