@@ -28,7 +28,7 @@ import { isDeniedPath, redact, scanClean } from "./safety.mjs";
 import {
   assertBundle,
   BUNDLE_SCHEMA_VERSION,
-  hashExcerptText,
+  hashExcerpt,
   hashToolInput,
   hashToolOutput,
   hashReceipt,
@@ -194,14 +194,15 @@ export function buildBundleFromTranscript(args) {
           const red = prepare(text, limits.maxExcerptChars);
           if (red) {
             objectiveExcerptId = "excerpt-objective";
-            excerpts.push({
+            const ex = {
               id: objectiveExcerptId,
               kind: "user_requirement",
               role,
               text: red,
               locator: `jsonl:${uuid}#content[${b}]`,
-              sha256: hashExcerptText(red),
-            });
+            };
+            ex.sha256 = hashExcerpt(ex);
+            excerpts.push(ex);
             continue;
           }
           addExclusion("secret_bearing_excerpt");
@@ -222,14 +223,15 @@ export function buildBundleFromTranscript(args) {
           continue;
         }
         excerptSeq += 1;
-        excerpts.push({
+        const ex = {
           id: `excerpt-${excerptSeq}`,
           kind,
           role,
           text: red,
           locator: `jsonl:${uuid}#content[${b}]`,
-          sha256: hashExcerptText(red),
-        });
+        };
+        ex.sha256 = hashExcerpt(ex);
+        excerpts.push(ex);
         continue;
       }
 
@@ -258,18 +260,21 @@ export function buildBundleFromTranscript(args) {
           continue;
         }
         toolSeq += 1;
-        toolEvents.push({
+        const ev = {
           id: `tool-${toolSeq}`,
           toolName,
-          status: "succeeded", // provisional; corrected when the tool_result arrives
+          // "unknown" until a matching tool_result proves succeeded/failed/denied.
+          // A tool use with no result stays "unknown" — never a fabricated success.
+          status: "unknown",
           inputSummary: red,
           outputSummary: "",
           inputLocator: `jsonl:${uuid}#content[${b}]`,
-          inputSha256: hashToolInput(red),
           // output fields attached below when the matching tool_result arrives
           _useId: block?.id,
           _command: toolName === "Bash" ? (block?.input?.command ?? "") : "",
-        });
+        };
+        ev.inputSha256 = hashToolInput(ev);
+        toolEvents.push(ev);
         continue;
       }
 
@@ -289,7 +294,9 @@ export function buildBundleFromTranscript(args) {
         if (red && red.length > 0) {
           ev.outputSummary = red;
           ev.outputLocator = `jsonl:${uuid}#content[${b}]`;
-          ev.outputSha256 = hashToolOutput(red);
+          // Hash the full output record (id/status/summary/locator), so a relabel
+          // of status or locator invalidates it — computed AFTER status is set.
+          ev.outputSha256 = hashToolOutput(ev);
         } else if (red == null) {
           addExclusion("secret_bearing_tool_output");
         }

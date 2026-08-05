@@ -1,19 +1,20 @@
 {
-  "note": "Structural proof only. No transcript/excerpt text is included. The full bundle stays local under .explainify/ (gitignored). Regenerate with: node tools/session/session-cli.mjs capture --session-id <id> --root <repo>.",
-  "capturedVia": "CLI + real Claude Code v2.1.220 (claude mcp add explainify-session; claude -p invoked mcp__explainify-session__explainify_explain_session; status verified).",
+  "note": "Structural proof only. No transcript/excerpt text is included. The full bundle stays local under .explainify/ (gitignored). Regenerate with: node tools/session/session-cli.mjs capture --session-id <id> --root <repo> --final-message-sha <hash>.",
+  "contract": "Bound to docs/product/session-to-explain-v1.md @46c2621 (canonical evidence binding + terminal-marker requirement).",
+  "capturedVia": "CLI capture of a real, completed Claude Code transcript. Finding #1 exercised: --final-message-sha is REQUIRED for a stop/session_end capture (no transcript-derived fallback). Real Claude Code v2.1.220 discovery/call proof recorded in the prior cycle stands (mcp__explainify-session__explainify_explain_session, status verified).",
   "toolNameNote": "Claude Code normalizes the SDK-registered tool name explainify.explain_session to the invocation handle mcp__explainify-session__explainify_explain_session (dot -> underscore).",
   "schemaVersion": 1,
   "request": {
-    "question": "What did this session do?",
     "audience": {
       "role": "engineer",
       "technicalDepth": "working"
-    }
+    },
+    "question": "What did this session do and why?"
   },
   "session": {
-    "id": "8af396f5-1d2e-42b8-a570-f875289743b4",
+    "id": "realcap-46c2621",
     "source": "claude_code",
-    "captureEvent": "session_end",
+    "captureEvent": "stop",
     "transcriptSha256": "27a5197f1d11ef7862c7f787899985654b75e8796ca3980357315b75c7158ccc",
     "finalMessageSha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982"
   },
@@ -25,7 +26,16 @@
     "excerpts": 2,
     "toolEvents": 0,
     "receipts": 0,
-    "exclusionEvents": 7
+    "changedFiles": 9,
+    "exclusionKinds": 4
+  },
+  "hashBinding": "Excerpt/tool/receipt sha256 bind the FULL record (id, kind/role/status, summaries, locators) per @46c2621 finding #4; a relabel invalidates the hash (validated in tests).",
+  "repositoryShape": {
+    "baseRevisionSet": true,
+    "headRevisionSet": true,
+    "dirty": true,
+    "changedFiles": 9,
+    "note": "changedFiles = committed baseline->head UNION working-tree (finding #2); an unresolvable requested ref errors (finding #3)."
   },
   "excerptShape": [
     {
@@ -34,7 +44,7 @@
       "role": "user",
       "textChars": 37,
       "locator": "jsonl:f081ad5a-7ae2-43bf-a229-e0811aed42f4#content[0]",
-      "sha256": "479b16953727d07ed4960028223a765d1d13745ad78363dc43a979e5b91ac4f0"
+      "sha256": "932fc6847b86cf0bd29659b48365b94598d33d4ff16181cb7080765ec18c8a65"
     },
     {
       "id": "excerpt-1",
@@ -42,7 +52,7 @@
       "role": "assistant",
       "textChars": 17,
       "locator": "jsonl:667f6144-73fe-48dc-beea-e508c622ac8e#content[0]",
-      "sha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982"
+      "sha256": "02d240d02027cd4d1ead66f0bc01c91fb3b422213702c626e9eebb2b460b1b55"
     }
   ],
   "exclusions": [
@@ -75,7 +85,7 @@
   },
   "captureReceipt": {
     "manualPaste": false,
-    "bundleSha256": "9827c5bdfd4e365afc2e47d78f6612fa75aa014b08d9ddf1f3f2314d88bd08a4",
+    "bundleSha256": "b0601fb1164fc5761626da0ae4ce96897a1a1f278db5ea42ed306af76ab92f71",
     "transcriptSha256": "27a5197f1d11ef7862c7f787899985654b75e8796ca3980357315b75c7158ccc",
     "finalMessageSha256": "900af7b48a0acd3af3ec3f28365b2af61e47a510fe4276d9be003cc5484ed982",
     "secretScan": "pass",

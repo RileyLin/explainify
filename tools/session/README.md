@@ -29,14 +29,18 @@ calls a hosted API, or publishes.
      commit + dirty flag) to `.explainify/sessions/<session-id>/start.json`;
    - at **Stop / SessionEnd** it writes a **pointer only** to
      `.explainify/sessions/<session-id>/pointer.json` — session id, transcript
-     path, cwd, event, and the SHA-256 of the final assistant message. The
-     transcript content is never copied.
+     path, cwd, event, and the SHA-256 of the hook-provided
+     `last_assistant_message` (the authoritative completed turn). The hook never
+     reads or copies the transcript; the transcript file lags the live turn, so
+     re-deriving the marker from disk could bind a stale, mid-write turn.
 2. The session (or user) calls the **MCP tool** `explainify.explain_session`
-   (or the CLI). It resolves the pointer, waits until the transcript is
-   **quiescent and contains that recorded final message** (the file lags the
-   live turn; a timeout is an error, never a partial "verified" bundle),
-   collects **git** facts against the SessionStart baseline, and runs the
-   **adapter**.
+   (or the CLI). It **requires** that recorded final-message hash for a
+   Stop/SessionEnd capture (no transcript-derived fallback), waits until the
+   transcript is **quiescent and its final assistant message matches that hash**
+   (a timeout is an error, never a partial "verified" bundle), collects **git**
+   facts (committed baseline→head changes **unioned** with remaining working-tree
+   changes, so a fully-committed session is not reported as empty; an
+   unresolvable requested ref is an error), and runs the **adapter**.
 3. The adapter emits a validated `SessionEvidenceBundle` + a **capture receipt**
    under `.explainify/out/<session-id>/`. The receipt proves `manualPaste:false`,
    records the whole-file transcript hash, the bound final-message hash, bundle
@@ -53,7 +57,7 @@ lands in `bundle.request` and never becomes the observed `objective`, whose
 npm run session:mcp                       # start the stdio MCP server
 npm run session:capture -- --session-id <id> --root <repo>   # capture via pointer
 npm run session:validate -- --bundle <path>                  # schema-check a bundle
-npm run test:session                      # deterministic fixture tests (21)
+npm run test:session                      # deterministic fixture tests (52)
 node tools/session/__tests__/mcp-e2e.mjs <id> <root>         # real MCP handshake
 ```
 
@@ -65,8 +69,8 @@ hook paths. The plugin adds:
 
 - MCP server `explainify-session` with tool `explainify.explain_session`;
 - a `SessionStart` hook that records the immutable repository baseline, plus
-  narrow `Stop` / `SessionEnd` hooks that record the session pointer +
-  final-message hash;
+  narrow `Stop` / `SessionEnd` hooks that record the session pointer + the hash
+  of the hook-provided `last_assistant_message` (never re-read from disk);
 - the `/explain-session` skill.
 
 **Real-client discovery, verified.** Registering the server with Claude Code

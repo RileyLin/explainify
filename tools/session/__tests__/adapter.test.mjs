@@ -275,6 +275,77 @@ test("validator rejects an exit code on an unknown-status receipt", () => {
   assert.ok(errors.some((e) => /must be absent when status is unknown/.test(e)));
 });
 
+// --- finding #4: hashes bind full evidence semantics + locators, not just text ---
+
+test("validator rejects a relabeled tool name (input hash binds toolName)", () => {
+  const bundle = buildFeature();
+  const write = bundle.toolEvents.find((t) => t.toolName === "Write");
+  write.toolName = "Read"; // relabel a change tool as an inspect tool, keep the text/hash
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /inputSha256/.test(e) && /hash mismatch/.test(e)), errors.join("; "));
+});
+
+test("validator rejects a relabeled tool input locator (input hash binds inputLocator)", () => {
+  const bundle = buildFeature();
+  const write = bundle.toolEvents.find((t) => t.toolName === "Write");
+  write.inputLocator = "jsonl:forged#content[0]";
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /inputSha256/.test(e) && /hash mismatch/.test(e)), errors.join("; "));
+});
+
+test("validator rejects a flipped tool status (output hash binds status)", () => {
+  const bundle = buildFeature();
+  const write = bundle.toolEvents.find((t) => t.outputLocator && t.status === "succeeded");
+  write.status = "failed"; // claim a success was a failure without touching text
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /outputSha256/.test(e) && /hash mismatch/.test(e)), errors.join("; "));
+});
+
+test("validator rejects a relabeled receipt id or kind (receipt hash binds both)", () => {
+  const relabelId = buildFeature();
+  relabelId.receipts[0].id = "receipt-relabeled";
+  const a = validateBundle(relabelId);
+  assert.equal(a.ok, false);
+  assert.ok(a.errors.some((e) => /receipts\[0\]\.sha256/.test(e) && /hash mismatch/.test(e)), a.errors.join("; "));
+
+  const relabelKind = buildFeature();
+  relabelKind.receipts[0].kind = "lint"; // was "test"
+  const b = validateBundle(relabelKind);
+  assert.equal(b.ok, false);
+  assert.ok(b.errors.some((e) => /receipts\[0\]\.sha256/.test(e) && /hash mismatch/.test(e)), b.errors.join("; "));
+});
+
+test("a tool_use with no matching tool_result has status \"unknown\", never a fabricated success", () => {
+  // A transcript with a change tool whose result never arrives.
+  const jsonl =
+    [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Please write the config file for me." }] } },
+      {
+        type: "assistant",
+        uuid: "a1",
+        message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "src/config.ts", content: "export const x = 1;" } }] },
+      },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "text", text: "I have written the configuration file as requested." }] } },
+    ]
+      .map((r) => JSON.stringify(r))
+      .join("\n") + "\n";
+  const bundle = buildBundleFromTranscript({
+    transcript: jsonl,
+    transcriptSha256: sha256(jsonl),
+    session: { id: "sess-unk", cwd: "/repo", captureEvent: "fixture" },
+    repository: { dirty: false, changedFiles: [] },
+  }).bundle;
+  const write = bundle.toolEvents.find((t) => t.toolName === "Write");
+  assert.ok(write, "the Write tool event is kept");
+  assert.equal(write.status, "unknown", "no result → unknown, not a fabricated succeeded");
+  assert.equal(write.outputSummary, "", "no output was observed");
+  assert.equal(write.outputLocator, undefined, "no output locator when there is no result");
+  assert.equal(validateBundle(bundle).ok, true);
+});
+
 // --- safety unit tests ---
 
 test("isDeniedPath matches env/keys/history/caches/binaries", () => {

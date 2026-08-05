@@ -71,6 +71,18 @@ async function cmdCapture(args) {
     captureEvent = args.event || pointer.captureEvent || "stop";
     cwd = pointer.cwd || root;
     expectFinalHash = pointer.finalMessageSha256 || null;
+  } else if (typeof args["final-message-sha"] === "string") {
+    // Explicit-transcript path (fixture/manual): the completion marker must be
+    // supplied by the caller, never re-derived from the transcript on disk.
+    expectFinalHash = args["final-message-sha"];
+  }
+  // Finding #1: a completion capture (stop/session_end) must carry the
+  // hook/caller-provided final-message hash. We never verify a completion event
+  // against a transcript-derived marker.
+  if ((captureEvent === "stop" || captureEvent === "session_end") && !expectFinalHash) {
+    throw new Error(
+      `capture of ${captureEvent} requires a recorded final-message hash (pointer.finalMessageSha256 or --final-message-sha); refusing to verify against a transcript-derived marker.`,
+    );
   }
   const baseline = await readBaseline(root, sessionId);
 

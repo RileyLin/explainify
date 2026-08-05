@@ -7,17 +7,19 @@
 //   <cwd>/.explainify/sessions/<session-id>/{pointer.json,start.json}
 //
 // Claude Code delivers hook input as JSON on stdin with session_id, cwd,
-// transcript_path, and hook_event_name (see docs/en/hooks). The transcript file
-// is written asynchronously and can lag the live turn, so this hook records the
-// final-message hash it can compute now (best effort) and downstream capture
-// waits for a quiescent transcript that CONTAINS that message before verifying.
+// transcript_path, hook_event_name, and — at Stop/SessionEnd — the authoritative
+// `last_assistant_message` text of the completed turn (see docs/en/hooks). The
+// transcript file is written asynchronously and can LAG the live turn, so this
+// hook binds the completion marker to the hook-provided `last_assistant_message`
+// and NEVER re-derives it from the transcript on disk (which may still be
+// mid-write). Downstream capture then waits for a quiescent transcript whose
+// final assistant message hashes to this recorded value before verifying.
 //
 // This hook is intentionally tiny and dependency-free so it can run in the hook
-// sandbox without importing the app. It reads the transcript only to hash the
-// final assistant message; it never writes transcript content anywhere.
+// sandbox without importing the app. It never reads or writes transcript content.
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -28,31 +30,6 @@ async function readStdin() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
-}
-
-// Best-effort hash of the last assistant text message currently on disk. Mirrors
-// capture.mjs#finalAssistantMessageHash; kept inline so the hook has no imports.
-function finalAssistantMessageHash(transcriptText) {
-  const lines = transcriptText.split("\n");
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const raw = lines[i];
-    if (!raw.trim()) continue;
-    let obj;
-    try {
-      obj = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (obj?.type !== "assistant") continue;
-    const content = obj?.message?.content;
-    const blocks = Array.isArray(content) ? content : typeof content === "string" ? [{ type: "text", text: content }] : [];
-    const text = blocks
-      .filter((bl) => (bl?.type === "text" || bl?.type === undefined) && typeof (bl?.text ?? bl) === "string")
-      .map((bl) => (typeof bl === "string" ? bl : bl.text))
-      .join("");
-    if (text.trim().length > 0) return sha256(text);
-  }
-  return null;
 }
 
 function gitBaseline(cwd) {
@@ -98,14 +75,12 @@ async function main() {
   if (!transcriptPath) process.exit(0);
   const captureEvent = /SessionEnd/i.test(eventName) ? "session_end" : /Stop/i.test(eventName) ? "stop" : "tool_call";
 
-  let finalMessageSha256;
-  try {
-    const text = await readFile(transcriptPath, "utf8");
-    const h = finalAssistantMessageHash(text);
-    if (h) finalMessageSha256 = h;
-  } catch {
-    /* transcript may not be readable yet; downstream capture still waits for it */
-  }
+  // Bind the completion marker to the AUTHORITATIVE hook-provided final assistant
+  // message — never the lagging transcript on disk. If the field is absent or
+  // empty we record NO hash; downstream capture requires the hash for
+  // Stop/SessionEnd and will fail closed rather than verify against a guess.
+  const lastMessage = typeof input.last_assistant_message === "string" ? input.last_assistant_message : "";
+  const finalMessageSha256 = lastMessage.trim().length > 0 ? sha256(lastMessage) : undefined;
 
   const pointer = {
     schemaVersion: 1,

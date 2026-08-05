@@ -243,6 +243,20 @@ function git(root, args) {
   }
 }
 
+// Evidence-defining git call: throws on failure instead of swallowing it. Used
+// for commands whose result defines the bundle (resolving a requested ref,
+// diffing a range). Swallowing these would let an unresolved ref or a failed
+// diff produce an empty, schema-valid-but-FALSE repository record (finding #3),
+// so those failures must abort capture rather than degrade silently.
+function gitOrThrow(root, args, what) {
+  try {
+    return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trimEnd();
+  } catch (e) {
+    const detail = (e && e.stderr && e.stderr.toString().trim()) || (e && e.message) || "unknown error";
+    throw new Error(`git ${args.join(" ")} failed (${what}): ${detail}`);
+  }
+}
+
 // Read just the starting commit + dirty flag (used by the SessionStart hook).
 export function gitBaseline(root) {
   const isRepo = git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
@@ -254,9 +268,18 @@ export function gitBaseline(root) {
 }
 
 // Collect repository facts: base/head revisions, dirty flag, and changed files.
-// If baseRef/headRef are provided we diff that range; otherwise we report the
-// working-tree status against HEAD. A recorded SessionStart baseline supplies
-// baseRevision when no explicit baseRef is given.
+//
+// The changed-file set is the UNION of (a) files changed by commits from the
+// base revision to head and (b) files still modified in the working tree. This
+// matters (finding #2): a session that committed all its work leaves a clean
+// working tree, so a working-tree-only view would report an empty change set
+// and misrepresent a productive session as having changed nothing. The base is
+// an explicit baseRef when given, else the immutable SessionStart baseline.
+//
+// Requested refs are evidence-defining: an explicit baseRef/headRef, or a
+// recorded baseline revision, that does not resolve is an ERROR, not an empty
+// result (finding #3). We never swallow a git failure on a command whose output
+// defines the bundle.
 export async function collectRepository(rootInput, { baseRef, headRef, baseline } = {}) {
   let root;
   try {
@@ -266,7 +289,11 @@ export async function collectRepository(rootInput, { baseRef, headRef, baseline 
   }
   const isRepo = git(root, ["rev-parse", "--is-inside-work-tree"]) === "true";
   if (!isRepo) {
-    return { dirty: false, changedFiles: [], ...(baseline?.baseRevision ? { baseRevision: baseline.baseRevision } : {}) };
+    // No repo: an explicitly requested ref cannot resolve → that's an error, not
+    // a silent empty. A recorded baseline in a non-repo is inconsistent too.
+    if (baseRef || headRef) throw new Error(`Requested git ref but ${root} is not a git work tree.`);
+    if (baseline?.baseRevision) throw new Error(`Recorded baseline revision but ${root} is not a git work tree.`);
+    return { dirty: false, changedFiles: [] };
   }
   const statusOut = git(root, ["status", "--porcelain"]);
   const dirty = statusOut.length > 0;
@@ -282,29 +309,48 @@ export async function collectRepository(rootInput, { baseRef, headRef, baseline 
     changedFiles.push({ path: filePath, status });
   };
 
-  const result = { dirty, changedFiles };
-
-  if (baseRef && headRef) {
-    const base = git(root, ["rev-parse", `${baseRef}^{commit}`]);
-    const head = git(root, ["rev-parse", `${headRef}^{commit}`]);
-    if (base) result.baseRevision = base;
-    if (head) result.headRevision = head;
-    const nameStatus = git(root, ["diff", "--name-status", base, head]);
-    for (const line of nameStatus.split("\n").filter(Boolean)) {
-      const [code, ...rest] = line.split(/\s+/);
-      pushChange(code[0], rest[rest.length - 1]);
-    }
-  } else {
-    const head = git(root, ["rev-parse", "HEAD"]);
-    if (head) result.headRevision = head;
-    // Prefer the immutable SessionStart baseline as the base when available.
-    if (baseline?.baseRevision) result.baseRevision = baseline.baseRevision;
+  // Working-tree changes always count toward the union.
+  const addWorkingTree = () => {
     for (const line of statusOut.split("\n").filter(Boolean)) {
       const code = line.slice(0, 2).trim()[0] || "M";
       const filePath = line.slice(3).trim();
       pushChange(code, filePath);
     }
+  };
+
+  // Committed changes between two resolved revisions count toward the union.
+  const addCommittedRange = (base, head) => {
+    if (!base || !head || base === head) return;
+    const nameStatus = gitOrThrow(root, ["diff", "--name-status", base, head], `diff ${base}..${head}`);
+    for (const line of nameStatus.split("\n").filter(Boolean)) {
+      const [code, ...rest] = line.split(/\s+/);
+      pushChange(code[0], rest[rest.length - 1]);
+    }
+  };
+
+  const result = { dirty, changedFiles };
+  const head = gitOrThrow(root, ["rev-parse", "HEAD"], "resolve HEAD");
+  result.headRevision = head;
+
+  // Resolve the base: explicit baseRef wins, else the SessionStart baseline.
+  let base = "";
+  if (baseRef) {
+    base = gitOrThrow(root, ["rev-parse", `${baseRef}^{commit}`], `resolve baseRef ${baseRef}`);
+  } else if (baseline?.baseRevision) {
+    base = gitOrThrow(root, ["rev-parse", `${baseline.baseRevision}^{commit}`], `resolve baseline ${baseline.baseRevision}`);
   }
+  if (base) result.baseRevision = base;
+
+  // Resolve an explicit headRef (overriding the working HEAD as the range end).
+  let rangeHead = head;
+  if (headRef) {
+    rangeHead = gitOrThrow(root, ["rev-parse", `${headRef}^{commit}`], `resolve headRef ${headRef}`);
+    result.headRevision = rangeHead;
+  }
+
+  // Union: committed range (base→head) plus remaining working-tree changes.
+  addCommittedRange(base, rangeHead);
+  addWorkingTree();
   return result;
 }
 

@@ -52,8 +52,16 @@ async function runCapture(input) {
   const cwd = pointer.cwd || root;
   const baseline = await readBaseline(root, sessionId);
 
-  // Bind to the completed turn the hook recorded (finding #1): capture waits for
-  // a quiescent transcript that contains that exact final assistant message.
+  // Bind to the completed turn the hook recorded (finding #1): a Stop/SessionEnd
+  // capture MUST carry the hook-provided final-message hash and capture waits for
+  // a quiescent transcript that contains that exact final assistant message. We
+  // never fall back to a transcript-derived marker for a completion event — that
+  // would let a mid-write transcript pass as "verified".
+  if ((captureEvent === "stop" || captureEvent === "session_end") && !pointer.finalMessageSha256) {
+    throw new Error(
+      `Session pointer for ${captureEvent} is missing finalMessageSha256; the hook must record the final assistant message. Refusing to verify against a transcript-derived marker.`,
+    );
+  }
   const { text, transcriptSha256, finalMessageSha256 } = await readStableTranscript(pointer.transcriptPath, {
     expectFinalHash: pointer.finalMessageSha256 || null,
   });

@@ -20,7 +20,7 @@ export const EXCERPT_KINDS = [
   "unresolved",
 ];
 export const EXCERPT_ROLES = ["user", "assistant", "tool"];
-export const TOOL_STATUSES = ["succeeded", "failed", "denied"];
+export const TOOL_STATUSES = ["succeeded", "failed", "denied", "unknown"];
 export const RECEIPT_STATUSES = ["succeeded", "failed", "unknown"];
 export const CAPTURE_EVENTS = ["tool_call", "stop", "session_end", "fixture"];
 export const SESSION_SOURCES = ["claude_code", "generic_agent"];
@@ -45,18 +45,38 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
 
 // --- canonical hash bindings (the single source of truth) ---
+//
+// Hashes bind the FULL evidence record — its semantic labels (id, kind, role,
+// status) and locators — not just the free text. A relabel (changing toolName,
+// status, kind, or a locator) therefore invalidates the hash, so a tampered
+// bundle cannot pass validation by keeping the same text. Every serialization
+// is a positional array with deterministic order.
 
-// Excerpt hash binds the UTF-8 bytes of `text`.
-export const hashExcerptText = (text) => sha256(String(text));
+// Excerpt hash binds id, kind, role, text, and locator.
+export function canonicalExcerpt(e) {
+  return JSON.stringify(["excerpt", e.id ?? "", e.kind ?? "", e.role ?? "", e.text ?? "", e.locator ?? ""]);
+}
+export const hashExcerpt = (e) => sha256(canonicalExcerpt(e));
 
-// Tool input/output hashes bind their respective summaries.
-export const hashToolInput = (inputSummary) => sha256(String(inputSummary));
-export const hashToolOutput = (outputSummary) => sha256(String(outputSummary));
+// Tool input hash binds id, tool name, input summary, and input locator.
+export function canonicalToolInput(t) {
+  return JSON.stringify(["tool_input", t.id ?? "", t.toolName ?? "", t.inputSummary ?? "", t.inputLocator ?? ""]);
+}
+export const hashToolInput = (t) => sha256(canonicalToolInput(t));
 
-// Receipt hash binds the canonical serialization of command, status, optional
-// exit code, scope, content, and locators. Deterministic key order.
+// Tool output hash binds id, status, output summary, and output locator.
+export function canonicalToolOutput(t) {
+  return JSON.stringify(["tool_output", t.id ?? "", t.status ?? "", t.outputSummary ?? "", t.outputLocator ?? ""]);
+}
+export const hashToolOutput = (t) => sha256(canonicalToolOutput(t));
+
+// Receipt hash binds id, kind, command, status, optional exit code, scope,
+// content, and both locators.
 export function canonicalReceipt(rc) {
   return JSON.stringify([
+    "receipt",
+    rc.id ?? "",
+    rc.kind ?? "",
     rc.command ?? "",
     rc.status ?? "",
     rc.exitCode ?? null,
@@ -172,7 +192,7 @@ export function validateBundle(bundle) {
       bounded(e.text, `${p}.text`);
       if (!nonEmpty(e.locator)) err(`${p}.locator`, "required");
       if (!isHex(e.sha256)) err(`${p}.sha256`, "required sha-256 hex");
-      else if (isStr(e.text) && e.sha256 !== hashExcerptText(e.text)) err(`${p}.sha256`, "does not bind text (hash mismatch)");
+      else if (e.sha256 !== hashExcerpt(e)) err(`${p}.sha256`, "does not bind id/kind/role/text/locator (hash mismatch)");
     });
   }
 
@@ -194,14 +214,14 @@ export function validateBundle(bundle) {
       bounded(t.outputSummary, `${p}.outputSummary`);
       if (!nonEmpty(t.inputLocator)) err(`${p}.inputLocator`, "required");
       if (!isHex(t.inputSha256)) err(`${p}.inputSha256`, "required sha-256 hex");
-      else if (isStr(t.inputSummary) && t.inputSha256 !== hashToolInput(t.inputSummary)) err(`${p}.inputSha256`, "does not bind inputSummary (hash mismatch)");
+      else if (t.inputSha256 !== hashToolInput(t)) err(`${p}.inputSha256`, "does not bind id/toolName/inputSummary/inputLocator (hash mismatch)");
       // Output is optional but must be internally consistent: if there is an
       // output summary there must be a locator + matching hash, and vice versa.
       const hasOut = t.outputSummary.length > 0 || t.outputLocator !== undefined || t.outputSha256 !== undefined;
       if (hasOut) {
         if (!nonEmpty(t.outputLocator)) err(`${p}.outputLocator`, "required when output present");
         if (!isHex(t.outputSha256)) err(`${p}.outputSha256`, "required sha-256 hex when output present");
-        else if (t.outputSha256 !== hashToolOutput(t.outputSummary)) err(`${p}.outputSha256`, "does not bind outputSummary (hash mismatch)");
+        else if (t.outputSha256 !== hashToolOutput(t)) err(`${p}.outputSha256`, "does not bind id/status/outputSummary/outputLocator (hash mismatch)");
         if (nonEmpty(t.outputLocator) && nonEmpty(t.inputLocator) && t.outputLocator === t.inputLocator) {
           err(`${p}.outputLocator`, "a tool output must not borrow its input locator");
         }
