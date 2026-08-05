@@ -119,6 +119,13 @@ The hook stores a local pointer and event receipt under:
 It does not copy or upload the complete transcript. The MCP tool resolves that
 pointer, the repository root, and bounded evidence when invoked.
 
+A `SessionStart` hook records the immutable starting commit and dirty-state
+receipt. `Stop` / `SessionEnd` records the ending state plus the hook's final
+assistant message. Capture waits until the transcript is quiescent and contains
+that final message before verification. A timeout produces an error, never a
+partial "verified" bundle. Session IDs and all derived paths are validated and
+must remain inside the intended local Explainify directory.
+
 ### Evidence Selection
 
 The session adapter creates a bounded evidence package from:
@@ -154,6 +161,13 @@ Claude transcript directly:
 ```ts
 interface SessionEvidenceBundle {
   schemaVersion: 1;
+  request: {
+    question: string;
+    audience: {
+      role: string;
+      technicalDepth: "overview" | "working" | "expert";
+    };
+  };
   session: {
     id: string;
     source: "claude_code" | "generic_agent";
@@ -186,8 +200,10 @@ interface SessionEvidenceBundle {
     status: "succeeded" | "failed" | "denied";
     inputSummary: string;
     outputSummary: string;
-    locator: string;
-    sha256: string;
+    inputLocator: string;
+    inputSha256: string;
+    outputLocator?: string;
+    outputSha256?: string;
   }>;
   repository: {
     baseRevision?: string;
@@ -203,9 +219,12 @@ interface SessionEvidenceBundle {
     id: string;
     kind: "test" | "lint" | "build" | "command" | "git_status";
     command: string;
-    exitCode: number;
+    status: "succeeded" | "failed" | "unknown";
+    exitCode?: number;
     scope: string;
     content: string;
+    commandLocator: string;
+    outputLocator?: string;
     sha256: string;
   }>;
   exclusions: Array<{
@@ -224,13 +243,21 @@ interface SessionEvidenceBundle {
 
 Rules:
 
-- `locator` addresses an exact JSONL record/tool event or immutable repository
-  source.
+- Every locator addresses one exact JSONL record/tool event or immutable
+  repository source. A tool output never borrows its input locator.
+- The caller's question is request context, not evidence and not the session
+  objective. `objective.sourceId` must resolve to a selected excerpt.
+- Excerpt hashes bind the UTF-8 bytes of `text`. Tool input/output hashes bind
+  their respective summaries. Receipt hashes bind the canonical serialized
+  command, status, optional exit code, scope, content, and locators.
 - Bundle fields contain selected, redacted content only. The raw transcript is
   referenced by its whole-file hash but is not embedded.
 - Adapter output is byte-size bounded, schema-validated, and deterministic for
   an immutable transcript and repository state.
 - Unknown tool payloads are excluded, not coerced into trusted evidence.
+- Validation is strict: it rejects unknown fields, dangling references,
+  duplicate IDs, hash/content mismatches, over-limit fields/bundles, and
+  unsupported enum values.
 
 ### Privacy Boundary
 
