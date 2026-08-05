@@ -22,9 +22,25 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const sha256 = (v) => createHash("sha256").update(v).digest("hex");
 const SAFE_ID = /^[A-Za-z0-9._-]{1,200}$/;
+
+// The plugin's package version, read from the plugin-local manifest so the hook
+// and the MCP server report the SAME version from one source of truth. The hook
+// runs from ${CLAUDE_PLUGIN_ROOT}/hooks/, so the manifest is a fixed sibling.
+// Never throw: a missing/oddly-placed manifest must not block a session.
+async function readPluginVersion() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const manifest = path.join(here, "..", ".claude-plugin", "plugin.json");
+    const parsed = JSON.parse(await readFile(manifest, "utf8"));
+    return typeof parsed.version === "string" ? parsed.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 async function readStdin() {
   const chunks = [];
@@ -63,10 +79,12 @@ async function main() {
   const dir = path.join(cwd, ".explainify", "sessions", sessionId);
   await mkdir(dir, { recursive: true });
 
+  const pluginVersion = await readPluginVersion();
+
   // SessionStart: record the immutable starting commit + dirty state, then exit.
   if (/SessionStart/i.test(eventName)) {
     const { baseRevision, dirty } = gitBaseline(cwd);
-    const baseline = { schemaVersion: 1, sessionId, baseRevision, dirty };
+    const baseline = { schemaVersion: 1, sessionId, baseRevision, dirty, ...(pluginVersion ? { pluginVersion } : {}) };
     await writeFile(path.join(dir, "start.json"), `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
     process.exit(0);
   }
@@ -85,7 +103,7 @@ async function main() {
     // This event carries an authoritative completion marker: record it as THIS
     // event's completed turn. A later turn's Stop overwrites an earlier one, so
     // the pointer always names the most recently completed turn.
-    await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256: freshHash });
+    await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256: freshHash, pluginVersion });
     process.exit(0);
   }
 
@@ -113,11 +131,11 @@ async function main() {
 
   // No prior authoritative marker for this transcript: record a hashless pointer.
   // Capture requires a hash for Stop/SessionEnd and will fail closed on this.
-  await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent });
+  await writePointerFile(pointerFile, { sessionId, transcriptPath, cwd, captureEvent, pluginVersion });
   process.exit(0);
 }
 
-async function writePointerFile(file, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256 }) {
+async function writePointerFile(file, { sessionId, transcriptPath, cwd, captureEvent, finalMessageSha256, pluginVersion }) {
   const pointer = {
     schemaVersion: 1,
     sessionId,
@@ -125,6 +143,7 @@ async function writePointerFile(file, { sessionId, transcriptPath, cwd, captureE
     cwd,
     captureEvent,
     ...(finalMessageSha256 ? { finalMessageSha256 } : {}),
+    ...(pluginVersion ? { pluginVersion } : {}),
   };
   await writeFile(file, `${JSON.stringify(pointer, null, 2)}\n`, "utf8");
 }

@@ -1,0 +1,8 @@
+{
+  "name": "explainify-local",
+  "owner": { "name": "Explainify" },
+  "description": "Local single-plugin marketplace for the Explainify Session-to-Explain plugin.",
+  "plugins": [
+    { "name": "explainify-session", "source": ".", "description": "Capture + locally explain a Claude Code session." }
+  ]
+}

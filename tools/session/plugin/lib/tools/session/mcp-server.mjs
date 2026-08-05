@@ -13,9 +13,9 @@
 // (capture receipt → bundle → session package → HTML receipt). It still does NOT
 // call a hosted API/model or publish remotely; everything is local-only.
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import { McpServer } from "../../vendor/mcp-vendor.mjs";
+import { StdioServerTransport } from "../../vendor/mcp-vendor.mjs";
+import { z } from "../../vendor/mcp-vendor.mjs";
 import { readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 

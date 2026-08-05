@@ -1,7 +1,12 @@
 {
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "explainify-session",
-  "version": "0.1.0",
-  "description": "Capture a Claude Code session's bounded evidence into a local, secret-scanned SessionEvidenceBundle — no transcript copy/paste. Producer half of Explainify Session-to-Explain.",
-  "mcpServers": ".mcp.json",
-  "hooks": "hooks.json"
+  "version": "0.2.0",
+  "description": "Capture a Claude Code session's bounded evidence into a local, secret-scanned SessionEvidenceBundle and render a local explanation (diagram + exact quotes) — no transcript copy/paste, nothing uploaded. Session-to-Explain producer + local synthesis.",
+  "author": {
+    "name": "Explainify"
+  },
+  "skills": ["./skills/explain-session"],
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks.json"
 }

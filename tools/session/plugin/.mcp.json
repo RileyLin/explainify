@@ -2,7 +2,7 @@
   "mcpServers": {
     "explainify-session": {
       "command": "node",
-      "args": ["${CLAUDE_PROJECT_DIR}/tools/session/mcp-server.mjs"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/tools/session/mcp-server.mjs"],
       "env": {}
     }
   }

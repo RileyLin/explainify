@@ -20,7 +20,8 @@ calls a hosted API, or publishes.
 | `receipt.mjs` | Deterministic stringify + hash (mirrors `tools/comprehension/util.mjs`). |
 | `session-cli.mjs` | `capture` / `validate` / `write-pointer` for reproducibility and non-Claude clients. |
 | `mcp-server.mjs` | Local stdio MCP server exposing `explainify.explain_session`. |
-| `plugin/` | Claude Code plugin: `.mcp.json`, narrow Stop/SessionEnd `hooks.json`, `capture-pointer.mjs` hook, `/explain-session` skill. |
+| `plugin/` | Self-contained Claude Code plugin: `.claude-plugin/{plugin.json,marketplace.json}`, `.mcp.json`, narrow Stop/SessionEnd `hooks.json`, `capture-pointer.mjs` hook, `/explain-session` skill, and the built `lib/` runtime. |
+| `plugin/build-plugin.mjs` | Deterministic packager: copies the runtime source closure verbatim into `plugin/lib/` and vendors the two third-party deps into one bundle, so the plugin installs from any repo with no `node_modules`. `--check` is a drift guard. |
 
 ## How capture flows
 
@@ -57,15 +58,26 @@ lands in `bundle.request` and never becomes the observed `objective`, whose
 npm run session:mcp                       # start the stdio MCP server
 npm run session:capture -- --session-id <id> --root <repo>   # capture via pointer
 npm run session:validate -- --bundle <path>                  # schema-check a bundle
-npm run test:session                      # deterministic fixture tests (52)
+npm run test:session                      # deterministic fixture tests (90)
 node tools/session/__tests__/mcp-e2e.mjs <id> <root>         # real MCP handshake
 ```
 
-## Install as a Claude Code plugin
+## Install as a Claude Code plugin (from any repo)
 
-Point Claude Code at `tools/session/plugin/` (it contains `.claude-plugin/`,
-`.mcp.json`, and `hooks.json`). `CLAUDE_PROJECT_DIR` resolves the MCP server and
-hook paths. The plugin adds:
+The plugin is **self-contained** and installs into any repository via the
+official Claude Code local-plugin mechanism — it never references the Explainify
+checkout at runtime. See the copy-pasteable owner guide:
+[`plugin/QUICKSTART.md`](plugin/QUICKSTART.md) (under 5 minutes).
+
+In short, from the repository you want to explain:
+
+```bash
+claude plugin marketplace add /path/to/explainify/tools/session/plugin
+claude plugin install explainify-session@explainify-local
+# restart Claude Code, then run one session and call /explain-session
+```
+
+The plugin adds:
 
 - MCP server `explainify-session` with tool `explainify.explain_session`;
 - a `SessionStart` hook that records the immutable repository baseline, plus
@@ -73,14 +85,18 @@ hook paths. The plugin adds:
   of the hook-provided `last_assistant_message` (never re-read from disk);
 - the `/explain-session` skill.
 
-**Real-client discovery, verified.** Registering the server with Claude Code
-`v2.1.220` (`claude mcp add explainify-session -- node .../mcp-server.mjs`)
-health-checks as **✔ Connected**, and a headless session
-(`claude -p … --allowedTools mcp__explainify-session__explainify_explain_session`)
-discovers and **calls** the tool, returning a `verified` local bundle. Note
-Claude Code normalizes the SDK-registered dotted name `explainify.explain_session`
-to the invocation handle `mcp__explainify-session__explainify_explain_session`.
-A redacted structural receipt of one real capture is committed at
+Runtime paths resolve from `${CLAUDE_PLUGIN_ROOT}` (the installed plugin cache),
+so the target repo needs no Explainify source. The MCP tool takes the target
+`repository.root` as an argument; the hook writes only a pointer under the target
+repo's `.explainify/`.
+
+**Real-client discovery, verified.** With Claude Code `v2.1.220`, installing from
+a fresh repository containing **no Explainify source** yields a plugin whose
+`plugin details` reports the MCP server, the SessionStart/Stop/SessionEnd hooks,
+and the `explain-session` skill; one real session then produces a `verified`
+local explanation (`index.html` + package + bound receipts, `manualPaste:false`,
+`publication:local_only`). A redacted structural receipt of one real capture is
+committed at
 [`docs/product/session-1a-real-capture-receipt.json`](../../docs/product/session-1a-real-capture-receipt.json).
 
 ## Guarantees (contract §Privacy Boundary)
@@ -102,8 +118,11 @@ A redacted structural receipt of one real capture is committed at
 
 ## Claude-version constraint
 
-Built against `@modelcontextprotocol/sdk` `^1.27.1` (`McpServer` +
-`StdioServerTransport`, `registerTool`). Hook input relies on `session_id`,
-`cwd`, and `transcript_path` fields and the `hook_event_name` for Stop /
-SessionEnd, per current Claude Code hook docs; the transcript-lag handling in
-`readStableTranscript` covers the documented async-write behavior.
+Built against `@modelcontextprotocol/sdk` `^1.30.0` (`McpServer` +
+`StdioServerTransport`, `registerTool`) and verified with the Claude Code CLI
+`v2.1.220` local-plugin mechanism. The SDK + `zod` are vendored into the plugin
+by `build-plugin.mjs`, so the installed plugin carries its own runtime. Hook
+input relies on `session_id`, `cwd`, and `transcript_path` fields and the
+`hook_event_name` for Stop / SessionEnd, per current Claude Code hook docs; the
+transcript-lag handling in `readStableTranscript` covers the documented
+async-write behavior.
