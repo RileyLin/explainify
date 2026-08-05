@@ -29,7 +29,7 @@
     "changedFiles": 9,
     "exclusionKinds": 4
   },
-  "hashBinding": "Excerpt/tool/receipt sha256 bind the FULL record (id, kind/role/status, summaries, locators) per @46c2621 finding #4; a relabel invalidates the hash (validated in tests).",
+  "hashBinding": "Excerpt/tool/receipt sha256 bind the FULL record (id, kind/role/status, summaries, locators) per @46c2621 finding #4; a relabel invalidates the hash. Tool status is bound in the ALWAYS-present input hash, so a resultless tool cannot be relabeled unknown->succeeded. objective.text is validated to equal its resolving source excerpt's text (no reworded objective). All validated in tests.",
   "repositoryShape": {
     "baseRevisionSet": true,
     "headRevisionSet": true,

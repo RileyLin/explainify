@@ -269,11 +269,11 @@ export function buildBundleFromTranscript(args) {
           inputSummary: red,
           outputSummary: "",
           inputLocator: `jsonl:${uuid}#content[${b}]`,
-          // output fields attached below when the matching tool_result arrives
+          // input/output hashes are finalized AFTER status settles (below), because
+          // the input hash binds status and a tool_result can change it.
           _useId: block?.id,
           _command: toolName === "Bash" ? (block?.input?.command ?? "") : "",
         };
-        ev.inputSha256 = hashToolInput(ev);
         toolEvents.push(ev);
         continue;
       }
@@ -294,12 +294,11 @@ export function buildBundleFromTranscript(args) {
         if (red && red.length > 0) {
           ev.outputSummary = red;
           ev.outputLocator = `jsonl:${uuid}#content[${b}]`;
-          // Hash the full output record (id/status/summary/locator), so a relabel
-          // of status or locator invalidates it — computed AFTER status is set.
-          ev.outputSha256 = hashToolOutput(ev);
         } else if (red == null) {
           addExclusion("secret_bearing_tool_output");
         }
+        // Hashes are finalized once, after all results are paired (below), so the
+        // input hash binds the settled status.
         continue;
       }
 
@@ -309,6 +308,15 @@ export function buildBundleFromTranscript(args) {
       }
       addExclusion(`unknown_block:${btype}`);
     }
+  }
+
+  // Finalize tool-event hashes now that every status is settled. The input hash
+  // binds the status (so a resultless "unknown" tool cannot be relabeled
+  // "succeeded"); the output hash binds it too when output is present. Both are
+  // computed here, after all tool_results have been paired.
+  for (const ev of toolEvents) {
+    ev.inputSha256 = hashToolInput(ev);
+    if (ev.outputLocator) ev.outputSha256 = hashToolOutput(ev);
   }
 
   // Derive verification receipts from Bash toolEvents BEFORE stripping internals,

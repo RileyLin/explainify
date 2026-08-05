@@ -58,9 +58,13 @@ export function canonicalExcerpt(e) {
 }
 export const hashExcerpt = (e) => sha256(canonicalExcerpt(e));
 
-// Tool input hash binds id, tool name, input summary, and input locator.
+// Tool input hash binds id, tool name, STATUS, input summary, and input locator.
+// Status is bound here (the always-present hash) — not only in the optional
+// output hash — so a resultless tool whose status is "unknown" cannot be
+// relabeled "succeeded" without invalidating a hash. An output-bearing tool
+// therefore binds its status twice (input + output); both must agree.
 export function canonicalToolInput(t) {
-  return JSON.stringify(["tool_input", t.id ?? "", t.toolName ?? "", t.inputSummary ?? "", t.inputLocator ?? ""]);
+  return JSON.stringify(["tool_input", t.id ?? "", t.toolName ?? "", t.status ?? "", t.inputSummary ?? "", t.inputLocator ?? ""]);
 }
 export const hashToolInput = (t) => sha256(canonicalToolInput(t));
 
@@ -214,7 +218,7 @@ export function validateBundle(bundle) {
       bounded(t.outputSummary, `${p}.outputSummary`);
       if (!nonEmpty(t.inputLocator)) err(`${p}.inputLocator`, "required");
       if (!isHex(t.inputSha256)) err(`${p}.inputSha256`, "required sha-256 hex");
-      else if (t.inputSha256 !== hashToolInput(t)) err(`${p}.inputSha256`, "does not bind id/toolName/inputSummary/inputLocator (hash mismatch)");
+      else if (t.inputSha256 !== hashToolInput(t)) err(`${p}.inputSha256`, "does not bind id/toolName/status/inputSummary/inputLocator (hash mismatch)");
       // Output is optional but must be internally consistent: if there is an
       // output summary there must be a locator + matching hash, and vice versa.
       const hasOut = t.outputSummary.length > 0 || t.outputLocator !== undefined || t.outputSha256 !== undefined;
@@ -291,7 +295,11 @@ export function validateBundle(bundle) {
     });
   }
 
-  // objective — sourceId must resolve to a selected excerpt (no dangling ref).
+  // objective — sourceId must resolve to a selected excerpt (no dangling ref),
+  // AND objective.text must EQUAL that excerpt's text. 1B synthesizes from
+  // objective.text, so an unbound text field could carry an instruction the
+  // session never made while still pointing at an innocent source. Binding it to
+  // the referenced excerpt's verbatim text closes that injection surface.
   const o = bundle.objective;
   if (!isObj(o)) {
     err("objective", "required object missing");
@@ -301,6 +309,12 @@ export function validateBundle(bundle) {
     bounded(o.text, "objective.text");
     if (!nonEmpty(o.sourceId)) err("objective.sourceId", "required non-empty string");
     else if (!excerptIds.has(o.sourceId)) err("objective.sourceId", `dangling reference "${o.sourceId}" (must resolve to a selected excerpt)`);
+    else {
+      const src = Array.isArray(bundle.excerpts) ? bundle.excerpts.find((e) => isObj(e) && e.id === o.sourceId) : null;
+      if (src && isStr(o.text) && isStr(src.text) && o.text !== src.text) {
+        err("objective.text", `must equal its source excerpt "${o.sourceId}" text (observed objective cannot be reworded away from its evidence)`);
+      }
+    }
   }
 
   // privacy — the boundary's hard guarantees
