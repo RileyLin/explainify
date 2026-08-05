@@ -217,6 +217,57 @@ test("lineage binds the package and HTML: edits break packageSha256 / artifactSh
   }
 });
 
+test("capture receipt: recomputing its content core matches contentSha256, and any core edit breaks it", async () => {
+  // PM closure-evidence correction (msg 9f94e1c0): make the capture-receipt tamper
+  // boundary an explicit, durable test rather than an implicit claim. The receipt's
+  // contentSha256 binds a location-INDEPENDENT projection (everything except the
+  // provenance fields transcriptPath/bundlePath/contentSha256). Recompute it with
+  // the SAME helpers integrate.mjs used and prove a core edit is detectable.
+  const { dir } = await run();
+  try {
+    const { stableStringify, sha256Of } = await import("../receipt.mjs");
+    const receipt = await readJson(path.join(dir, "capture-receipt.json"));
+    // The content core is the receipt minus its provenance-only fields (absolute
+    // paths) and the self-hash — exactly what integrate.mjs hashes.
+    const core = { ...receipt };
+    delete core.transcriptPath;
+    delete core.bundlePath;
+    delete core.contentSha256;
+    const { contentSha256 } = receipt;
+    assert.equal(sha256Of(stableStringify(core)), contentSha256, "clean capture content core matches contentSha256");
+    // A tamper on any bound field (e.g. claiming a scan passed, or repointing the
+    // bundle) no longer matches the recorded content hash.
+    assert.notEqual(sha256Of(stableStringify({ ...core, secretScan: "fail" })), contentSha256, "flipping secretScan breaks the content hash");
+    assert.notEqual(sha256Of(stableStringify({ ...core, bundleSha256: "0".repeat(64) })), contentSha256, "repointing bundleSha256 breaks the content hash");
+    // And the lineage binds this exact content identity.
+    const lineage = await readJson(path.join(dir, "lineage-receipt.json"));
+    assert.equal(lineage.captureContentSha256, contentSha256, "lineage binds the capture-receipt content hash");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("HTML receipt: recomputing receiptSha256 matches, and any core edit breaks it", async () => {
+  // PM closure-evidence correction (msg 9f94e1c0): explicit HTML-receipt self-bind
+  // tamper test. receipt.json is self-binding — receiptSha256 = sha256(stableStringify
+  // (receiptCore)) with the SAME helpers synthesis used. Prove a core edit (flipping
+  // the bound artifact/package hash or the publication scope) breaks the self-hash.
+  const { dir } = await run();
+  try {
+    const { stableStringify, sha256 } = await import("../../comprehension/util.mjs");
+    const receipt = await readJson(path.join(dir, "receipt.json"));
+    const { receiptSha256, ...core } = receipt;
+    assert.equal(sha256(stableStringify(core)), receiptSha256, "clean HTML receipt self-hash matches");
+    assert.notEqual(sha256(stableStringify({ ...core, artifactSha256: "0".repeat(64) })), receiptSha256, "repointing artifactSha256 breaks the self-hash");
+    assert.notEqual(sha256(stableStringify({ ...core, publication: "public" })), receiptSha256, "flipping publication scope breaks the self-hash");
+    // The lineage binds this exact HTML-receipt self-hash.
+    const lineage = await readJson(path.join(dir, "lineage-receipt.json"));
+    assert.equal(lineage.htmlReceiptSha256, receiptSha256, "lineage binds the HTML receipt self-hash");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("lineage is self-binding: recomputing lineageReceiptSha256 detects a lineage edit", async () => {
   const { dir } = await run();
   try {

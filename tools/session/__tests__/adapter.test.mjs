@@ -201,6 +201,117 @@ test("a separator INSIDE QUOTES is literal data, not an executed segment (quote-
   assert.equal(real[0].status, "succeeded");
 });
 
+test("a runtime in a NON-RUN mode (eval/print/check/compile/syntax) mints NO receipt", () => {
+  // Codex probe (msg a989a932): the runtime branch confirmed only that a test
+  // filename appeared somewhere after a runtime head — not that the runtime
+  // EXECUTED it as a test. eval/print/check/compile/format/build modes run the
+  // tool but no test, so they must mint nothing (a test filename inside a quoted
+  // -e/-p program is a string argument, never an executed target).
+  for (const command of [
+    'node -e "console.log(\'paginate.test.js\')"',
+    "node --check paginate.test.js",
+    'node -p "require.resolve(\'paginate.test.js\')"',
+    "python -c \"print('api_test.py')\"",
+    "python -m py_compile api_test.py",
+    "ruby -c foo_spec.rb",
+    "deno fmt foo.test.ts",
+    "bun build foo.test.ts",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `non-run mode must mint no receipt: ${command}`);
+  }
+});
+
+test("command substitution and heredocs mint NO receipt (ambiguous shell form)", () => {
+  // Codex parser-boundary probe (msg a989a932): `echo `printf safe; npm test``
+  // laundered a success (outer echo masks nested status) and a `npm test` inside a
+  // heredoc fabricated that a test ran. When what actually executes is ambiguous
+  // (command substitution or a heredoc), emit nothing — data is not execution.
+  for (const command of [
+    "echo `printf safe; npm test`",
+    "echo `npm test`",
+    "result=$(npm test)",
+    "echo $(node paginate.test.js)",
+    "cat <<'EOF'\nnpm test\nEOF",
+    "cat <<EOF\nrun jest here\nEOF",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `ambiguous shell form must mint no receipt: ${command}`);
+  }
+});
+
+test("informational / dry-run modes mint NO receipt across all kinds", () => {
+  // Codex probe (msg 7a750a0e): an executable head can still be a help/version/
+  // config-dump/collect-only/dry-run mode — the tool started but performed NO
+  // verification. Evidence of verification PERFORMED is required, not merely that
+  // a verification-capable binary ran.
+  for (const command of [
+    "vitest --help",
+    "jest --version",
+    "pytest --collect-only",
+    "eslint --version",
+    "eslint --print-config foo.js",
+    "tsc --version",
+    "tsc --showConfig",
+    "webpack --help",
+    "make --version",
+    "make -n",
+    "go test -h",
+    "cargo test --help",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `informational/dry-run mode must mint no receipt: ${command}`);
+  }
+});
+
+test("attached/equal option forms and collect/list/no-run aliases mint NO receipt", () => {
+  // PM probe (msg 3a578c4d): head anchoring + a whitespace-delimited no-run set
+  // still missed two shapes. (1) Attached/equal value forms hide the flag from an
+  // exact-token check: `node -e"…"`/`--eval="…"`/`-p"…"`/`--print="…"` and
+  // `python -c"…"` run an inline program, not a test. (2) Common collect/list/
+  // no-run aliases start the tool but perform no verification: `cargo test
+  // --no-run`, `vitest list`, `jest --listTests`, `pytest --co`, `make
+  // --just-print`. Normalize the option name and reject these before freeze.
+  for (const command of [
+    'node -e"console.log(\'paginate.test.js\')"',
+    'node --eval="require(\'./paginate.test.js\')"',
+    'node -p"require.resolve(\'paginate.test.js\')"',
+    'node --print="1" paginate.test.js',
+    'python -c"import api_test" api_test.py',
+    "python -mpy_compile api_test.py",
+    "cargo test --no-run",
+    "vitest list",
+    "jest --listTests",
+    "pytest --co",
+    "make --just-print",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `no-run/collect/list form must mint no receipt: ${command}`);
+  }
+  // Guard the positive side of the -m normalization: an attached `-mpytest` is
+  // still a real test run (only py_compile and inline -c are rejected).
+  const real = receiptsForCommand("python -mpytest", { isError: false });
+  assert.equal(real.length, 1, "attached -mpytest is still a real test run");
+  assert.equal(real[0].kind, "test");
+});
+
+test("executable matching is EXACT basename, not a prefix/substring (look-alike binaries mint nothing)", () => {
+  // PM parser-floor probe (msg 63e960a1): `\b`/prefix matching let look-alike
+  // binaries whose names merely START with a supported tool launder receipts. Only
+  // an EXACT executable basename (after any path) is a recognized runner/runtime.
+  for (const command of [
+    "node-wrapper paginate.test.js",
+    "vitest-report --version",
+    "jest-helper foo",
+    "eslint-report src",
+    "webpack-info --help",
+    "tsc-wrapper --noEmit",
+    "pytest-cache clear",
+  ]) {
+    assert.equal(receiptsForCommand(command).length, 0, `look-alike binary must mint no receipt: ${command}`);
+  }
+  // A supported tool reached via an explicit PATH still counts (exact basename).
+  const viaPath = receiptsForCommand("/usr/local/bin/vitest run", { isError: false });
+  assert.equal(viaPath.length, 1);
+  assert.equal(viaPath[0].kind, "test");
+});
+
 test("real execution shapes DO mint a receipt with the observed status (positives preserved)", () => {
   const positives = [
     ["node paginate.test.js", "test"],
@@ -213,15 +324,22 @@ test("real execution shapes DO mint a receipt with the observed status (positive
     ["jest --ci", "test"],
     ["pytest -q", "test"],
     ["python3 -m pytest", "test"],
+    ["python -m pytest tests/", "test"],
+    ["python -m unittest", "test"],
     ["python api_test.py", "test"],
     ["ruby foo_spec.rb", "test"],
+    ["deno test", "test"],
+    ["deno test --allow-read", "test"],
+    ["bun test", "test"],
     ["go test ./...", "test"],
     ["cargo test", "test"],
     ["eslint .", "lint"],
     ["npm run lint", "lint"],
     ["ruff check .", "lint"],
+    ["cargo clippy", "lint"],
     ["tsc --noEmit", "build"],
     ["npm run build", "build"],
+    ["go build ./...", "build"],
     ["make", "build"],
   ];
   for (const [command, kind] of positives) {

@@ -123,53 +123,288 @@ function segmentsWithSep(command) {
   return parts.filter((p) => p.text.length > 0);
 }
 
-// Strip leading `NAME=value` env assignments and a leading wrapper (sudo/time/
-// env/…) so classification sees the real executable token at the segment head.
-function commandHead(segment) {
-  let s = segment.replace(/^(?:[A-Za-z_]\w*=(?:'[^']*'|"[^"]*"|\S+)\s+)+/, "");
-  s = s.replace(/^(?:sudo|time|command|env|nice|nohup|exec|xvfb-run)\s+(?:-\S+\s+)*/i, "");
-  return s.trim();
+// Split a segment into whitespace-delimited WORD tokens, honoring quotes and
+// backslash escapes so the head executable and its arguments are recognized as
+// whole tokens (not regex-scanned substrings). This is what lets us anchor on the
+// EXACT executable basename and identify the ACTUAL script target, rather than
+// matching a runner/test word anywhere in the line — the class of bug that let
+// `node -e "console.log('paginate.test.js')"`, `python -m py_compile x.py`, and
+// `node-wrapper x.test.js` all launder a succeeded receipt. Quoted content is one
+// token: `console.log('paginate.test.js')` is a single argument whose basename is
+// NOT a test-file path, so it can never be mistaken for an executed test target.
+function tokenizeSegment(segment) {
+  const src = String(segment);
+  const tokens = [];
+  let cur = "";
+  let has = false; // distinguishes an empty quoted token "" from no token
+  let quote = null;
+  const flush = () => {
+    if (has) tokens.push(cur);
+    cur = "";
+    has = false;
+  };
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") {
+      if (c === "'") quote = null;
+      else cur += c;
+      has = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (c === "\\") {
+        const n = src[i + 1];
+        if (n !== undefined) { cur += n; i += 1; }
+        has = true;
+        continue;
+      }
+      if (c === '"') quote = null;
+      else cur += c;
+      has = true;
+      continue;
+    }
+    if (c === "\\") {
+      const n = src[i + 1];
+      if (n !== undefined) { cur += n; i += 1; has = true; }
+      continue;
+    }
+    if (c === "'" || c === '"') { quote = c; has = true; continue; }
+    if (c === " " || c === "\t") { flush(); continue; }
+    cur += c;
+    has = true;
+  }
+  flush();
+  return tokens;
 }
 
-// A file ARGUMENT whose basename follows a test/spec naming convention. Only
-// consulted AFTER the segment head is confirmed to be a language runtime, so a
-// test filename can never by itself imply execution.
-const TEST_FILE_ARG =
-  /(?:^|[\s'"=/])[\w@.-]*[._-](?:test|spec)\.(?:c|m)?[jt]sx?\b|(?:^|[\s'"=/])[\w@.-]*[._-](?:test|spec)\.(?:py|rb|go)\b/i;
+const basename = (t) => String(t).split("/").pop();
 
-// General language runtimes that EXECUTE a file passed as an argument. A test
-// run via one of these is a test only when it actually runs a test/spec file.
-const RUNTIME_HEAD = /^(?:[\w./-]*\/)?(?:node|deno|bun|ts-node|tsx|babel-node|python3?|ruby)\b/i;
+// The OPTION NAME of a flag token, normalizing attached/equal value forms so an
+// inline value cannot hide the flag. A long flag keeps everything before `=`
+// (`--eval=code` → `--eval`, `--print-config=foo.js` → `--print-config`); a short
+// flag keeps its leading `-x` even when a value is attached (`-e"code"` → `-e`,
+// `-p"x"` → `-p`, `-c"x"` → `-c`, `-mpytest` → `-m`). Returns null for a
+// non-flag token. Without this, `node -e"…" test.js` and `python -c"…" api_test.py`
+// slip past exact-token no-run detection and launder a succeeded receipt.
+function optName(token) {
+  const t = String(token);
+  if (!t.startsWith("-")) return null;
+  if (t === "-" || t === "--") return t;
+  if (t.startsWith("--")) {
+    const eq = t.indexOf("=");
+    return eq >= 0 ? t.slice(0, eq) : t;
+  }
+  return t.slice(0, 2); // single-dash short option, value may be attached
+}
 
-// Classify a SINGLE executed segment by its head command. Returns a receipt kind
-// or null. Every branch anchors on the segment head (`^`), i.e. the program that
-// actually runs, not an argument or an incidental word.
+// Informational / dry-run flags that mean the tool started but performed NO
+// verification (help/version/config dumps, test collection without running,
+// dry runs). Rejected across ALL receipt kinds: evidence of verification
+// PERFORMED is required, not merely that a verification-capable binary ran.
+const INFO_FLAGS = new Set([
+  "--help", "-h", "-?", "--version", "-V", "--collect-only",
+  "--print-config", "--show-config", "--showConfig", "--dry-run",
+  // collect / list / no-run aliases: the tool starts but runs no verification.
+  "--co", // pytest short alias for --collect-only
+  "--listTests", // jest lists matching tests without running them
+  "--no-run", // cargo test --no-run compiles but executes no test
+  "--just-print", "--recon", // make aliases for -n (dry run)
+]);
+function hasInfoFlag(exe, args) {
+  for (const t of args) {
+    const opt = optName(t);
+    if (opt && INFO_FLAGS.has(opt)) return true;
+    if (exe === "make" && opt === "-n") return true; // make -n is a dry run
+  }
+  return false;
+}
+
+// The first argument token that is not an option flag (a subcommand or a
+// positional). Used to read `npm <sub>`, `go <sub>`, `cargo <sub>`, `deno <sub>`.
+function firstNonFlag(tokens) {
+  for (const t of tokens) if (!t.startsWith("-")) return t;
+  return null;
+}
+
+// The first POSITIONAL argument (the executed script), skipping option flags and
+// the single value consumed by a known value-taking flag. This identifies the
+// actual script target rather than regex-scanning every later argument.
+function firstPositional(tokens, valueFlags) {
+  let k = 0;
+  while (k < tokens.length) {
+    const t = tokens[k];
+    if (t.startsWith("-")) { k += valueFlags.has(t) ? 2 : 1; continue; }
+    return t;
+  }
+  return null;
+}
+
+// A whole token whose basename follows a test/spec naming convention — checked as
+// an entire path, never as a substring. `paginate.test.js`, `./src/x.test.ts`,
+// `api_test.py`, `foo_spec.rb` match; `console.log('paginate.test.js')` and
+// `"a string mentioning paginate.test.js"` do NOT (their basenames are not paths).
+function isTestFileToken(token) {
+  const base = basename(token);
+  return (
+    /^[\w@.-]*[._-](?:test|spec)\.(?:c|m)?[jt]sx?$/i.test(base) ||
+    /^[\w@.-]*[._-](?:test|spec)\.(?:py|rb|go)$/i.test(base)
+  );
+}
+
+// Strip leading `NAME=value` env assignments and leading wrappers (sudo/time/…)
+// so the head is the real executable. Returns { exe, args } with exe = the head's
+// exact path basename and args = the remaining tokens.
+const WRAPPERS = new Set(["sudo", "time", "command", "env", "nice", "nohup", "exec", "xvfb-run"]);
+function headExecutable(tokens) {
+  let i = 0;
+  for (;;) {
+    if (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) { i += 1; continue; }
+    if (i < tokens.length && WRAPPERS.has(basename(tokens[i]))) {
+      i += 1;
+      while (i < tokens.length && tokens[i].startsWith("-")) i += 1;
+      continue;
+    }
+    break;
+  }
+  if (i >= tokens.length) return { exe: "", args: [] };
+  return { exe: basename(tokens[i]), args: tokens.slice(i + 1) };
+}
+
+const TEST_RUNNERS = new Set(["vitest", "jest", "mocha", "ava", "tap", "jasmine", "pytest", "phpunit", "rspec"]);
+const LINT_BINS = new Set(["eslint", "tslint", "flake8", "pylint", "standard", "biome", "golangci-lint"]);
+const BUILD_BINS = new Set(["tsc", "webpack", "rollup", "esbuild"]);
+const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
+// node modes that do NOT execute a script as a test: eval / print / syntax-check.
+const NODE_NONRUN = new Set(["-e", "--eval", "-p", "--print", "--check", "-c"]);
+const NODE_VALUE_FLAGS = new Set(["-r", "--require", "--import", "--loader", "--experimental-loader", "--conditions", "-C", "--title"]);
+const PY_VALUE_FLAGS = new Set(["-W", "-X", "-m"]);
+const RUBY_VALUE_FLAGS = new Set(["-I", "-r"]);
+
+// Classify a SINGLE executed segment. Returns a receipt kind or null. Anchors on
+// the EXACT executable basename (not a `\b`/substring match) and, for runtimes,
+// on the recognized execution FORM and the actual script target — so only a real
+// verification RUN mints a receipt.
 function segmentKind(segment) {
-  const head = commandHead(segment);
-  if (!head) return null;
+  const tokens = tokenizeSegment(segment);
+  if (tokens.length === 0) return null;
+  let { exe, args } = headExecutable(tokens);
+  if (!exe) return null;
 
-  // --- test: a dedicated runner / package test script, or a runtime running a test file ---
-  if (/^(?:[\w./-]*\/)?(?:npx\s+|pnpm\s+dlx\s+|yarn\s+dlx\s+)?(?:vitest|jest|mocha|ava|tap|jasmine|pytest|phpunit|rspec)\b/i.test(head)) return "test";
-  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b/i.test(head)) return "test";
-  if (/^(?:deno|bun)\s+test\b/i.test(head)) return "test";
-  if (/^go\s+test\b/i.test(head)) return "test";
-  if (/^cargo\s+test\b/i.test(head)) return "test";
-  if (/^python3?\s+-m\s+(?:pytest|unittest)\b/i.test(head)) return "test";
-  if (RUNTIME_HEAD.test(head) && TEST_FILE_ARG.test(head)) return "test";
+  // Unwrap `npx <tool>` / `pnpm dlx <tool>` / `yarn dlx <tool>` to the real tool.
+  if (exe === "npx") {
+    let j = 0;
+    while (j < args.length && args[j].startsWith("-")) j += 1; // skip npx flags (-y, --no-install)
+    if (j >= args.length) return null;
+    exe = basename(args[j]);
+    args = args.slice(j + 1);
+  } else if ((exe === "pnpm" || exe === "yarn") && args[0] === "dlx") {
+    let j = 1;
+    while (j < args.length && args[j].startsWith("-")) j += 1;
+    if (j >= args.length) return null;
+    exe = basename(args[j]);
+    args = args.slice(j + 1);
+  }
 
-  // --- lint: the linter binary or a package lint script ---
-  if (/^(?:[\w./-]*\/)?(?:npx\s+)?(?:eslint|tslint|ruff|flake8|pylint|standard|biome|golangci-lint)\b/i.test(head)) return "lint";
-  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint\b/i.test(head)) return "lint";
-  if (/^cargo\s+clippy\b/i.test(head)) return "lint";
+  // An informational/dry-run invocation of any recognized tool ran no verification.
+  if (hasInfoFlag(exe, args)) return null;
 
-  // --- build / typecheck: the build tool or a package build script ---
-  if (/^(?:[\w./-]*\/)?(?:npx\s+)?(?:tsc|webpack|rollup|esbuild)\b/i.test(head)) return "build";
-  if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:build|typecheck|compile)\b/i.test(head)) return "build";
-  if (/^vite\s+build\b/i.test(head)) return "build";
-  if (/^(?:go|cargo)\s+build\b/i.test(head)) return "build";
-  if (/^make\b/i.test(head)) return "build";
+  // --- dedicated test runners (exact basename) ---
+  // A `list` subcommand (`vitest list`) enumerates tests without running them.
+  if (TEST_RUNNERS.has(exe)) return firstNonFlag(args) === "list" ? null : "test";
+
+  // --- language runtimes: only a real script/module RUN of a test counts ---
+  // Option matching normalizes attached/equal value forms (`-e"code"`,
+  // `--eval=code`, `-p"x"`, `-mpytest`) so an inline value cannot hide the flag.
+  if (NODE_RUNTIMES.has(exe)) {
+    if (args.some((t) => NODE_NONRUN.has(optName(t)))) return null; // eval/print/check ran no test
+    const script = firstPositional(args, NODE_VALUE_FLAGS);
+    return script && isTestFileToken(script) ? "test" : null;
+  }
+  if (exe === "python" || exe === "python3") {
+    const opts = args.map(optName);
+    if (opts.includes("-c")) return null; // inline program, not a test run
+    const mIdx = opts.indexOf("-m");
+    if (mIdx >= 0) {
+      // `-m` value may be attached (`-mpytest`) or the next token (`-m pytest`).
+      const mod = args[mIdx].length > 2 ? args[mIdx].slice(2) : args[mIdx + 1];
+      return mod === "pytest" || mod === "unittest" ? "test" : null; // py_compile etc → not a test
+    }
+    const script = firstPositional(args, PY_VALUE_FLAGS);
+    return script && isTestFileToken(script) ? "test" : null;
+  }
+  if (exe === "ruby") {
+    const opts = args.map(optName);
+    if (opts.includes("-c") || opts.includes("-e")) return null; // syntax-check / inline, not a run
+    const script = firstPositional(args, RUBY_VALUE_FLAGS);
+    return script && isTestFileToken(script) ? "test" : null;
+  }
+  if (exe === "deno") {
+    return firstNonFlag(args) === "test" ? "test" : null; // `deno fmt`/`deno lint`/… are not test runs
+  }
+  if (exe === "bun") {
+    const sub = firstNonFlag(args);
+    if (sub === "test") return "test";
+    if (sub === "run") return runScriptKind(args.slice(args.indexOf("run") + 1)); // `bun build` → not a test
+    return null;
+  }
+
+  // --- package managers (npm/pnpm/yarn): a real `test`/`lint`/`build` script ---
+  if (exe === "npm" || exe === "pnpm" || exe === "yarn") {
+    const sub = firstNonFlag(args);
+    if (!sub) return null;
+    if (sub === "run") return runScriptKind(args.slice(args.indexOf("run") + 1));
+    return runScriptKind([sub]); // `npm test`, `yarn lint`, `pnpm build`
+  }
+
+  // --- lint binaries (exact basename) ---
+  if (LINT_BINS.has(exe)) return "lint";
+  if (exe === "ruff") return firstNonFlag(args) === "check" ? "lint" : null; // `ruff format` is not lint
+
+  // --- build binaries (exact basename) ---
+  if (BUILD_BINS.has(exe)) return "build";
+  if (exe === "vite") return firstNonFlag(args) === "build" ? "build" : null;
+  if (exe === "make") return "build"; // make --version / -n already rejected above
+
+  // --- go / cargo subcommands ---
+  if (exe === "go") {
+    const sub = firstNonFlag(args);
+    if (sub === "test") return "test";
+    if (sub === "build") return "build";
+    return null;
+  }
+  if (exe === "cargo") {
+    const sub = firstNonFlag(args);
+    if (sub === "test") return "test";
+    if (sub === "clippy") return "lint";
+    if (sub === "build") return "build";
+    return null;
+  }
 
   return null;
+}
+
+// Map a package.json script name (from `npm run <name>` / `npm <name>`) to a
+// receipt kind. Only the conventional verification scripts count.
+function runScriptKind(rest) {
+  const name = firstNonFlag(rest);
+  if (name === "test") return "test";
+  if (name === "lint") return "lint";
+  if (name === "build" || name === "typecheck" || name === "compile") return "build";
+  return null;
+}
+
+// A command whose shell form is genuinely ambiguous about WHAT executes —
+// command substitution (`` `…` `` or `$(…)`) or a heredoc — is treated as
+// non-evidence: we emit NO receipt rather than misread substituted/heredoc text
+// as an executed verification. `echo `printf safe; npm test`` must not launder a
+// success, and `cat <<'EOF'\nnpm test\nEOF` must not fabricate that a test ran.
+// Conservative by design: false negatives are preferable to fabricated verification.
+function hasAmbiguousShellForm(command) {
+  const s = String(command);
+  if (s.includes("`")) return true; // backtick command substitution
+  if (/\$\(/.test(s)) return true; // $(…) command substitution
+  if (/<<-?\s*['"]?[\w.-]+/.test(s)) return true; // heredoc
+  return false;
 }
 
 // A Bash command is verification evidence if an executed segment is a recognized
@@ -186,6 +421,9 @@ function segmentKind(segment) {
 //
 // Returns { kind, statusAuthoritative } or null when nothing executed a run.
 function classifyReceipt(command) {
+  // Command substitution / heredocs make it ambiguous what actually executes —
+  // emit no receipt rather than misread substituted or heredoc text as a run.
+  if (hasAmbiguousShellForm(command)) return null;
   const segs = segmentsWithSep(command);
   if (segs.length === 0) return null;
   const kinds = segs.map((s) => segmentKind(s.text));
