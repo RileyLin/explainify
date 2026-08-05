@@ -307,175 +307,155 @@ test("attached/equal option forms and collect/list/no-run aliases mint NO receip
   ]) {
     assert.equal(receiptsForCommand(command).length, 0, `no-run/collect/list form must mint no receipt: ${command}`);
   }
-  // Guard the positive side of the -m normalization: an attached `-mpytest` is
-  // still a real test run (only py_compile and inline -c are rejected).
-  const real = receiptsForCommand("python -mpytest", { isError: false });
-  assert.equal(real.length, 1, "attached -mpytest is still a real test run");
-  assert.equal(real[0].kind, "test");
+  // Under the Phase 1C narrow grammar, python is no longer a supported runtime at
+  // all (it drops to tool-event-only, reintroduced later behind its own parser), so
+  // BOTH the attached inline form and a bare `python -mpytest` mint nothing now.
+  assert.equal(receiptsForCommand("python -mpytest").length, 0, "python is unsupported this phase (tool-event only)");
 });
 
-test("STRICT POSITIVE run grammar: only a recognized real-execution form mints; unknown modes mint nothing (not a denylist)", () => {
-  // PM + Codex REVISE on 7259a9f (msg b584356f / f13c6e9d): the prior round was
-  // still `recognized binary MINUS a denylist of no-run flags = verification`, so
-  // every new no-run mode a binary accepts by default slipped through. The fix is
-  // a strict POSITIVE grammar per binary — mint ONLY on a recognized run form;
-  // reject every unrecognized flag, subcommand, and `--` passthrough carrying
-  // tokens. False negatives are explicitly preferred this phase.
-  const negatives = [
-    // Codex b584356f — modes the binary accepts by default but run no verification.
-    "go test -c", // compiles a test binary, runs nothing
-    "mocha --dry-run",
-    "webpack configtest", // validates config, builds nothing
-    "webpack --configtest webpack.config.js",
-    "cargo test -- --list", // passthrough list mode
-    "make -p", // print database, runs no recipe
-    "make --print-data-base",
-    "npm test -- --listTests", // passthrough list mode
-    // PM f13c6e9d — extended across module wrappers, linters, build tools.
-    "python -m pytest --fixtures", // runner arg after `-m pytest` is a no-run mode
-    "python -mpytest --collect-only",
-    "rspec --dry-run",
-    "phpunit --list-tests",
-    "biome version", // bare-word non-run subcommand
-    "golangci-lint linters", // lists linters, lints nothing
-    "flake8 --bug-report",
-    "pylint --generate-rcfile",
-    "tslint --init",
-    "webpack help", // bare-word non-run subcommand
-    "tsc --build --clean", // clean, not compile
-    "tsc --build --dry",
-    "make -np", // bundled short cluster carrying -n (just-print)
-  ];
-  for (const command of negatives) {
-    assert.equal(receiptsForCommand(command).length, 0, `unknown/no-run mode must mint no receipt: ${command}`);
-  }
-  // Positive side: the real run forms of the SAME binaries must still mint — the
-  // strict grammar must not over-reject a genuine verification.
-  for (const [command, kind] of [
-    ["go test -run TestFoo ./pkg", "test"],
-    ["go test ./...", "test"],
-    ["go build ./...", "build"],
-    ["make", "build"],
-    ["make build", "build"],
-    ["make -j4", "build"], // parallel jobs is a real recipe run
-    ["make -kj4 all", "build"], // bundled run-safe short cluster
-    ["tsc --noEmit", "build"],
-    ["tsc --build", "build"], // a real project build (only --clean/--dry are no-run)
-    ["eslint src/", "lint"],
-    ["pytest -q", "test"],
-    ["python -m pytest tests/", "test"],
-    ["python -mpytest", "test"],
-    ["rspec spec/", "test"],
-    ["phpunit tests/", "test"],
-    ["mocha test/", "test"],
-    ["biome check", "lint"],
-    ["golangci-lint run", "lint"],
-    ["webpack --mode production", "build"],
-    ["cargo build", "build"],
-    ["cargo clippy", "lint"],
+test("PHASE 1C NARROW GRAMMAR: only the supported direct runtime / package-script forms mint; every other family is tool-event-only", () => {
+  // Codex msg dcc2ed12 + PM msg 84fb1399: the prior broad per-family grammar still
+  // fabricated succeeded receipts through first-class branches that were never
+  // routed through positive validation — the npm/bun SCRIPT branch, the subcommand
+  // branches, the npx unwrap, and the wrapper strip. Both reviewers directed a
+  // scope REDUCTION: support ONLY the exact forms the real S1c/S2b + fixture
+  // evidence uses (a direct test-file run by a node runtime, and an npm/pnpm/yarn
+  // test/lint/build script), each with an explicit run-flag allowlist and NO
+  // wrappers, launchers, extra flags, or passthrough. Every other family — bare
+  // test runners, linters, build tools, go/cargo/make, deno/bun, python/ruby,
+  // npx/dlx, and wrappers (sudo/env/command/nice/nohup/time) or leading NAME=value
+  // env prefixes — is intentionally UNSUPPORTED and mints nothing. False negatives
+  // are explicitly preferred over any fabricated verification this phase.
+  const supported = [
+    // direct test-file run by a node runtime (S1c/S2b evidence form)
+    ["node paginate.test.js", "test"],
+    ["node ./src/paginate.test.js", "test"],
+    ["ts-node foo.test.ts", "test"],
+    ["tsx foo.spec.ts", "test"],
+    ["babel-node bar.test.js", "test"],
+    ["node --require ./setup.js foo.test.js", "test"], // run-safe value flag + its value
+    ["node -r ./setup.js foo.test.js", "test"],
+    ["/usr/local/bin/node paginate.test.js", "test"], // exact basename via explicit path
+    // npm/pnpm/yarn verification script (fixture evidence form)
     ["npm test", "test"],
     ["npm run test", "test"],
+    ["pnpm test", "test"],
+    ["yarn test", "test"],
     ["npm test rate-limiter", "test"], // a positional test-name filter is a real run
-    ["deno test --allow-read", "test"],
-  ]) {
+    ["npm run lint", "lint"],
+    ["yarn lint", "lint"],
+    ["npm run build", "build"],
+    ["pnpm build", "build"],
+    ["npm run typecheck", "build"],
+    ["npm run compile", "build"],
+  ];
+  for (const [command, kind] of supported) {
     const rcs = receiptsForCommand(command, { isError: false });
-    assert.equal(rcs.length, 1, `real verification run still mints: ${command}`);
+    assert.equal(rcs.length, 1, `supported evidence form still mints: ${command}`);
     assert.equal(rcs[0].kind, kind, `kind ${kind} for: ${command}`);
     assert.equal(rcs[0].status, "succeeded", `observed succeeded status for: ${command}`);
   }
+  const unsupported = [
+    // The exact first-class fabricable branches the reviewers found on 6da7224.
+    "npm test --help", "npm run test --help", "bun run test --help",
+    "ruff check --help", "vite build --help", "biome check --help",
+    "golangci-lint run --help", "cargo clippy -- --help", "npx --help vitest",
+    "sudo --version node paginate.test.js",
+    // wrappers and leading env assignments now unsupported (PM msg 84fb1399).
+    "sudo node paginate.test.js", "env node paginate.test.js",
+    "command node paginate.test.js", "nice node paginate.test.js",
+    "nohup node paginate.test.js", "time node paginate.test.js",
+    "NODE_ENV=test node paginate.test.js",
+    // launchers now unsupported.
+    "npx vitest run", "pnpm dlx vitest", "yarn dlx jest",
+    // whole families dropped to tool-event-only (reintroduce later, own parser).
+    "vitest run", "jest --ci", "pytest -q", "python -m pytest", "python api_test.py",
+    "python3 -m pytest tests/", "python -m unittest", "ruby foo_spec.rb",
+    "deno test", "deno test --allow-read", "bun test", "go test ./...",
+    "go build ./...", "cargo test", "cargo build", "cargo clippy",
+    "eslint .", "eslint src/", "ruff check .", "tsc --noEmit",
+    "webpack --mode production", "make", "make build", "biome check",
+    "golangci-lint run", "rollup -c", "esbuild x.ts",
+  ];
+  for (const command of unsupported) {
+    assert.equal(receiptsForCommand(command).length, 0, `unsupported family/mode must mint no receipt: ${command}`);
+  }
 });
 
-test("implementation-level: an UNKNOWN mode for each supported binary returns null (no mint-by-default fallback)", () => {
-  // The trust-boundary invariant Codex/PM required proving directly (msg b584356f
-  // / f13c6e9d): for every supported binary, an invented/unrecognized subcommand or
-  // flag must mint NOTHING. This asserts the grammar is positive (allowlist), not a
-  // binary-minus-denylist. If a future edit reintroduces a mint-by-default branch,
-  // this fails even before a specific real-world no-run mode is discovered.
-  const unknownModes = [
-    "vitest --totally-made-up-flag",
-    "jest --invented-mode",
-    "pytest --no-such-option",
-    "mocha --fictional",
-    "rspec --unknownflag",
-    "phpunit --nope",
-    "eslint --imaginary-flag",
-    "tslint --fake",
-    "flake8 --does-not-exist",
-    "pylint --unheard-of",
-    "tsc --unknownflag",
-    "webpack --fabricated",
-    "rollup --nonexistent",
-    "esbuild --madeup",
-    "make --invented-long-flag",
-    "make -Z", // unknown short flag
-    "go test -unknownflag",
-    "go build -unknownflag",
-    "cargo test --invented",
-    "cargo build --nope",
-    "cargo clippy --fictional",
-    "deno test --invented-permission",
-    "bun test --unknownflag",
-    "npm run frobnicate", // not a verification script name
-    "biome frobnicate", // unknown subcommand
-    "golangci-lint frobnicate",
-    "ruff frobnicate",
-    "vite frobnicate",
-  ];
-  for (const command of unknownModes) {
-    assert.equal(receiptsForCommand(command).length, 0, `unknown mode for a supported binary must return null: ${command}`);
+test("implementation-level: help/version/unknown-flag/passthrough/wrapper-info mutations at EVERY accepted layer return null", () => {
+  // The trust-boundary invariant Codex/PM required proving directly (msg dcc2ed12 /
+  // 84fb1399): the prior unknown-mode test only mutated leaf binaries, so
+  // fabricable wrapper/launcher/package/subcommand layers slipped by. Generate the
+  // mutation table from the ACCEPTED positive grammars (node runtimes + package
+  // managers) and inject a help flag, a version flag, an unknown flag, a `--`
+  // passthrough, and a wrapper/launcher info mode at each layer — all must mint
+  // nothing. This asserts the grammar is a narrow allowlist, not binary-minus-denylist.
+  const runtimes = ["node", "ts-node", "tsx", "babel-node"];
+  const pkgs = ["npm", "pnpm", "yarn"];
+  const mutations = [];
+  for (const r of runtimes) {
+    mutations.push(
+      `${r} --help paginate.test.js`,
+      `${r} --version`,
+      `${r} -e "require('./paginate.test.js')"`, // eval, not a run
+      `${r} --check paginate.test.js`,
+      `${r} --totally-made-up-flag paginate.test.js`, // unknown flag
+      `${r} paginate.test.js -- --extra`, // passthrough carrying tokens
+      `${r} server.js`, // not a test file
+      `sudo ${r} paginate.test.js`, // wrapper
+      `env FOO=bar ${r} paginate.test.js`, // env-prefixed wrapper
+    );
+  }
+  for (const p of pkgs) {
+    mutations.push(
+      `${p} test --help`,
+      `${p} --version`,
+      `${p} test --coverage`, // any flag rejected this phase
+      `${p} run test --if-present`,
+      `${p} test -- --listTests`, // passthrough list mode
+      `${p} run frobnicate`, // not a verification script
+      `${p} dlx vitest`, // launcher
+      `sudo ${p} test`, // wrapper
+      `npx ${p} test`, // launcher wrap
+    );
+  }
+  for (const command of mutations) {
+    assert.equal(receiptsForCommand(command).length, 0, `layered mutation must return null: ${command}`);
   }
 });
 
 test("executable matching is EXACT basename, not a prefix/substring (look-alike binaries mint nothing)", () => {
   // PM parser-floor probe (msg 63e960a1): `\b`/prefix matching let look-alike
   // binaries whose names merely START with a supported tool launder receipts. Only
-  // an EXACT executable basename (after any path) is a recognized runner/runtime.
+  // an EXACT executable basename (after any path) is a recognized runtime/pm.
   for (const command of [
     "node-wrapper paginate.test.js",
-    "vitest-report --version",
-    "jest-helper foo",
-    "eslint-report src",
-    "webpack-info --help",
-    "tsc-wrapper --noEmit",
-    "pytest-cache clear",
+    "nodejs paginate.test.js", // not the exact basename `node`
+    "npm-cli test",
+    "yarn-berry test",
+    "tsx-runner foo.test.ts",
   ]) {
     assert.equal(receiptsForCommand(command).length, 0, `look-alike binary must mint no receipt: ${command}`);
   }
   // A supported tool reached via an explicit PATH still counts (exact basename).
-  const viaPath = receiptsForCommand("/usr/local/bin/vitest run", { isError: false });
+  const viaPath = receiptsForCommand("/usr/local/bin/node paginate.test.js", { isError: false });
   assert.equal(viaPath.length, 1);
   assert.equal(viaPath[0].kind, "test");
 });
 
-test("real execution shapes DO mint a receipt with the observed status (positives preserved)", () => {
+test("real execution shapes DO mint a receipt with the observed status (supported forms preserved)", () => {
+  // Only the two supported evidence forms. Broader families are covered by the
+  // narrow-grammar test above as intentional tool-event-only negatives.
   const positives = [
     ["node paginate.test.js", "test"],
     ["node ./src/paginate.test.js", "test"],
+    ["ts-node foo.test.ts", "test"],
     ["npm test", "test"],
     ["npm run test", "test"],
     ["pnpm test", "test"],
     ["yarn test", "test"],
-    ["npx vitest run", "test"],
-    ["jest --ci", "test"],
-    ["pytest -q", "test"],
-    ["python3 -m pytest", "test"],
-    ["python -m pytest tests/", "test"],
-    ["python -m unittest", "test"],
-    ["python api_test.py", "test"],
-    ["ruby foo_spec.rb", "test"],
-    ["deno test", "test"],
-    ["deno test --allow-read", "test"],
-    ["bun test", "test"],
-    ["go test ./...", "test"],
-    ["cargo test", "test"],
-    ["eslint .", "lint"],
     ["npm run lint", "lint"],
-    ["ruff check .", "lint"],
-    ["cargo clippy", "lint"],
-    ["tsc --noEmit", "build"],
     ["npm run build", "build"],
-    ["go build ./...", "build"],
-    ["make", "build"],
   ];
   for (const [command, kind] of positives) {
     const rcs = receiptsForCommand(command);
@@ -505,7 +485,7 @@ test("status-masking compound shapes yield a receipt with status 'unknown', neve
     "node paginate.test.js | tee out.log",
     "node paginate.test.js ; echo done",
     "node paginate.test.js || echo 'ignored failure'",
-    "pytest -q | cat",
+    "npm test | cat",
     // Backgrounded runs (PM probe msg 1d9ed6dd): a single top-level `&` detaches
     // the test; it does not own the Bash exit status and may not have finished.
     "node paginate.test.js &",
