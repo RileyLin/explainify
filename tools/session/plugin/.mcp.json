@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "explainify-session": {
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR}/tools/session/mcp-server.mjs"],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "explainify-session",
+  "version": "0.1.0",
+  "description": "Capture a Claude Code session's bounded evidence into a local, secret-scanned SessionEvidenceBundle — no transcript copy/paste. Producer half of Explainify Session-to-Explain.",
+  "mcpServers": ".mcp.json",
+  "hooks": "hooks.json"
+}

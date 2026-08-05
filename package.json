@@ -12,10 +12,15 @@
     "capture:run": "node tools/comprehension/compare-cli.mjs capture-run",
     "compare:runs": "node tools/comprehension/compare-cli.mjs compare-runs",
     "test:comparative": "node --test tools/comprehension/comparative/__tests__/*.test.mjs",
-    "spike:comparative": "node tools/comprehension/compare-cli.mjs verify-comparative"
+    "spike:comparative": "node tools/comprehension/compare-cli.mjs verify-comparative",
+    "session:capture": "node tools/session/session-cli.mjs capture",
+    "session:validate": "node tools/session/session-cli.mjs validate",
+    "session:mcp": "node tools/session/mcp-server.mjs",
+    "test:session": "node --test tools/session/__tests__/*.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1101.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@stripe/stripe-js": "^8.9.0",
     "@supabase/supabase-js": "^2.111.0",
     "@types/dagre": "^0.7.54",

@@ -43,3 +43,6 @@ next-env.d.ts
 
 # comparative CLI local output (transient run artifacts; never committed)
 /comparison-output/
+
+# Explainify local session capture output (never committed)
+.explainify/
