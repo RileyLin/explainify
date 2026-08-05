@@ -6,20 +6,19 @@
 // transcript, collects repository facts, and emits a SessionEvidenceBundle plus
 // a capture receipt on the local filesystem.
 //
-// Boundary note: this is the PRODUCER half of Phase 1A. It deliberately does NOT
-// synthesize prose/diagrams, call a hosted API, or publish — the returned
-// artifactPath is the local bundle. Phase 1B (synthesis) consumes the bundle and
-// renders the reader/diagram. The tool output shape matches the contract's
-// explainify.explain_session result, with artifactPath pointing at the bundle
-// until 1B integration lands the HTML reader.
+// Boundary note (Phase 1C): this tool now returns the FINAL local explanation —
+// the rendered index.html plus workstream-package.json and receipts — not only
+// the capture bundle. It captures the session's bounded evidence (1A producer),
+// then runs the accepted 1B synthesis locally and binds the full lineage
+// (capture receipt → bundle → session package → HTML receipt). It still does NOT
+// call a hosted API/model or publish remotely; everything is local-only.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { mkdir, writeFile, readdir, realpath } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
-import { buildBundleFromTranscript } from "./claude-adapter.mjs";
 import {
   readPointer,
   readBaseline,
@@ -29,7 +28,7 @@ import {
   outDir as sessionOutDir,
   assertSafeSessionId,
 } from "./capture.mjs";
-import { stableStringify, sha256Of } from "./receipt.mjs";
+import { captureAndSynthesize } from "./integrate.mjs";
 
 // Resolve the most relevant session pointer if the caller did not name one:
 // prefer an explicit id, else the single pointer under .explainify/sessions.
@@ -74,55 +73,24 @@ async function runCapture(input) {
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
   const repository = { ...repoBase, changedFiles };
 
-  const { bundle } = buildBundleFromTranscript({
-    transcript: text,
-    transcriptSha256,
-    session: { id: sessionId, cwd, captureEvent, finalMessageSha256 },
-    // The caller's question/audience is REQUEST context, never the observed
-    // objective (finding #3). The adapter derives objective from the session.
-    request: { question: input.question, audience: input.audience },
-    repository,
-    receipts: [],
-  });
-
   const outDir = input.outputDirectory
     ? await realpath(input.outputDirectory).catch(() => input.outputDirectory)
     : sessionOutDir(root, sessionId);
-  await mkdir(outDir, { recursive: true });
-  const bundlePath = path.join(outDir, "bundle.json");
-  const bundleText = `${stableStringify(bundle)}\n`;
-  await writeFile(bundlePath, bundleText, "utf8");
 
-  const receipt = {
-    schemaVersion: 1,
-    sessionId,
-    captureEvent,
-    transcriptPath: pointer.transcriptPath,
+  // Phase 1C seam: build+validate the capture bundle, then synthesize the final
+  // local artifacts and bind the lineage. The caller's question/audience is
+  // REQUEST context, never the observed objective (finding #3) — the adapter
+  // derives the objective from the session itself.
+  return captureAndSynthesize({
+    text,
     transcriptSha256,
     finalMessageSha256,
-    bundlePath,
-    bundleSha256: sha256Of(bundleText),
-    manualPaste: false,
-    excerptCount: bundle.excerpts.length,
-    toolEventCount: bundle.toolEvents.length,
-    redactionCount: bundle.privacy.redactionCount,
-    deniedPathCount: bundle.privacy.deniedPathCount,
-    secretScan: bundle.privacy.secretScan,
-    publication: bundle.privacy.publication,
-  };
-  const receiptPath = path.join(outDir, "receipt.json");
-  await writeFile(receiptPath, `${stableStringify(receipt)}\n`, "utf8");
-
-  // Contract-shaped result. packagePath/artifactPath point at the bundle for now;
-  // Phase 1B integration replaces artifactPath with the rendered local HTML.
-  return {
-    status: "verified",
-    artifactPath: bundlePath,
-    packagePath: bundlePath,
-    receiptPath,
-    openCommand: `explainify open ${bundlePath}`,
-    publication: bundle.privacy.publication,
-  };
+    session: { id: sessionId, cwd, captureEvent },
+    request: { question: input.question, audience: input.audience },
+    repository,
+    transcriptPath: pointer.transcriptPath,
+    outDir,
+  });
 }
 
 const server = new McpServer({ name: "explainify-session", version: "0.1.0" });
@@ -132,7 +100,7 @@ server.registerTool(
   {
     title: "Explain this coding session",
     description:
-      "Capture the current Claude Code session's bounded evidence (selected excerpts, tool events, git/test receipts) into a local SessionEvidenceBundle — no transcript copy/paste, local-only, secret-scanned. Returns local artifact/package/receipt paths.",
+      "Explain the current Claude Code session: capture its bounded evidence (selected excerpts, tool events, git/test receipts) with no transcript copy/paste, then render a local explanation — index.html (diagram + exact quotes), workstream-package.json, and receipts — all local-only and secret-scanned. Returns the local artifact/package/receipt/lineage paths.",
     inputSchema: {
       question: z.string().describe("What should the explanation answer?").default("What did this session do and why?"),
       session: z

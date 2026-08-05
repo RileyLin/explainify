@@ -19,9 +19,7 @@
 // The CLI never accepts credentials or an entire transcript as an argument; it
 // reads the transcript from disk by path, exactly as the hook records it.
 
-import { readFile, writeFile, mkdir, realpath } from "node:fs/promises";
-import path from "node:path";
-import { buildBundleFromTranscript } from "./claude-adapter.mjs";
+import { readFile, realpath } from "node:fs/promises";
 import { validateBundle } from "./bundle-schema.mjs";
 import {
   readPointer,
@@ -33,7 +31,7 @@ import {
   outDir as sessionOutDir,
   assertSafeSessionId,
 } from "./capture.mjs";
-import { stableStringify, sha256Of } from "./receipt.mjs";
+import { captureAndSynthesize } from "./integrate.mjs";
 
 function parseArgs(argv) {
   const args = {};
@@ -92,60 +90,25 @@ async function cmdCapture(args) {
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
   const repository = { ...repoBase, changedFiles };
 
-  const { bundle } = buildBundleFromTranscript({
-    transcript: text,
-    transcriptSha256,
-    session: { id: sessionId, cwd, captureEvent, finalMessageSha256 },
-    request: { question: args.question, audience: { role: args.role, technicalDepth: args.depth } },
-    repository,
-    receipts: [],
-  });
-
   const outDir = args.out
     ? await realpath(args.out).catch(() => args.out)
     : sessionOutDir(root, sessionId);
-  await mkdir(outDir, { recursive: true });
-  const bundlePath = path.join(outDir, "bundle.json");
-  const bundleText = `${stableStringify(bundle)}\n`;
-  await writeFile(bundlePath, bundleText, "utf8");
 
-  // Capture receipt: proves no manual paste (transcript read from disk by
-  // path), records the whole-file transcript hash, the bundle hash, the secret
-  // scan result, and publication scope. This is acceptance-gate evidence.
-  const receipt = {
-    schemaVersion: 1,
-    sessionId,
-    captureEvent,
-    transcriptPath,
+  // Phase 1C: capture the bundle, then synthesize the final local artifacts and
+  // bind the lineage (capture receipt → bundle → session package → HTML receipt).
+  // The transcript is always read from disk by path — never pasted as an arg.
+  const result = await captureAndSynthesize({
+    text,
     transcriptSha256,
     finalMessageSha256,
-    bundlePath,
-    bundleSha256: sha256Of(bundleText),
-    manualPaste: false,
-    excerptCount: bundle.excerpts.length,
-    toolEventCount: bundle.toolEvents.length,
-    redactionCount: bundle.privacy.redactionCount,
-    deniedPathCount: bundle.privacy.deniedPathCount,
-    secretScan: bundle.privacy.secretScan,
-    publication: bundle.privacy.publication,
-  };
-  const receiptPath = path.join(outDir, "receipt.json");
-  await writeFile(receiptPath, `${stableStringify(receipt)}\n`, "utf8");
+    session: { id: sessionId, cwd, captureEvent },
+    request: { question: args.question, audience: { role: args.role, technicalDepth: args.depth } },
+    repository,
+    transcriptPath,
+    outDir,
+  });
 
-  process.stdout.write(
-    JSON.stringify(
-      {
-        status: "verified",
-        bundlePath,
-        receiptPath,
-        excerpts: bundle.excerpts.length,
-        toolEvents: bundle.toolEvents.length,
-        publication: bundle.privacy.publication,
-      },
-      null,
-      2,
-    ) + "\n",
-  );
+  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }
 
 async function cmdValidate(args) {

@@ -163,6 +163,37 @@ export function finalAssistantMessageHash(transcriptText) {
   return null;
 }
 
+// Derive the session's start/end timestamps from the transcript's own records.
+// These are immutable session evidence (each JSONL record carries an ISO
+// `timestamp`), so they are deterministic for an immutable transcript and are
+// NOT re-invented at capture time. Returns { startedAt, endedAt } with whichever
+// ends are present (earliest/latest valid ISO timestamp), or {} if none. The
+// SessionEvidenceBundle schema already reserves these optional fields, so this
+// populates existing contract fields — it is not a schema change.
+export function transcriptTimeRange(transcriptText) {
+  let min = null;
+  let max = null;
+  for (const raw of transcriptText.split("\n")) {
+    if (!raw.trim()) continue;
+    let obj;
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const ts = obj?.timestamp;
+    if (typeof ts !== "string") continue;
+    const ms = Date.parse(ts);
+    if (Number.isNaN(ms)) continue;
+    if (min === null || ms < min.ms) min = { ms, ts };
+    if (max === null || ms > max.ms) max = { ms, ts };
+  }
+  const range = {};
+  if (min) range.startedAt = min.ts;
+  if (max) range.endedAt = max.ts;
+  return range;
+}
+
 // Read the transcript only once it is QUIESCENT and CONTAINS the completed turn.
 // Quiescence = size AND mtime identical across `stableChecks` consecutive polls.
 // Completion = at least one assistant text message present, and — when the hook
