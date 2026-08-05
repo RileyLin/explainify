@@ -178,6 +178,7 @@ interface SessionEvidenceBundle {
     transcriptSha256: string;
     startedAt?: string;
     endedAt?: string;
+    finalMessageSha256?: string;
   };
   objective: {
     text: string;
@@ -248,10 +249,12 @@ Rules:
 - Every locator addresses one exact JSONL record/tool event or immutable
   repository source. A tool output never borrows its input locator.
 - The caller's question is request context, not evidence and not the session
-  objective. `objective.sourceId` must resolve to a selected excerpt.
+  objective. `objective.sourceId` must resolve to a selected excerpt, and v1
+  requires `objective.text` to equal that excerpt's verbatim text.
 - Excerpt hashes bind the canonical serialized ID, kind, role, text, and
-  locator. Tool input hashes bind ID, tool name, input summary, and input
-  locator; output hashes bind ID, status, output summary, and output locator.
+  locator. Tool input hashes bind ID, tool name, status, input summary, and
+  input locator; output hashes bind ID, status, output summary, and output
+  locator. Status remains bound when a resultless tool has no output hash.
   Receipt hashes bind the canonical serialized ID, kind, command, status,
   optional exit code, scope, content, and locators. A semantic label or locator
   can never change without invalidating its hash.
