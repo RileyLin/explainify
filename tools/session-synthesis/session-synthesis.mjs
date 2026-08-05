@@ -169,7 +169,7 @@ export function synthesizeSession(input) {
   const quotes = bundle.excerpts
     .filter((item) => ["user_requirement", "agent_decision", "agent_explanation", "error"].includes(item.kind))
     .slice(0, 4)
-    .map((item) => ({ id: item.id, text: item.text, role: item.role, locator: item.locator, sha256: item.sha256, sourceId: `excerpt:${item.id}` }));
+    .map((item) => ({ id: item.id, kind: item.kind, text: item.text, role: item.role, locator: item.locator, sha256: item.sha256, sourceId: `excerpt:${item.id}` }));
   if (quotes.length < 2) fail("session explanation requires at least two useful selected quotes");
   const view = chooseView(bundle, sourceById);
   const session = {

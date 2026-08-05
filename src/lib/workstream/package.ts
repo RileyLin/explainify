@@ -15,6 +15,12 @@ import { buildSourceManifest } from "@engine/freeze.mjs";
 import { validateManifestAgainstBundle, buildCoverageReceipt } from "@engine/brief.mjs";
 import { sha256, stableStringify } from "@engine/../comprehension/util.mjs";
 import { scanOutput } from "@engine/../comprehension/evidence.mjs";
+import {
+  EXCERPT_KINDS,
+  EXCERPT_ROLES,
+  TECHNICAL_DEPTHS,
+  hashExcerpt,
+} from "@engine/../session/bundle-schema.mjs";
 
 import type {
   WorkstreamBrief,
@@ -42,6 +48,46 @@ const scan = scanOutput as (value: unknown) => void;
 export interface RawSource {
   id: string;
   content: string;
+}
+
+export interface SessionQuote {
+  id: string;
+  kind: string;
+  role: string;
+  text: string;
+  locator: string;
+  sha256: string;
+  sourceId: string;
+}
+
+export interface SessionViewStep {
+  id: string;
+  label: string;
+  detail: string;
+  evidenceSourceIds: string[];
+}
+
+export interface SessionExplanation {
+  schemaVersion: number;
+  sessionId: string;
+  question: string;
+  audience: {
+    role: string;
+    technicalDepth: string;
+  };
+  quotes: SessionQuote[];
+  view: {
+    type: string;
+    title: string;
+    reason: string;
+    steps: SessionViewStep[];
+  };
+  privacy: {
+    redactionCount: number;
+    deniedPathCount: number;
+    secretScan: string;
+    publication: string;
+  };
 }
 
 // The raw freeze-bundle shape buildSourceManifest consumes (content + metadata per source).
@@ -77,6 +123,8 @@ export interface WorkstreamCheckpointPackage {
   manifest: WorkstreamManifest;
   coverageReceipt: CoverageReceipt;
   rawSources: RawSource[];
+  session?: SessionExplanation;
+  sessionSha256?: string;
   // Correction lineage (present only on a corrected successor package). A correction carries BOTH
   // the successor (this package's brief/manifest/coverage/rawSources) AND the canonical-content-immutable
   // original it corrects (`previousPackage`), bound by a correction receipt. `previousCheckpointId`
@@ -134,6 +182,12 @@ function utf8Bytes(value: string): number {
 // non-observed reason requirement and the same evidence-link binding as unknown/inferred, so an
 // evidence-backed not_comparable claim cannot bypass integrity or masquerade as observed.
 const VALID_CLAIM_STATUSES = new Set(["observed", "unknown", "inferred", "not_comparable"]);
+const VALID_SESSION_VIEW_TYPES = new Set(["architecture", "workflow", "sequence", "code_walkthrough"]);
+const VALID_EXCERPT_KINDS = new Set(EXCERPT_KINDS as string[]);
+const VALID_EXCERPT_ROLES = new Set(EXCERPT_ROLES as string[]);
+const VALID_TECHNICAL_DEPTHS = new Set(TECHNICAL_DEPTHS as string[]);
+const HEX64 = /^[0-9a-f]{64}$/;
+const excerptHash = hashExcerpt as (quote: SessionQuote) => string;
 
 // Source kinds whose evidence links use the task #15 receipt-scoped locator shape, mirroring the
 // engine's evidenceLink() in brief.mjs. Kept in sync with that list; any other kind uses the
@@ -148,6 +202,145 @@ const RECEIPT_BACKED_KINDS = new Set([
 
 function fail(message: string): never {
   throw new Error(message);
+}
+
+function exactKeys(value: object, allowed: readonly string[], label: string): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length) fail(`${label} has unknown fields: ${unknown.join(", ")}`);
+}
+
+function requireString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !value.length) fail(`${label} must be a non-empty string`);
+}
+
+function validateSessionExtension(
+  pkg: WorkstreamCheckpointPackage,
+  manifestById: Map<string, WorkstreamManifest["sources"][number]>,
+): void {
+  const hasSession = pkg.session !== undefined;
+  const hasSessionHash = pkg.sessionSha256 !== undefined;
+  if (hasSession !== hasSessionHash) {
+    fail("package session and sessionSha256 must be present together");
+  }
+  if (!hasSession || !pkg.session) return;
+
+  const session = pkg.session;
+  exactKeys(
+    session,
+    ["schemaVersion", "sessionId", "question", "audience", "quotes", "view", "privacy"],
+    "package session",
+  );
+  if (session.schemaVersion !== 1) fail("package session schemaVersion must be 1");
+  requireString(session.sessionId, "package session.sessionId");
+  requireString(session.question, "package session.question");
+  if (session.question !== pkg.brief.objective) {
+    fail("package session question must equal the brief objective");
+  }
+
+  if (!session.audience || typeof session.audience !== "object" || Array.isArray(session.audience)) {
+    fail("package session audience must be an object");
+  }
+  exactKeys(session.audience, ["role", "technicalDepth"], "package session audience");
+  requireString(session.audience.role, "package session audience role");
+  if (!VALID_TECHNICAL_DEPTHS.has(session.audience.technicalDepth)) {
+    fail("package session audience technicalDepth is invalid");
+  }
+
+  if (!Array.isArray(session.quotes) || session.quotes.length < 2) {
+    fail("package session must contain at least two quotes");
+  }
+  const rawById = new Map(pkg.rawSources.map((source) => [source.id, source.content]));
+  const quoteIds = new Set<string>();
+  for (const quote of session.quotes) {
+    if (!quote || typeof quote !== "object" || Array.isArray(quote)) {
+      fail("package session quote must be an object");
+    }
+    exactKeys(
+      quote,
+      ["id", "kind", "role", "text", "locator", "sha256", "sourceId"],
+      `package session quote ${quote.id}`,
+    );
+    for (const key of ["id", "kind", "role", "text", "locator", "sha256", "sourceId"] as const) {
+      requireString(quote[key], `package session quote ${quote.id || "<unknown>"}.${key}`);
+    }
+    if (quoteIds.has(quote.id)) fail(`package session has duplicate quote id ${quote.id}`);
+    quoteIds.add(quote.id);
+    if (!VALID_EXCERPT_KINDS.has(quote.kind) || !VALID_EXCERPT_ROLES.has(quote.role)) {
+      fail(`package session quote ${quote.id} has invalid kind/role`);
+    }
+    if (!HEX64.test(quote.sha256) || excerptHash(quote) !== quote.sha256) {
+      fail(`package session quote ${quote.id} hash does not recompute from its canonical excerpt fields`);
+    }
+    const source = manifestById.get(quote.sourceId);
+    if (!source || !source.captured) {
+      fail(`package session quote ${quote.id} cites an absent or uncaptured source ${quote.sourceId}`);
+    }
+    if (source.locator !== quote.locator) {
+      fail(`package session quote ${quote.id} locator does not match source ${quote.sourceId}`);
+    }
+    if (rawById.get(quote.sourceId) !== quote.text || source.sha256 !== hash(quote.text)) {
+      fail(`package session quote ${quote.id} text does not match source ${quote.sourceId}`);
+    }
+  }
+
+  if (!session.view || typeof session.view !== "object" || Array.isArray(session.view)) {
+    fail("package session view must be an object");
+  }
+  exactKeys(session.view, ["type", "title", "reason", "steps"], "package session view");
+  requireString(session.view.type, "package session view type");
+  requireString(session.view.title, "package session view title");
+  requireString(session.view.reason, "package session view reason");
+  if (!VALID_SESSION_VIEW_TYPES.has(session.view.type)) fail("package session view type is invalid");
+  if (!Array.isArray(session.view.steps) || !session.view.steps.length) {
+    fail("package session view must contain at least one step");
+  }
+  const stepIds = new Set<string>();
+  for (const step of session.view.steps) {
+    if (!step || typeof step !== "object" || Array.isArray(step)) {
+      fail("package session view step must be an object");
+    }
+    exactKeys(step, ["id", "label", "detail", "evidenceSourceIds"], `package session view step ${step.id}`);
+    requireString(step.id, "package session view step id");
+    requireString(step.label, `package session view step ${step.id} label`);
+    requireString(step.detail, `package session view step ${step.id} detail`);
+    if (stepIds.has(step.id)) fail(`package session has duplicate view step id ${step.id}`);
+    stepIds.add(step.id);
+    if (!Array.isArray(step.evidenceSourceIds) || !step.evidenceSourceIds.length) {
+      fail(`package session view step ${step.id} has no evidence sources`);
+    }
+    for (const sourceId of step.evidenceSourceIds) {
+      requireString(sourceId, `package session view step ${step.id} source id`);
+      const source = manifestById.get(sourceId);
+      if (!source || !source.captured) {
+        fail(`package session view step ${step.id} cites an absent or uncaptured source ${sourceId}`);
+      }
+    }
+  }
+
+  if (!session.privacy || typeof session.privacy !== "object" || Array.isArray(session.privacy)) {
+    fail("package session privacy must be an object");
+  }
+  exactKeys(
+    session.privacy,
+    ["redactionCount", "deniedPathCount", "secretScan", "publication"],
+    "package session privacy",
+  );
+  if (!Number.isInteger(session.privacy.redactionCount) || session.privacy.redactionCount < 0) {
+    fail("package session privacy redactionCount must be a non-negative integer");
+  }
+  if (!Number.isInteger(session.privacy.deniedPathCount) || session.privacy.deniedPathCount < 0) {
+    fail("package session privacy deniedPathCount must be a non-negative integer");
+  }
+  if (session.privacy.secretScan !== "pass" || session.privacy.publication !== "local_only") {
+    fail("package session privacy must be pass/local_only");
+  }
+
+  if (typeof pkg.sessionSha256 !== "string" || !HEX64.test(pkg.sessionSha256)) {
+    fail("package sessionSha256 must be sha-256 hex");
+  }
+  if (hash(stable(session)) !== pkg.sessionSha256) {
+    fail("package sessionSha256 does not recompute from the session extension (tampered)");
+  }
 }
 
 // Reconstruct the raw freeze-bundle from the package: manifest metadata + verbatim rawSources.
@@ -345,6 +538,7 @@ function validatePackageAt(input: unknown, depth: number): ValidatePackageResult
     //    bypass the check. Empty evidence is allowed only for the non-observed states (which surface
     //    their own explicit reason/confounder); an observed claim must carry at least one link.
     const manifestById = new Map(pkg.manifest.sources.map((s) => [s.id, s]));
+    validateSessionExtension(pkg, manifestById);
     function bindLink(ownerLabel: string, link: WorkstreamBrief["currentOutcome"]["evidence"][number]): void {
       const source = manifestById.get(link.sourceId);
       if (!source) {

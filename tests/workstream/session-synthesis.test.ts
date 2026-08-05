@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validatePackage } from "@/lib/workstream/package";
-import { hashToolInput } from "../../tools/session/bundle-schema.mjs";
+import { hashExcerpt, hashToolInput } from "../../tools/session/bundle-schema.mjs";
+import { sha256, stableStringify } from "../../tools/comprehension/util.mjs";
 import { featureFixture, debuggingFixture } from "../../tools/session-synthesis/fixtures.mjs";
 import { synthesizeSession, validateSessionBundle } from "../../tools/session-synthesis/session-synthesis.mjs";
 
@@ -26,6 +27,7 @@ describe("session-to-explain synthesis boundary", () => {
     for (const quote of pkg.session.quotes) {
       const source = pkg.rawSources.find((item: { id: string }) => item.id === quote.sourceId);
       expect(source?.content).toBe(quote.text);
+      expect(hashExcerpt(quote)).toBe(quote.sha256);
       expect(html).toContain(quote.sha256.slice(0, 16));
       expect(html).toContain(quote.locator);
     }
@@ -75,10 +77,65 @@ describe("session-to-explain synthesis boundary", () => {
     expect(() => validateSessionBundle(resultless)).toThrow(/inputSha256.*hash mismatch/);
   });
 
-  it("excludes the secret canary from package and HTML", () => {
-    const result = synthesizeSession(debuggingFixture());
-    const serialized = JSON.stringify(result);
-    expect(serialized).not.toContain("PRIVATE_CANARY");
-    expect(serialized).not.toMatch(/AKIA[0-9A-Z]{16}/);
+  it("binds the session extension, quote sources, and view-step sources", () => {
+    const { package: pkg } = synthesizeSession(featureFixture());
+
+    const staleSession = structuredClone(pkg);
+    staleSession.session.view.steps[0].detail = "FORGED ARCHITECTURE";
+    expect(validatePackage(staleSession)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/sessionSha256/),
+    });
+
+    const forgedQuote = structuredClone(pkg);
+    forgedQuote.session.quotes[0].text = "FORGED QUOTE";
+    forgedQuote.sessionSha256 = sha256(stableStringify(forgedQuote.session));
+    expect(validatePackage(forgedQuote)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/quote .*hash/),
+    });
+
+    const sourceMismatch = structuredClone(pkg);
+    sourceMismatch.session.quotes[0].text = "FORGED QUOTE";
+    sourceMismatch.session.quotes[0].sha256 = hashExcerpt(sourceMismatch.session.quotes[0]);
+    sourceMismatch.sessionSha256 = sha256(stableStringify(sourceMismatch.session));
+    expect(validatePackage(sourceMismatch)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/text does not match source/),
+    });
+
+    const relabeledQuote = structuredClone(pkg);
+    relabeledQuote.session.quotes[0].locator = relabeledQuote.session.quotes[1].locator;
+    relabeledQuote.session.quotes[0].sha256 = hashExcerpt(relabeledQuote.session.quotes[0]);
+    relabeledQuote.sessionSha256 = sha256(stableStringify(relabeledQuote.session));
+    expect(validatePackage(relabeledQuote)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/locator/),
+    });
+
+    const danglingStep = structuredClone(pkg);
+    danglingStep.session.view.steps[0].evidenceSourceIds = ["ghost-source"];
+    danglingStep.sessionSha256 = sha256(stableStringify(danglingStep.session));
+    expect(validatePackage(danglingStep)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/absent or uncaptured/),
+    });
+
+    const unknownField = structuredClone(pkg) as typeof pkg & {
+      session: typeof pkg.session & { injected?: boolean };
+    };
+    unknownField.session.injected = true;
+    unknownField.sessionSha256 = sha256(stableStringify(unknownField.session));
+    expect(validatePackage(unknownField)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/unknown fields: injected/),
+    });
+  });
+
+  it("fails closed when a valid re-hashed bundle contains a secret canary", () => {
+    const canary = debuggingFixture();
+    canary.excerpts[1].text = "PRIVATE_CANARY";
+    canary.excerpts[1].sha256 = hashExcerpt(canary.excerpts[1]);
+    expect(() => synthesizeSession(canary)).toThrow(/Secret scan failed/);
   });
 });
