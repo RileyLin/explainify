@@ -4,6 +4,7 @@ import { hashExcerpt, hashToolInput } from "../../tools/session/bundle-schema.mj
 import { sha256, stableStringify } from "../../tools/comprehension/util.mjs";
 import { featureFixture, debuggingFixture } from "../../tools/session-synthesis/fixtures.mjs";
 import { synthesizeSession, validateSessionBundle } from "../../tools/session-synthesis/session-synthesis.mjs";
+import { scanOutput } from "../../tools/comprehension/evidence.mjs";
 
 describe("session-to-explain synthesis boundary", () => {
   for (const [name, fixture] of [["feature", featureFixture], ["debugging", debuggingFixture]] as const) {
@@ -44,6 +45,19 @@ describe("session-to-explain synthesis boundary", () => {
     expect(pkg.brief.verification[0].text).toContain("8 tests passed");
     expect(pkg.brief.reviewFirst.length).toBeGreaterThan(0);
     expect(pkg.brief.unknowns.length).toBeGreaterThan(0);
+  });
+
+  it("output secret gate neutralizes the redaction sentinel but still fails on real secrets", () => {
+    // Regression: the producer redacts `Token: ghp_…` → `Token: «redacted»`; the
+    // shared output gate must treat that sentinel as already-safe (else every
+    // security-conscious session hard-fails synthesis after correct redaction),
+    // while a genuine unredacted secret value still fails closed.
+    const scan = scanOutput as (value: unknown) => void;
+    expect(() => scan("For auth I set Token: «redacted» reading it from env")).not.toThrow();
+    expect(() => scan("password=«redacted»")).not.toThrow();
+    expect(() => scan("Token: ghp_ABCDEFGHIJKLMNOPQRST67890")).toThrow(/Secret scan failed/);
+    expect(() => scan("password=hunter2supersecret")).toThrow(/Secret scan failed/);
+    expect(() => scan("AKIA1234567890ABCDEF")).toThrow(/Secret scan failed/);
   });
 
   it("fails closed on quote tamper and dangling objective", () => {

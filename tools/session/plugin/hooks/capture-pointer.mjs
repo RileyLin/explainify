@@ -19,7 +19,7 @@
 // sandbox without importing the app. It never reads or writes transcript content.
 
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -77,10 +77,26 @@ async function main() {
 
   // Bind the completion marker to the AUTHORITATIVE hook-provided final assistant
   // message — never the lagging transcript on disk. If the field is absent or
-  // empty we record NO hash; downstream capture requires the hash for
-  // Stop/SessionEnd and will fail closed rather than verify against a guess.
+  // empty we record NO hash from THIS event; downstream capture requires the hash
+  // for Stop/SessionEnd and will fail closed rather than verify against a guess.
   const lastMessage = typeof input.last_assistant_message === "string" ? input.last_assistant_message : "";
-  const finalMessageSha256 = lastMessage.trim().length > 0 ? sha256(lastMessage) : undefined;
+  let finalMessageSha256 = lastMessage.trim().length > 0 ? sha256(lastMessage) : undefined;
+
+  // Non-destructive across events: SessionEnd (and any event) often arrives with
+  // NO last_assistant_message even though a preceding Stop already recorded the
+  // completed-turn hash. Preserve that prior hash instead of clobbering the
+  // pointer with an unbound one — otherwise closing the app would downgrade a
+  // verifiable completed turn to an unverifiable one and break capture.
+  if (!finalMessageSha256) {
+    try {
+      const prior = JSON.parse(await readFile(path.join(dir, "pointer.json"), "utf8"));
+      if (prior && prior.transcriptPath === transcriptPath && typeof prior.finalMessageSha256 === "string") {
+        finalMessageSha256 = prior.finalMessageSha256;
+      }
+    } catch {
+      /* no prior pointer — nothing to preserve */
+    }
+  }
 
   const pointer = {
     schemaVersion: 1,

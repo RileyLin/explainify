@@ -6,6 +6,16 @@ import { sha256 } from "./util.mjs";
 const denied = /(^|[/\\])(\.env[^/\\]*|\.git-credentials|credentials|id_rsa|node_modules|\.next|dist|build)([/\\]|$)/i;
 const secret = /(REDACT_ME_7F3A|PRIVATE_CANARY|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:api[_-]?key|token|password)\s*[:=]\s*\S+)/i;
 
+// The redaction sentinel a producer substitutes for a stripped secret. It is the
+// OUTPUT of redaction, never a residual secret — so `Token: «redacted»` means the
+// token was already removed. The session redactor emits exactly this string
+// (tools/session/safety.mjs REDACTION_PLACEHOLDER); we keep a local copy rather
+// than import upward from the session layer into comprehension. `scanOutput`
+// neutralizes it before scanning so a CORRECTLY redacted assignment does not
+// re-trip the assigned-secret shape (the `\S+` value side matches the sentinel).
+// A real, unredacted secret value still fails the scan.
+const REDACTION_SENTINEL = "«redacted»";
+
 export function assertSafe(value, label = "input") {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   if (denied.test(text)) throw new Error(`Denied path in ${label}`);
@@ -122,7 +132,15 @@ export async function collectEvidence(request) {
 }
 
 export function scanOutput(value) {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
+  const raw = typeof value === "string" ? value : JSON.stringify(value);
+  // Neutralize the producer's redaction sentinel first: drop a whole redacted
+  // assignment (`token=«redacted»` — key, separator, and sentinel together) so
+  // removing it can't glue the key onto the next token, then drop any standalone
+  // sentinel. What remains is real content; a genuine secret value still trips
+  // the scan. Mirrors tools/session/safety.mjs scanClean.
+  const ph = REDACTION_SENTINEL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const assignedPh = new RegExp(`((?:api[_-]?key|token|password)\\s*[:=]\\s*)${ph}`, "gi");
+  const text = raw.replace(assignedPh, " ").split(REDACTION_SENTINEL).join(" ");
   if (secret.test(text)) throw new Error("Secret scan failed");
   if (/safe to merge|no risk/i.test(text)) throw new Error("Unsupported approval claim");
 }

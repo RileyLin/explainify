@@ -11,7 +11,6 @@ import path from "node:path";
 
 import { captureAndSynthesize } from "../integrate.mjs";
 import { assertBundle } from "../bundle-schema.mjs";
-import { transcriptTimeRange } from "../capture.mjs";
 
 const sha256 = (v) => createHash("sha256").update(v).digest("hex");
 
@@ -108,6 +107,44 @@ test("the secret canary never reaches the artifact and capture stays scan=pass",
     const cr = await readJson(path.join(dir, "capture-receipt.json"));
     assert.equal(cr.secretScan, "pass");
     assert.ok(cr.redactionCount >= 1, "the secret was redacted, not passed through");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a REDACTED secret assignment synthesizes (redact-then-pass), it does not hard-fail the output gate", async () => {
+  // Regression for a real integration defect found in S1 canary dogfooding:
+  // 1A redacts `Token: ghp_…` → `Token: «redacted»` and reports secretScan:pass,
+  // but 1B's shared output gate (evidence.scanOutput) used the assigned-secret
+  // shape `(?:token|password|api_key)[:=]\S+`, which MATCHES the redaction
+  // sentinel (`«redacted»` is non-whitespace). So any security-conscious session
+  // that merely mentions a token assignment hard-failed synthesis AFTER correct
+  // redaction. The fix neutralizes the sentinel before scanning; a real,
+  // unredacted secret still fails.
+  const secretText = FEATURE_JSONL.replace(
+    "handles bursts better than a fixed window.",
+    "handles bursts better. For auth I set Token: ghp_ABCDEFGHIJKLMNOPQRST67890 in the header, reading it from env instead of hardcoding.",
+  );
+  const dir = await mkdtemp(path.join(os.tmpdir(), "explainify-1c-sec-"));
+  try {
+    const result = await captureAndSynthesize({
+      text: secretText,
+      transcriptSha256: sha256(secretText),
+      finalMessageSha256: sha256("The rate limiter is implemented and its tests pass. Still need to wire it into the middleware chain as a next step."),
+      session: { id: "s1-secret", cwd: "/repo", captureEvent: "stop" },
+      request: { question: "What did this session do and why?", audience: { role: "engineer", technicalDepth: "working" } },
+      repository: REPO,
+      transcriptPath: "/tmp/s1.jsonl",
+      outDir: dir,
+    });
+    assert.equal(result.status, "verified", "synthesis must succeed after correct redaction");
+    const html = await readFile(result.artifactPath, "utf8");
+    const pkg = await readFile(result.packagePath, "utf8");
+    assert.ok(!html.includes("ghp_ABCDEFGHIJKLMNOPQRST67890"), "token literal must not appear in HTML");
+    assert.ok(!pkg.includes("ghp_ABCDEFGHIJKLMNOPQRST67890"), "token literal must not appear in package");
+    const cr = await readJson(path.join(dir, "capture-receipt.json"));
+    assert.equal(cr.secretScan, "pass");
+    assert.ok(cr.redactionCount >= 1, "the token assignment was redacted");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
