@@ -1,0 +1,103 @@
+{
+  "note": "Structural proof only. NO transcript or excerpt TEXT is included — only shapes, counts, statuses, and content hashes. Full artifacts stay local under .explainify/ (gitignored).",
+  "phase": "1C integration — S2 debugging dogfood (capture 1A -> synthesis 1B end-to-end)",
+  "commit": "session/phase-1c-integration (frozen head hash recorded in the task-thread handoff; not self-referenced here to avoid an amend loop)",
+  "integrationInputs": {
+    "phase1A": "session/phase-1a-capture@6a07f82",
+    "phase1B": "codex/session-synthesis@9213374"
+  },
+  "capturedVia": "Real fresh Claude Code session in scratch git repo /tmp/s2b-debug with the plugin's .mcp.json + Stop/SessionEnd/SessionStart hooks wired (a separate session/pointer from S1, per PM directive). The debugging turn RAN the failing test first (node paginate.test.js -> AssertionError, page treated as 0-indexed), diagnosed the off-by-one (start = page * pageSize should be (page - 1) * pageSize), fixed paginate.js, re-ran the test to pass, and named uncovered edge cases (page 0, negative pages). The hook recorded pointer + finalMessageSha256; capture then flowed unchanged through 1B synthesis to the final local artifacts.",
+  "regenerate": "node tools/session/session-cli.mjs capture --session-id bd7fa5b4-74d2-4007-806f-b7b2e513d852 --root /tmp/s2b-debug --out <dir>  (resolves the recorded pointer -> real transcript -> fixed adapter -> synthesis)",
+  "browser": {
+    "widths": [320, 390, 1440],
+    "result": "no horizontal overflow (0px), no JS errors, Verification panel renders the failed->passed transition and the reproduce quote at every width",
+    "tool": "headless chromium via playwright-core"
+  },
+  "verificationTransitionPreserved": {
+    "requirement": "PM directive (msg 4a575e69): the debugging artifact must preserve failure, rationale, verification transition, and unresolved items.",
+    "beforeFix": "The classifier only matched `npm test`/named runners, so a direct `node paginate.test.js` run derived NO test receipt; brief.verification was EMPTY and the HTML read 'No verification receipt captured' despite a real failed->passed test run in toolEvents. This was a genuine product defect surfaced by S2 dogfooding.",
+    "fix": "Broadened RECEIPT_CLASSIFIERS test regex to also match a direct execution of a file following a test/spec naming convention (`*.test.*`/`*.spec.*` in js/ts/py/rb/go). Still conservative — a plain `node server.js` does NOT match. Regression test added (both the failed and passed run become receipts; `node server.js` yields none).",
+    "afterFix": "brief.verification has 2 entries; the failing run is honestly status:unknown ('the receipt does not prove a successful exit') carrying the AssertionError, the passing run is status:observed ('All tests passed.'). No fabricated exit code."
+  },
+  "result": {
+    "label": "S2 debugging (paginate off-by-one: reproduce -> diagnose -> fix -> re-run pass)",
+    "session": {
+      "id": "bd7fa5b4-74d2-4007-806f-b7b2e513d852",
+      "source": "claude_code",
+      "captureEvent": "session_end",
+      "startedAt": "2026-08-05T15:54:46.226Z",
+      "endedAt": "2026-08-05T15:55:02.047Z",
+      "transcriptSha256": "e10bdef19c9bbf4ae07b524c40adf12c657108129f8b2308fe35f1352a339c47",
+      "finalMessageSha256": "f74a536d49d8681abd0e04d25825532d8cdf0c51fe02ed550a2be416cbd0179f"
+    },
+    "counts": {
+      "excerpts": 5,
+      "toolEvents": 5,
+      "receipts": 2,
+      "changedFiles": 4,
+      "quotes": 4,
+      "viewSteps": 4,
+      "unknowns": 2,
+      "verification": 2
+    },
+    "toolStatuses": [
+      "Bash:failed",
+      "Read:succeeded",
+      "Read:succeeded",
+      "Edit:succeeded",
+      "Bash:succeeded"
+    ],
+    "receiptStatuses": ["test:failed", "test:succeeded"],
+    "verificationStatuses": ["unknown", "observed"],
+    "privacy": {
+      "manualPaste": false,
+      "publication": "local_only",
+      "secretScan": "pass",
+      "redactionCount": 0,
+      "deniedPathCount": 0
+    },
+    "view": { "type": "workflow" },
+    "lineage": {
+      "bundleSha256": "3d0c2b29692ec158c7e2d66106bd0b093e6a93f78fbd43925b86512b20fb6699",
+      "captureContentSha256": "8103e4184226dad2d914411b2dcbb27a4f28f55d8194e1ddf132d35cae8bf823",
+      "packageSha256": "ac3803a6826441880f6da767407cb1ef1cfaff62a1a46517bb906b0ab0d00841",
+      "artifactSha256": "f84fa9aae465d228e56db12c4ccbb89e06d253e92557907a418dfa4563a91f4c",
+      "htmlReceiptSha256": "ddca8bc584f08e7f5984fbc7f573e2975245fd6fc28e81117740ec55440c00e6",
+      "checkpointId": "checkpoint-63d02f34893e",
+      "sessionSha256": "24c1d08154e916c3496578e801395a367ac431c2489199dcaac994a6d4a7f406",
+      "lineageReceiptSha256": "f863e8bbf1e37fac325e1e93f14362190295ff803f53c836cee7bad15ed6035f"
+    },
+    "lineageVerified": {
+      "bundleMatches": true,
+      "htmlMatches": true,
+      "captureContentMatches": true
+    },
+    "htmlSections": [
+      "What did this session do and why?",
+      "What changed",
+      "Why / review first",
+      "How the session changed the system",
+      "Verification",
+      "Review first / unknowns",
+      "Exact session quotes"
+    ],
+    "rawSourceEscape": true,
+    "redactionPlaceholderPresent": false
+  },
+  "preFixRegressionEvidence": {
+    "note": "Auditable per PM directive: preserve the pre-fix failing evidence. The failing state is captured as a codified regression test, not as a stale artifact.",
+    "failingBehavior": "Before broadening the classifier, `node paginate.test.js` produced 0 test receipts and an empty brief.verification even though the session ran a real failed->passed test transition.",
+    "regressionTest": "tools/session/__tests__/adapter.test.mjs :: 'derives a test receipt from a direct test-file run (node x.test.js), not just `npm test`' — asserts 2 test receipts with statuses [failed, succeeded] AND that a plain `node server.js` yields 0 test receipts (the conservative guard).",
+    "priorArtifactHashes": {
+      "note": "The pre-fix S2b artifacts (empty verification) remain locally at /tmp/s2b-out for audit; they are NOT the durable success path.",
+      "preFixBundleSha256": "recorded locally; superseded by the fixed capture above"
+    }
+  },
+  "honestLimits": [
+    "Proves a real LOCAL debugging session (reproduce->diagnose->fix->verify) flows unchanged through 1B synthesis into a self-consistent, tamper-evident local explanation whose Verification panel preserves the failed->passed transition. Does NOT prove remote publication or externally-signed authenticity (out of scope; publication is always local_only).",
+    "The failing test run is honestly status:unknown, not 'failed-then-fixed' as a single fabricated claim — the transcript records tool_result is_error but not a process exit code, so no exit code is invented.",
+    "The classifier broadening is conservative: it fires only on a filename that itself signals a test/spec (`*.test.*`/`*.spec.*`); a normal `node server.js`/`python app.py` run is still NOT a verification receipt. A test run via an unconventional filename would still be missed (acceptable false-negative bias — we never fabricate a receipt).",
+    "S3 multi-session is recorded as the next OPTIONAL step and does NOT block the single-session path; it is deferred until after the context-blind >=90% gate.",
+    "The context-blind 8-question evaluation is the remaining acceptance gate (#6) before final GO."
+  ]
+}

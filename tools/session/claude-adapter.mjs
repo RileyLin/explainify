@@ -53,7 +53,12 @@ const INSPECT_TOOLS = new Set(["Bash", "Read", "Grep", "Glob", "WebFetch", "Task
 // addition to remaining a toolEvent). Classification is conservative; a command
 // that matches nothing stays a toolEvent only, never a fabricated receipt.
 const RECEIPT_CLASSIFIERS = [
-  { kind: "test", re: /\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bvitest\b|\bjest\b|\bmocha\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b/i },
+  // A test run via a package script / known runner, OR a direct execution of a
+  // file that follows a test/spec naming convention (`node paginate.test.js`,
+  // `python api_test.py`, `ruby foo_spec.rb`). Running a `*.test.*`/`*.spec.*`
+  // file IS a test run regardless of interpreter; still conservative because the
+  // filename itself must signal a test (a plain `node server.js` never matches).
+  { kind: "test", re: /\b(npm|pnpm|yarn)\s+(run\s+)?test\b|\bvitest\b|\bjest\b|\bmocha\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b|\b[\w./-]*[._-](test|spec)\.(c|m)?[jt]sx?\b|\b[\w./-]*[._-](test|spec)\.(py|rb|go)\b/i },
   { kind: "lint", re: /\blint\b|\beslint\b|\btslint\b|\bruff\b|\bflake8\b|\bclippy\b/i },
   { kind: "build", re: /\bbuild\b|\btsc\b|\bwebpack\b|\bvite\s+build\b|\bmake\b|\bcompile\b|\btypecheck\b/i },
 ];

@@ -82,6 +82,45 @@ test("derives an honest test receipt from the Bash test command", () => {
   assert.match(rc.sha256, /^[0-9a-f]{64}$/);
 });
 
+test("derives a test receipt from a direct test-file run (node x.test.js), not just `npm test`", () => {
+  // Regression for a real S2 debugging-dogfood gap: a session that reproduces a
+  // bug by running its test directly (`node paginate.test.js`) — fail, fix,
+  // re-run to pass — must still surface a verification receipt with the
+  // failed→passed transition. The classifier previously only matched package
+  // scripts / named runners, so the artifact's Verification panel read
+  // "No verification receipt captured" despite a genuine test transition.
+  const jsonl = [
+    { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Run node paginate.test.js first to reproduce the failure, then fix it." }] } },
+    { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "node paginate.test.js" } }] } },
+    { type: "user", uuid: "u2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", is_error: true, content: "AssertionError: expected [1,2] got [3,4]" }] } },
+    { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Edit", input: { file_path: "paginate.js", old_string: "page * pageSize", new_string: "(page - 1) * pageSize" } }] } },
+    { type: "user", uuid: "u3", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: "updated" }] } },
+    { type: "assistant", uuid: "a3", message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "node paginate.test.js" } }] } },
+    { type: "user", uuid: "u4", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", is_error: false, content: "All tests passed." }] } },
+  ].map((r) => JSON.stringify(r)).join("\n") + "\n";
+  const bundle = buildBundleFromTranscript({
+    transcript: jsonl,
+    transcriptSha256: sha256(jsonl),
+    session: { id: "sess-dbg", cwd: "/repo", captureEvent: "stop" },
+    repository: { dirty: false, changedFiles: [] },
+  }).bundle;
+  const tests = bundle.receipts.filter((r) => r.kind === "test");
+  assert.equal(tests.length, 2, "both the failing and the passing test run are receipts");
+  assert.deepEqual(tests.map((r) => r.status), ["failed", "succeeded"], "the failed→passed transition is preserved");
+  // A non-test bare `node` invocation must still NOT be classified as a test.
+  const notTest = buildBundleFromTranscript({
+    transcript: [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Start the dev server so I can look at it." }] } },
+      { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "node server.js" } }] } },
+      { type: "user", uuid: "u2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "listening on :3000" }] } },
+    ].map((r) => JSON.stringify(r)).join("\n") + "\n",
+    transcriptSha256: sha256("x"),
+    session: { id: "sess-run", cwd: "/repo", captureEvent: "stop" },
+    repository: { dirty: false, changedFiles: [] },
+  }).bundle;
+  assert.equal(notTest.receipts.filter((r) => r.kind === "test").length, 0, "a plain `node server.js` is not a test receipt");
+});
+
 test("caller question is request context, distinct from the observed objective", () => {
   const bundle = buildBundleFromTranscript({
     transcript: FEATURE_CHANGE_JSONL,
