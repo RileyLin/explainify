@@ -232,6 +232,9 @@ function validateSessionExtension(
   );
   if (session.schemaVersion !== 1) fail("package session schemaVersion must be 1");
   requireString(session.sessionId, "package session.sessionId");
+  if (pkg.workstreamId !== `session:${session.sessionId}`) {
+    fail("package sessionId does not match the package workstreamId");
+  }
   requireString(session.question, "package session.question");
   if (session.question !== pkg.brief.objective) {
     fail("package session question must equal the brief objective");

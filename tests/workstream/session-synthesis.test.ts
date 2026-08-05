@@ -130,6 +130,14 @@ describe("session-to-explain synthesis boundary", () => {
       ok: false,
       error: expect.stringMatching(/unknown fields: injected/),
     });
+
+    const relabeledSession = structuredClone(pkg);
+    relabeledSession.session.sessionId = "different-session";
+    relabeledSession.sessionSha256 = sha256(stableStringify(relabeledSession.session));
+    expect(validatePackage(relabeledSession)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/sessionId does not match.*workstreamId/),
+    });
   });
 
   it("fails closed when a valid re-hashed bundle contains a secret canary", () => {
