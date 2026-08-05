@@ -1,0 +1,152 @@
+{
+  "note": "Structural proof only. NO transcript or excerpt TEXT is included — only shapes, counts, statuses, and content hashes. Full artifacts stay local under .explainify/ (gitignored).",
+  "phase": "1C integration (capture 1A -> synthesis 1B end-to-end)",
+  "commit": "session/phase-1c-integration@3a0c711",
+  "integrationInputs": {
+    "phase1A": "session/phase-1a-capture@6a07f82",
+    "phase1B": "codex/session-synthesis@9213374"
+  },
+  "capturedVia": "Real fresh Claude Code v2.1.220 session in a scratch git repo with the plugin's .mcp.json + Stop/SessionEnd/SessionStart hooks wired. Turn 1 did the feature work (hook wrote pointer + finalMessageSha256); a subsequent explain_session MCP call returned the FINAL local index.html + workstream-package.json + receipts. Tool handle: mcp__explainify-session__explainify_explain_session (Claude normalizes dot->underscore).",
+  "regenerate": "node tools/session/session-cli.mjs capture --session-id <id> --root <repo> --transcript <path> --event session_end --final-message-sha <hash> --out <dir>",
+  "browser": {
+    "widths": [
+      320,
+      390,
+      1440
+    ],
+    "result": "no horizontal overflow, no JS errors, 7 sections + exact quote visible at every width",
+    "tool": "headless chromium-1208 via playwright-core"
+  },
+  "results": [
+    {
+      "label": "S1 feature-change (add subtract + test)",
+      "session": {
+        "id": "b37a5fcd-3535-4a11-b9ab-f617472f8b17",
+        "source": "claude_code",
+        "captureEvent": "session_end",
+        "startedAt": "2026-08-05T15:39:48.410Z",
+        "endedAt": "2026-08-05T15:40:01.364Z",
+        "transcriptSha256": "e4f80b13a96e782d7e9d744b61dd55f3e1e86bc30c1981491dc1f85dc8629184",
+        "finalMessageSha256": "3a47e6cb4bdda32abff45a21f2cd86c26861b9a5b3a19e2d360439607fc710d7"
+      },
+      "counts": {
+        "excerpts": 3,
+        "toolEvents": 4,
+        "receipts": 0,
+        "changedFiles": 5,
+        "quotes": 3,
+        "viewSteps": 3,
+        "unknowns": 2
+      },
+      "toolStatuses": [
+        "Read:succeeded",
+        "Edit:succeeded",
+        "Write:succeeded",
+        "Bash:failed"
+      ],
+      "privacy": {
+        "manualPaste": false,
+        "publication": "local_only",
+        "secretScan": "pass",
+        "redactionCount": 0,
+        "deniedPathCount": 0
+      },
+      "view": {
+        "type": "workflow"
+      },
+      "lineage": {
+        "bundleSha256": "c0e99e40cc3ff0ac6c2ac11b526923496ab90bb8a450c23f2f4b6e716847c965",
+        "captureContentSha256": "17526da2a598ad012b734cd071e01efdc86f5ad1fe6b3d271c6b1b9d85ed4cf2",
+        "packageSha256": "c8cacac239f041d43c2cdb9af0e1632ba2984ee5ea0b8c9f60a39fbc2f82933c",
+        "artifactSha256": "3c204bd7cf62a72b0acd4cbbb995e506a34b392c82a8c7b5b6d0e3fe212d23e5",
+        "htmlReceiptSha256": "e454128b6b78d76c38ab2f6ceaafb6ed09314b8dd82dd1cf42a21162d1369f26",
+        "checkpointId": "checkpoint-c36314a7f121",
+        "lineageReceiptSha256": "54c0e43296595fe302ce8bbdb89f85602fda71bf1538a27b0a6883210862f3d4"
+      },
+      "lineageVerified": {
+        "bundleMatches": true,
+        "htmlMatches": true,
+        "captureContentMatches": true
+      },
+      "htmlSections": [
+        "What did this session change and why?",
+        "What changed",
+        "Why / review first",
+        "How the session changed the system",
+        "Verification",
+        "Review first / unknowns",
+        "Exact session quotes"
+      ],
+      "rawSourceEscape": true,
+      "redactionPlaceholderPresent": false
+    },
+    {
+      "label": "S1b secret canary (token assignment)",
+      "session": {
+        "id": "97f817df-2894-4a81-be3c-4130b504a3e2",
+        "source": "claude_code",
+        "captureEvent": "session_end",
+        "startedAt": "2026-08-05T15:44:12.481Z",
+        "endedAt": "2026-08-05T15:44:22.626Z",
+        "transcriptSha256": "2954c793722c7d35aaeaf785bf6ae6dbc9f7f97ffaf02e402284b3b7c905d2f7",
+        "finalMessageSha256": "35d9fc12ab1b73b9c4efa4e16be7fd14282240dbd5f22b906890cb305d609624"
+      },
+      "counts": {
+        "excerpts": 3,
+        "toolEvents": 3,
+        "receipts": 0,
+        "changedFiles": 4,
+        "quotes": 3,
+        "viewSteps": 3,
+        "unknowns": 2
+      },
+      "toolStatuses": [
+        "Bash:succeeded",
+        "Read:succeeded",
+        "Edit:succeeded"
+      ],
+      "privacy": {
+        "manualPaste": false,
+        "publication": "local_only",
+        "secretScan": "pass",
+        "redactionCount": 2,
+        "deniedPathCount": 0
+      },
+      "view": {
+        "type": "workflow"
+      },
+      "lineage": {
+        "bundleSha256": "e08a92e91a8c8804f6e76323567395e4e86e8c0a315010dd109ce2d476eb35fa",
+        "captureContentSha256": "b3adf76172ca341923f57080bd48f874d67042e45b3656731fedad28e489c722",
+        "packageSha256": "726b9e01200a3f3ac5c8c934a2a10e04cd1f5350631545ebffd63ebeeb50640d",
+        "artifactSha256": "14d0be624f2ac7f5170fd4ddbaa5ea153cc9aae7e8a2c82b81b4ecb6aace0dff",
+        "htmlReceiptSha256": "a37dfdaa2b09288c840cf8ce8e490f6fd72bcfd1082b7e788cfdc0eceeb6bd0f",
+        "checkpointId": "checkpoint-fdb615b96c2c",
+        "lineageReceiptSha256": "1112af144ed27a2e0dfb931d5ba87757f06cc38c2f73fca7d416e2f2b2112cdf"
+      },
+      "lineageVerified": {
+        "bundleMatches": true,
+        "htmlMatches": true,
+        "captureContentMatches": true
+      },
+      "htmlSections": [
+        "What did this session change and why?",
+        "What changed",
+        "Why / review first",
+        "How the session changed the system",
+        "Verification",
+        "Review first / unknowns",
+        "Exact session quotes"
+      ],
+      "rawSourceEscape": true,
+      "redactionPlaceholderPresent": true
+    }
+  ],
+  "honestLimits": [
+    "Proves bounded LOCAL Claude Code capture flowing unchanged through 1B synthesis to a self-consistent, tamper-evident local explanation. Does NOT prove remote publication or externally-signed authenticity (out of scope; publication is always local_only).",
+    "The explain_session call is a SECOND session; when >1 pointer exists the tool fails closed and requires an explicit session.id (correct safety behavior, but means the real single-session UX resolves the id from within the same session).",
+    "S1 recorded Bash:failed because the headless test run required tool approval — the bundle honestly records the failed status rather than fabricating success.",
+    "Canary: the token was redacted by 1A (secretScan:pass, redactionCount>=1) and is absent from every artifact; a real integration defect (output gate false-positive on the redaction sentinel) was found and fixed in this commit.",
+    "S2 debugging + context-blind 8-question evaluation are the next steps in this task and are not yet in this receipt."
+  ]
+}
