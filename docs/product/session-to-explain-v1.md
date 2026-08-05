@@ -145,6 +145,93 @@ Evidence authority:
 
 An agent statement cannot override contradictory repository or test evidence.
 
+### Adapter Boundary
+
+Capture and explanation are separate modules. The session adapter emits this
+provider-neutral intermediate bundle; synthesis consumes it without reading a
+Claude transcript directly:
+
+```ts
+interface SessionEvidenceBundle {
+  schemaVersion: 1;
+  session: {
+    id: string;
+    source: "claude_code" | "generic_agent";
+    captureEvent: "tool_call" | "stop" | "session_end" | "fixture";
+    cwd: string;
+    transcriptSha256: string;
+    startedAt?: string;
+    endedAt?: string;
+  };
+  objective: {
+    text: string;
+    sourceId: string;
+  };
+  excerpts: Array<{
+    id: string;
+    kind:
+      | "user_requirement"
+      | "agent_decision"
+      | "agent_explanation"
+      | "error"
+      | "unresolved";
+    role: "user" | "assistant" | "tool";
+    text: string;
+    locator: string;
+    sha256: string;
+  }>;
+  toolEvents: Array<{
+    id: string;
+    toolName: string;
+    status: "succeeded" | "failed" | "denied";
+    inputSummary: string;
+    outputSummary: string;
+    locator: string;
+    sha256: string;
+  }>;
+  repository: {
+    baseRevision?: string;
+    headRevision?: string;
+    dirty: boolean;
+    changedFiles: Array<{
+      path: string;
+      status: "added" | "modified" | "deleted" | "renamed";
+      sha256?: string;
+    }>;
+  };
+  receipts: Array<{
+    id: string;
+    kind: "test" | "lint" | "build" | "command" | "git_status";
+    command: string;
+    exitCode: number;
+    scope: string;
+    content: string;
+    sha256: string;
+  }>;
+  exclusions: Array<{
+    kind: string;
+    count: number;
+    reason: string;
+  }>;
+  privacy: {
+    redactionCount: number;
+    deniedPathCount: number;
+    secretScan: "pass";
+    publication: "local_only";
+  };
+}
+```
+
+Rules:
+
+- `locator` addresses an exact JSONL record/tool event or immutable repository
+  source.
+- Bundle fields contain selected, redacted content only. The raw transcript is
+  referenced by its whole-file hash but is not embedded.
+- Adapter output is byte-size bounded, schema-validated, and deterministic for
+  an immutable transcript and repository state.
+- Unknown tool payloads are excluded, not coerced into trusted evidence.
+
 ### Privacy Boundary
 
 - Storage and artifact generation are local by default.
