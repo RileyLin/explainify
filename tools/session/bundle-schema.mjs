@@ -1,6 +1,8 @@
 // SessionEvidenceBundle — the provider-neutral contract between Phase 1A
 // (capture / this module: the producer) and Phase 1B (synthesis: the consumer).
-// Frozen against docs/product/session-to-explain-v1.md @444de0a. Synthesis
+// Frozen against docs/product/session-to-explain-v1.md @d203e9f (final consumer
+// bindings: session.finalMessageSha256; tool status bound in the always-present
+// input canonical hash; objective.text must equal its cited excerpt). Synthesis
 // consumes THIS shape and never reads a Claude transcript directly.
 //
 // This module is dependency-free so both the adapter and the 1B reader import
@@ -51,6 +53,11 @@ const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex
 // status, kind, or a locator) therefore invalidates the hash, so a tampered
 // bundle cannot pass validation by keeping the same text. Every serialization
 // is a positional array with deterministic order.
+//
+// Two invariants are not hash-based but enforced by validateBundle for the same
+// no-drift reason (contract @d203e9f): a tool's status is bound in the
+// always-present INPUT hash (so a resultless "unknown" tool cannot be relabeled
+// "succeeded"), and objective.text must equal its cited source excerpt's text.
 
 // Excerpt hash binds id, kind, role, text, and locator.
 export function canonicalExcerpt(e) {
