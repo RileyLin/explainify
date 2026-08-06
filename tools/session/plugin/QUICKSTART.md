@@ -150,7 +150,7 @@ claude plugin update explainify-session@explainify-local
 
 # Remove entirely (project scope):
 claude plugin uninstall explainify-session@explainify-local --scope project
-claude plugin marketplace remove explainify-local
+claude plugin marketplace remove explainify-local --scope project
 ```
 
 ## Troubleshooting
