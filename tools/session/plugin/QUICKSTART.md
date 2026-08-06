@@ -145,7 +145,7 @@ package → HTML so any tampering is detectable.
 ```bash
 # Pull a newer committed plugin build, then refresh the install:
 claude plugin marketplace update explainify-local
-claude plugin update explainify-session@explainify-local
+claude plugin update explainify-session@explainify-local --scope project
 # then restart Claude Code
 
 # Remove entirely (project scope):
