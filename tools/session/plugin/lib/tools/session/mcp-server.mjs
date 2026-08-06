@@ -16,7 +16,7 @@
 import { McpServer } from "../../vendor/mcp-vendor.mjs";
 import { StdioServerTransport } from "../../vendor/mcp-vendor.mjs";
 import { z } from "../../vendor/mcp-vendor.mjs";
-import { readdir, realpath } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -30,15 +30,36 @@ import {
 } from "./capture.mjs";
 import { captureAndSynthesize } from "./integrate.mjs";
 
-// Resolve the most relevant session pointer if the caller did not name one:
-// prefer an explicit id, else the single pointer under .explainify/sessions.
+// Resolve the most relevant session pointer if the caller did not name one.
+// Prefer an explicit id, else the single COMPLETED pointer under
+// .explainify/sessions. A directory is only a candidate if it holds a
+// `pointer.json` (a completed Stop/SessionEnd capture). The literal owner flow
+// is: finish the work session, start a NEW Claude session, then invoke
+// /explain-session. That new session's SessionStart hook writes a start-only
+// directory (start.json, no pointer.json yet). Counting those would make the
+// first auto-select ambiguous ("Multiple sessions…") even though only one
+// session was actually completed — so start-only directories are ignored here.
+// This does NOT relax the trust boundary: when two or more COMPLETED pointers
+// exist we still require an explicit session.id.
+async function hasPointer(dir) {
+  try {
+    return (await stat(path.join(dir, "pointer.json"))).isFile();
+  } catch {
+    return false;
+  }
+}
+
 async function resolveSessionId(root, requested) {
   if (requested) return assertSafeSessionId(requested);
   const dir = path.join(root, ".explainify", "sessions");
-  const ids = (await readdir(dir).catch(() => [])).filter((id) => /^[A-Za-z0-9._-]+$/.test(id) && id !== "." && id !== "..");
-  if (ids.length === 1) return ids[0];
-  if (ids.length === 0) throw new Error("No captured session pointer found; run the hook or pass session.id.");
-  throw new Error(`Multiple sessions captured (${ids.join(", ")}); specify session.id.`);
+  const all = (await readdir(dir).catch(() => [])).filter((id) => /^[A-Za-z0-9._-]+$/.test(id) && id !== "." && id !== "..");
+  const completed = [];
+  for (const id of all) {
+    if (await hasPointer(path.join(dir, id))) completed.push(id);
+  }
+  if (completed.length === 1) return completed[0];
+  if (completed.length === 0) throw new Error("No completed session pointer found; finish a session (Stop/SessionEnd) or pass session.id.");
+  throw new Error(`Multiple completed sessions captured (${completed.join(", ")}); specify session.id.`);
 }
 
 async function runCapture(input) {
@@ -71,7 +92,10 @@ async function runCapture(input) {
     baseline,
   });
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
-  const repository = { ...repoBase, changedFiles };
+  // Pass the SessionStart installer-settings baseline hashes through so the
+  // adapter can omit ONLY unchanged installer settings (.claude/settings*.json)
+  // from session evidence, while keeping genuine in-session .claude edits.
+  const repository = { ...repoBase, changedFiles, installerBaselineHashes: baseline?.installerSettings || null };
 
   const outDir = input.outputDirectory
     ? await realpath(input.outputDirectory).catch(() => input.outputDirectory)
@@ -93,20 +117,20 @@ async function runCapture(input) {
   });
 }
 
-const server = new McpServer({ name: "explainify-session", version: "0.2.0" });
+const server = new McpServer({ name: "explainify-session", version: "0.3.0" });
 
 server.registerTool(
   "explainify.explain_session",
   {
-    title: "Explain this coding session",
+    title: "Explain a completed session",
     description:
-      "Explain the current Claude Code session: capture its bounded evidence (selected excerpts, tool events, git/test receipts) with no transcript copy/paste, then render a local explanation — index.html (diagram + exact quotes), workstream-package.json, and receipts — all local-only and secret-scanned. Returns the local artifact/package/receipt/lineage paths.",
+      "Explain a completed Claude Code session: capture its bounded evidence (selected excerpts, tool events, git/test receipts) with no transcript copy/paste, then render a local explanation — index.html (diagram + exact quotes), workstream-package.json, and receipts — secret-scanned and written locally. Explainify makes no additional upload or hosted-API call (Claude Code's own provider traffic is unchanged). Auto-selects the sole completed session pointer; pass session.id when more than one exists. Returns the local artifact/package/receipt/lineage paths.",
     inputSchema: {
       question: z.string().describe("What should the explanation answer?").default("What did this session do and why?"),
       session: z
         .object({ id: z.string().optional() })
         .optional()
-        .describe("Optional session id; defaults to the current captured session."),
+        .describe("Optional session id; defaults to the sole completed session pointer. Pass an explicit id when multiple completed sessions exist."),
       repository: z
         .object({
           root: z.string().describe("Absolute repository root."),

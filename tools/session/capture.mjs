@@ -390,7 +390,11 @@ export async function collectRepository(rootInput, { baseRef, headRef, baseline 
     if (baseline?.baseRevision) throw new Error(`Recorded baseline revision but ${root} is not a git work tree.`);
     return { dirty: false, changedFiles: [] };
   }
-  const statusOut = git(root, ["status", "--porcelain"]);
+  // --untracked-files=all enumerates individual untracked files (e.g.
+  // `.claude/settings.json`) rather than collapsing them into a single directory
+  // entry (`?? .claude/`). This lets downstream evidence filtering reason about
+  // specific installer files by path + hash instead of the whole directory.
+  const statusOut = git(root, ["status", "--porcelain", "--untracked-files=all"]);
   const dirty = statusOut.length > 0;
 
   const statusMap = { A: "added", M: "modified", D: "deleted", R: "renamed", "?": "added" };

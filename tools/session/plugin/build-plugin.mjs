@@ -14,13 +14,15 @@
 //      esbuild bundle at lib/vendor/mcp-vendor.mjs.
 //
 // Everything the plugin launches (the MCP server, the hook) then resolves from
-// ${CLAUDE_PLUGIN_ROOT} alone. No node_modules, no network, no build step at
-// install time. `--check` re-runs the build into a temp dir and byte-compares,
+// ${CLAUDE_PLUGIN_ROOT} alone: at RUNTIME the plugin needs no node_modules, no
+// network of its own, and no build step (Claude Code may fetch the plugin over
+// the network at install time). `--check` re-runs the build into a temp dir and byte-compares,
 // failing if the committed lib/ has drifted from canonical source (drift guard).
 
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, relative } from "node:path";
 import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
@@ -79,74 +81,192 @@ function redirectEntryImports(src) {
 }
 
 function esbuildBin() {
+  // `esbuild` is a DECLARED devDependency (package.json), not a transitive of
+  // vite — so the build never silently depends on a hoisted copy. Fail with a
+  // clear, actionable message if the binary is missing.
   const bin = join(REPO, "node_modules", ".bin", "esbuild");
+  if (!existsSync(bin)) {
+    throw new Error(`esbuild binary not found at ${bin}. Run \`npm install\` (esbuild is a declared devDependency) before building the plugin.`);
+  }
   return bin;
 }
 
-// The third-party packages bundled into lib/vendor/mcp-vendor.mjs. Their license
-// notices are reproduced verbatim in lib/vendor/LICENSES.md so the redistributed
-// bundle carries the attribution its MIT licenses require.
-const VENDORED_DEPS = ["@modelcontextprotocol/sdk", "zod"];
+// Strip trailing whitespace from every line. esbuild inlines third-party source
+// verbatim, and some of it (e.g. Zod's codegen template literals) carries
+// trailing spaces that trip `git diff --check`. Trailing whitespace at end of
+// line is never semantically meaningful in the emitted JS, so this normalization
+// is safe; it is applied identically on build AND on --check, so the committed
+// bundle stays byte-stable against a fresh build (the drift guard still holds).
+function normalizeTrailingWhitespace(text) {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n");
+}
+
+// Resolve a bundled input file to the ROOT directory of the package that owns
+// it — the nearest ancestor directory whose package.json declares a `name`.
+// Walking up (rather than collapsing on the package NAME) is required because
+// the same name can appear at multiple versions in different node_modules trees:
+// the bundle inlines `ajv@8.18.0` under `ajv-formats/node_modules/ajv`, while the
+// repo root has an unrelated `ajv@6.14.0`. We must also skip internal subpath
+// markers — packages like `zod` and `@modelcontextprotocol/sdk` ship nested
+// `package.json` files (e.g. `zod/v4/package.json`, `dist/esm/package.json`) that
+// set only `type`/`sideEffects` and NO `name`; those are not package roots.
+// Returns an absolute package-root path, or null.
+function packageRootFor(inputRelPath) {
+  let dir = dirname(join(REPO, inputRelPath));
+  for (let i = 0; i < 50; i += 1) {
+    const pj = join(dir, "package.json");
+    if (existsSync(pj)) {
+      try {
+        const parsed = JSON.parse(readFileSync(pj, "utf8"));
+        if (typeof parsed.name === "string" && parsed.name.length > 0) return dir;
+      } catch {
+        /* unreadable — treat as not-a-root and keep walking */
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir || relative(REPO, parent).startsWith("..")) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+// Discover the ACTUAL set of packages esbuild inlined into the bundle, from its
+// --metafile, deduped by real package ROOT (so distinct versions of the same
+// name are kept separate). Driving the notices off the real closure — not a hand
+// list — means a new (or newly-nested) dependency can never ship without its
+// notice. Returns sorted absolute package-root paths.
+function bundledPackageRootsFromMetafile(meta) {
+  const roots = new Set();
+  for (const input of Object.keys(meta.inputs || {})) {
+    if (!input.includes("node_modules/")) continue;
+    const root = packageRootFor(input);
+    if (root) roots.add(root);
+  }
+  return [...roots].sort();
+}
+
+// The three third-party specifiers the vendor bundle exports. Single source of
+// truth for both the real build and the license-closure computation used by
+// tests, so they can never diverge.
+const VENDOR_ENTRY_SRC = [
+  'export { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
+  'export { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";',
+  'export { z } from "zod";',
+  "",
+].join("\n");
+
+const ESBUILD_FLAGS = ["--bundle", "--platform=node", "--format=esm", "--target=node20", "--external:node:*"];
 
 async function buildVendorBundle(libDir) {
   // Emit a tiny entry inside the repo (so esbuild resolves node_modules), bundle
-  // the two runtime deps into one ESM file, then remove the entry.
+  // the runtime deps into one ESM file with a metafile, then remove the entry.
   const entryPath = join(HERE, ".vendor-entry.mjs");
-  const entrySrc = [
-    'export { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
-    'export { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";',
-    'export { z } from "zod";',
-    "",
-  ].join("\n");
-  await writeFile(entryPath, entrySrc, "utf8");
+  const metaPath = join(HERE, ".vendor-meta.json");
+  await writeFile(entryPath, VENDOR_ENTRY_SRC, "utf8");
+  const outFile = join(libDir, "vendor", "mcp-vendor.mjs");
   try {
-    const outFile = join(libDir, "vendor", "mcp-vendor.mjs");
     await mkdir(dirname(outFile), { recursive: true });
     execFileSync(
       esbuildBin(),
-      [
-        entryPath,
-        "--bundle",
-        "--platform=node",
-        "--format=esm",
-        "--target=node20",
-        "--external:node:*",
-        `--outfile=${outFile}`,
-      ],
+      [entryPath, ...ESBUILD_FLAGS, `--metafile=${metaPath}`, `--outfile=${outFile}`],
       { cwd: REPO, stdio: ["ignore", "ignore", "inherit"] },
     );
+    // Deterministically normalize the emitted bundle so the committed tree is
+    // clean under `git diff --check` and stable against a fresh rebuild.
+    await writeFile(outFile, normalizeTrailingWhitespace(await readFile(outFile, "utf8")), "utf8");
+    const meta = JSON.parse(await readFile(metaPath, "utf8"));
+    await writeLicenseNotices(libDir, bundledPackageRootsFromMetafile(meta));
   } finally {
     await rm(entryPath, { force: true });
+    await rm(metaPath, { force: true });
   }
-  await writeLicenseNotices(libDir);
 }
 
-async function writeLicenseNotices(libDir) {
+// Compute the ACTUAL bundled license closure the same way the build does —
+// esbuild metafile → nearest-named-package roots → dedup by name@version — but
+// WITHOUT writing anything into lib/. Returns the resolved [{name,version,
+// license}] closure. Exported so a regression can assert the exact closure
+// (including nested versions like ajv 8.18.0) drives the notices, independent of
+// the committed LICENSES.md text. Uses a throwaway temp outfile/metafile.
+export async function computeLicenseClosure() {
+  const entryPath = join(HERE, ".vendor-entry.closure.mjs");
+  const metaPath = join(HERE, ".vendor-meta.closure.json");
+  const outFile = join(HERE, ".vendor-out.closure.mjs");
+  await writeFile(entryPath, VENDOR_ENTRY_SRC, "utf8");
+  try {
+    execFileSync(
+      esbuildBin(),
+      [entryPath, ...ESBUILD_FLAGS, `--metafile=${metaPath}`, `--outfile=${outFile}`],
+      { cwd: REPO, stdio: ["ignore", "ignore", "inherit"] },
+    );
+    const meta = JSON.parse(await readFile(metaPath, "utf8"));
+    const { closure } = await buildLicenseManifest(bundledPackageRootsFromMetafile(meta));
+    return closure;
+  } finally {
+    await rm(entryPath, { force: true });
+    await rm(metaPath, { force: true });
+    await rm(outFile, { force: true });
+  }
+}
+
+// Build the license manifest from the resolved package ROOTS. Each root is read
+// for its own name/version/license — so nested versions (ajv 8.18.0 vs a root
+// ajv 6.14.0) are reported distinctly. Returns the manifest text plus the
+// resolved [{name, version, license}] closure so callers/tests can assert it.
+async function buildLicenseManifest(packageRoots) {
+  if (!packageRoots || packageRoots.length === 0) {
+    throw new Error("No bundled packages discovered from the esbuild metafile; refusing to ship a bundle with no license notices.");
+  }
+  const closure = [];
   const sections = [
     "# Third-party licenses",
     "",
-    "The bundled runtime `mcp-vendor.mjs` includes the following packages. Their",
+    "The bundled runtime `mcp-vendor.mjs` inlines the following packages. Their",
     "license texts are reproduced verbatim below. This file is generated by",
-    "`build-plugin.mjs`; do not edit by hand.",
+    "`build-plugin.mjs` from the esbuild metafile (the actual bundled closure,",
+    "resolved to each input's nearest package root so nested versions are exact);",
+    "do not edit by hand.",
     "",
   ];
-  for (const dep of VENDORED_DEPS) {
-    const pkgJson = JSON.parse(await readFile(join(REPO, "node_modules", dep, "package.json"), "utf8"));
+  // Read each root's identity, then dedupe by name+version: the same package at
+  // the same version can be installed under multiple node_modules trees (e.g.
+  // ajv 8.18.0 under both the SDK's and ajv-formats' node_modules), but it is one
+  // distributable package needing one notice. DISTINCT versions of a name are
+  // kept separate. Sort by name+version for a stable, filesystem-order-independent
+  // manifest.
+  const byKey = new Map();
+  for (const root of packageRoots) {
+    const pkgJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+    const key = `${pkgJson.name}@${pkgJson.version}`;
+    if (!byKey.has(key)) byKey.set(key, { root, name: pkgJson.name, version: pkgJson.version, license: pkgJson.license || "see below" });
+  }
+  const entries = [...byKey.values()];
+  entries.sort((a, b) => (a.name === b.name ? a.version.localeCompare(b.version) : a.name.localeCompare(b.name)));
+  for (const e of entries) {
     let text = "";
-    for (const name of ["LICENSE", "LICENSE.md", "LICENSE.txt", "license", "LICENSE-MIT"]) {
+    for (const name of ["LICENSE", "LICENSE.md", "LICENSE.txt", "license", "LICENSE-MIT", "LICENSE-MIT.txt"]) {
       try {
-        text = await readFile(join(REPO, "node_modules", dep, name), "utf8");
+        text = await readFile(join(e.root, name), "utf8");
         break;
       } catch {
         /* try next candidate */
       }
     }
     if (!text) {
-      throw new Error(`No LICENSE file found for vendored dependency ${dep}; cannot ship the bundle without its notice.`);
+      throw new Error(`No LICENSE file found for bundled dependency ${e.name}@${e.version} at ${e.root}; cannot ship the bundle without its notice.`);
     }
-    sections.push(`## ${dep} ${pkgJson.version} (${pkgJson.license || "see below"})`, "", "```", text.trimEnd(), "```", "");
+    sections.push(`## ${e.name} ${e.version} (${e.license})`, "", "```", text.trimEnd(), "```", "");
+    closure.push({ name: e.name, version: e.version, license: e.license });
   }
-  await writeFile(join(libDir, "vendor", "LICENSES.md"), sections.join("\n"), "utf8");
+  return { text: sections.join("\n"), closure };
+}
+
+async function writeLicenseNotices(libDir, packageRoots) {
+  const { text } = await buildLicenseManifest(packageRoots);
+  await writeFile(join(libDir, "vendor", "LICENSES.md"), text, "utf8");
 }
 
 async function assertVersionParity(entrySrc) {
@@ -230,7 +350,11 @@ async function main() {
   process.stdout.write(`built plugin lib/: ${count} files, ${hash.slice(0, 12)}\n`);
 }
 
-main().catch((e) => {
-  process.stderr.write(`build-plugin failed: ${e.message}\n`);
-  process.exit(1);
-});
+// Run the build only when invoked as a script, not when imported (e.g. by the
+// license-closure regression, which calls computeLicenseClosure() directly).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    process.stderr.write(`build-plugin failed: ${e.message}\n`);
+    process.exit(1);
+  });
+}

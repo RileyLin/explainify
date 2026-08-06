@@ -470,6 +470,66 @@ function blockText(block) {
   return "";
 }
 
+// Detect a Claude Code local-slash-command wrapper for Explainify's OWN
+// invocation. Slash commands are recorded as a user message whose text wraps a
+// <command-name>…</command-name> block (often with <command-message>/
+// <command-args>). Only Explainify's own commands (`/explain-session`,
+// `/explainify…`) are control flow to exclude; a user typing about some other
+// slash command is left to normal selection. Matches the command-name payload
+// specifically so an unrelated mention of the string in prose is not excluded.
+function isExplainifySlashWrapper(content) {
+  const blocks = Array.isArray(content) ? content : typeof content === "string" ? [{ type: "text", text: content }] : [];
+  for (const block of blocks) {
+    if (block && typeof block === "object" && block.type !== "text" && block.type !== undefined) continue;
+    const text = blockText(block);
+    const m = /<command-name>\s*\/?([^<\s]+)/i.exec(text);
+    if (m && /^explain-session$|^explainify/i.test(m[1])) return true;
+  }
+  return false;
+}
+
+// A record whose content Explainify itself produced — the assistant
+// success/failure/echo of our own MCP tool / plugin invocation. Claude Code
+// attributes such records to the originating plugin (e.g.
+// `attributionPlugin: "explainify-session"`); some shapes instead carry a nested
+// tool attribution. This is control flow about the capture, not session
+// evidence, and a failure response can embed a checkout path — so it is excluded
+// before selection. Matches Explainify's own attribution specifically so an
+// unrelated plugin's output is left to normal selection.
+const EXPLAINIFY_ATTRIBUTIONS = /^explainify(-session)?$/i;
+function isExplainifyAttributed(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  const candidates = [obj.attributionPlugin, obj.attribution?.plugin, obj.attribution?.pluginName, obj.pluginName, obj.message?.attributionPlugin];
+  return candidates.some((v) => typeof v === "string" && EXPLAINIFY_ATTRIBUTIONS.test(v.trim()));
+}
+
+// Normalize a repo-relative path for prefix matching: strip a leading "./" and
+// use forward slashes so both "a/b" and ".\\a\\b" compare consistently.
+function normalizeRel(p) {
+  return String(p || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "");
+}
+
+// Explainify's OWN output/pointer tree in the target repo. Writing it is a side
+// effect of running the tool, never user session work.
+function isInternalToolPath(p) {
+  const rel = normalizeRel(p);
+  return rel === ".explainify" || rel.startsWith(".explainify/");
+}
+
+// The two plugin-installer-owned settings files whose UNCHANGED presence is an
+// install artifact, not session work. We omit them ONLY when their content is
+// byte-identical to the SessionStart baseline (recorded start hash). Any OTHER
+// `.claude/**` path — CLAUDE.md, skills, hooks, or these two files if edited
+// during the session — is legitimate agent-native work and is never hidden.
+const INSTALLER_SETTINGS_FILES = new Set([".claude/settings.json", ".claude/settings.local.json"]);
+function isUnchangedInstallerSetting(rel, currentSha, baselineHashes) {
+  if (!INSTALLER_SETTINGS_FILES.has(rel)) return false;
+  const recorded = baselineHashes && baselineHashes[rel];
+  return Boolean(recorded && currentSha && recorded === currentSha);
+}
+
 // Heuristic semantic classification of a user/assistant text block. Returns an
 // excerpt kind or null to exclude. Kept intentionally conservative: we would
 // rather exclude a borderline line (and count it) than mislabel chatter as a
@@ -552,11 +612,43 @@ export function buildBundleFromTranscript(args) {
     const uuid = obj?.uuid;
     const msg = obj?.message;
 
+    // Claude Code injects its OWN control records that are not user-authored
+    // evidence. Skill/agent system prompts carry `isMeta: true` — e.g. the
+    // "Base directory for this skill: <plugin path>/SKILL.md" block, which would
+    // otherwise leak a checkout path into the objective/excerpts. Exclude and
+    // count every meta record before any selection so it can never become
+    // trusted evidence. This makes "no checkout-path leak" an adapter-level
+    // invariant, independent of which session invoked the tool.
+    if (obj?.isMeta === true) {
+      addExclusion("meta_record");
+      continue;
+    }
+
     // Only user/assistant message records carry evidence content. Any other
     // record type (queue-operation, attachment, ai-title, mode, system, …) is
     // metadata, not trusted evidence → excluded and counted, never coerced.
     if (type !== "user" && type !== "assistant") {
       if (type) addExclusion(`record_type:${type}`);
+      continue;
+    }
+
+    // A local slash command is recorded as a user message wrapping
+    // <command-name>…</command-name>. Explainify's own /explain-session
+    // invocation is control flow, not a session requirement, and must never be
+    // captured as an objective/excerpt. Exclude + count it before selection.
+    if (type === "user" && isExplainifySlashWrapper(msg?.content)) {
+      addExclusion("slash_command_wrapper");
+      continue;
+    }
+
+    // The assistant response to Explainify's OWN invocation (the tool's
+    // success/failure/echo) is attributed to the explainify-session plugin/MCP
+    // tool. It is control flow about the capture itself — and, on failure, can
+    // carry a checkout path or internal error text — not session work. Exclude +
+    // count it (with the wrapper above, this is the full "wrapper + failure/echo"
+    // boundary) before any excerpt selection.
+    if (isExplainifyAttributed(obj)) {
+      addExclusion("explainify_tool_output");
       continue;
     }
     const content = msg?.content;
@@ -780,13 +872,31 @@ export function buildBundleFromTranscript(args) {
   const objectiveSource = excerpts.find((e) => e.id === objectiveExcerptId) || excerpts[0];
   const objective = { text: objectiveSource.text, sourceId: objectiveSource.id };
 
-  // changedFiles: drop denied paths defensively and count them.
+  // changedFiles: drop denied paths, then tool-owned output, then UNCHANGED
+  // installer settings, counting each. Installing and running the plugin writes
+  // tool-owned `.explainify/**` (bundles, pointers, receipts) and installer-owned
+  // `.claude/settings*.json` into the target repo. Attributing those install
+  // side effects to the session inflates the causal "session changed N files"
+  // claim (Codex finding). But `.claude/**` is also where legitimate agent-native
+  // work lives (CLAUDE.md, skills, hooks, edited settings), so we do NOT blanket-
+  // exclude it: only the two installer settings files, and only when their
+  // content still matches the SessionStart baseline hash, are omitted. Everything
+  // else — including those two files if edited during the session — is kept.
+  const installerBaseline = args.repository?.installerBaselineHashes || null;
   let deniedPathCount = 0;
   const changedFiles = [];
   for (const c of args.repository?.changedFiles || []) {
     if (isDeniedPath(c.path)) {
       deniedPathCount += 1;
       addExclusion("denied_changed_file");
+      continue;
+    }
+    if (isInternalToolPath(c.path)) {
+      addExclusion("internal_tool_dir");
+      continue;
+    }
+    if (isUnchangedInstallerSetting(normalizeRel(c.path), c.sha256, installerBaseline)) {
+      addExclusion("installer_config");
       continue;
     }
     changedFiles.push(c);
@@ -856,6 +966,11 @@ function reasonFor(kind) {
     tool_event_over_limit: "Tool-event count limit reached; remaining tool events omitted.",
     denied_path_tool: "Tool touched a denied path (.env/credential/key/cache/binary).",
     denied_changed_file: "Changed file is on a denied path.",
+    meta_record: "Claude Code injected control record (isMeta) — a skill/agent system prompt, not user-authored evidence.",
+    slash_command_wrapper: "Explainify's own slash-command invocation is control flow, not a session requirement.",
+    explainify_tool_output: "Response attributed to Explainify's own plugin/MCP tool (success/failure/echo) is control flow about the capture, not session evidence.",
+    internal_tool_dir: "Explainify-owned output/pointer directory (.explainify/**) is not a user session change.",
+    installer_config: "Installer-written settings file unchanged since SessionStart (matches baseline hash) — install artifact, not session work.",
     secret_bearing_excerpt: "Excerpt still held a secret after redaction; excluded.",
     secret_bearing_tool_input: "Tool input still held a secret after redaction; excluded.",
     secret_bearing_tool_output: "Tool output still held a secret after redaction; output omitted.",

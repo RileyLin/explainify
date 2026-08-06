@@ -1,0 +1,12 @@
+{
+  "name": "explainify-local",
+  "owner": { "name": "Explainify" },
+  "description": "Explainify Session-to-Explain marketplace (git-backed). Installs the local, no-additional-upload session explainer plugin.",
+  "plugins": [
+    {
+      "name": "explainify-session",
+      "source": "./tools/session/plugin",
+      "description": "Capture + locally explain a Claude Code session; artifacts are written locally with no additional upload."
+    }
+  ]
+}

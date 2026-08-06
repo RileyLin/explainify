@@ -88,7 +88,7 @@ async function cmdCapture(args) {
 
   const repoBase = await collectRepository(root, { baseRef: args.base, headRef: args.head, baseline });
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
-  const repository = { ...repoBase, changedFiles };
+  const repository = { ...repoBase, changedFiles, installerBaselineHashes: baseline?.installerSettings || null };
 
   const outDir = args.out
     ? await realpath(args.out).catch(() => args.out)

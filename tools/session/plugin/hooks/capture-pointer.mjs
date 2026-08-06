@@ -60,6 +60,24 @@ function gitBaseline(cwd) {
   }
 }
 
+// Record SHA-256 of the two plugin-installer-owned settings files IF present at
+// SessionStart. Capture later omits either from session evidence ONLY while its
+// content still matches this baseline — so the install's own writes are not
+// reported as session changes, while a genuine in-session edit is. Never throws:
+// a missing/unreadable file simply has no baseline (so it is never omitted).
+async function installerSettingsBaseline(cwd) {
+  const rels = [".claude/settings.json", ".claude/settings.local.json"];
+  const hashes = {};
+  for (const rel of rels) {
+    try {
+      hashes[rel] = sha256(await readFile(path.join(cwd, rel)));
+    } catch {
+      /* not present / unreadable — no baseline for this file */
+    }
+  }
+  return hashes;
+}
+
 async function main() {
   const raw = (await readStdin()).trim();
   if (!raw) process.exit(0);
@@ -81,10 +99,19 @@ async function main() {
 
   const pluginVersion = await readPluginVersion();
 
-  // SessionStart: record the immutable starting commit + dirty state, then exit.
+  // SessionStart: record the immutable starting commit + dirty state + installer
+  // settings baseline hashes, then exit.
   if (/SessionStart/i.test(eventName)) {
     const { baseRevision, dirty } = gitBaseline(cwd);
-    const baseline = { schemaVersion: 1, sessionId, baseRevision, dirty, ...(pluginVersion ? { pluginVersion } : {}) };
+    const installerSettings = await installerSettingsBaseline(cwd);
+    const baseline = {
+      schemaVersion: 1,
+      sessionId,
+      baseRevision,
+      dirty,
+      ...(Object.keys(installerSettings).length ? { installerSettings } : {}),
+      ...(pluginVersion ? { pluginVersion } : {}),
+    };
     await writeFile(path.join(dir, "start.json"), `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
     process.exit(0);
   }

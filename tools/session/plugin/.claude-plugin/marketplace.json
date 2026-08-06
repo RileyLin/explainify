@@ -3,6 +3,6 @@
   "owner": { "name": "Explainify" },
   "description": "Local single-plugin marketplace for the Explainify Session-to-Explain plugin.",
   "plugins": [
-    { "name": "explainify-session", "source": ".", "description": "Capture + locally explain a Claude Code session." }
+    { "name": "explainify-session", "source": ".", "description": "Capture + locally explain a Claude Code session; artifacts are written locally with no additional upload." }
   ]
 }
