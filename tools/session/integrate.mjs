@@ -22,6 +22,7 @@ import { buildBundleFromTranscript } from "./claude-adapter.mjs";
 import { transcriptTimeRange } from "./capture.mjs";
 import { stableStringify, sha256Of } from "./receipt.mjs";
 import { writeSessionArtifacts } from "../session-synthesis/session-synthesis.mjs";
+import { buildLatestPointer, writeLatestPointer } from "./latest-pointer.mjs";
 
 /**
  * Build the capture bundle from an already-read stable transcript, then run 1B
@@ -145,6 +146,32 @@ export async function captureAndSynthesize(a) {
   const lineageReceiptPath = path.join(a.outDir, "lineage-receipt.json");
   await writeFile(lineageReceiptPath, `${stableStringify(lineageReceipt)}\n`, "utf8");
 
+  // R6: write `.explainify/latest.json` — the "last VERIFIED artifact" pointer —
+  // ONLY now, after the whole lineage validated. Atomic (temp + rename) so a
+  // failed/partial run can never overwrite a good pointer, and a reader never sees
+  // a half-written file. Bind it to the repo root (not outDir) so recovery tooling
+  // has one well-known location. Bound to changeStorySha256 when this is a v2 run.
+  let latestPath = null;
+  const pointerRoot = a.repository?.root || a.session?.cwd;
+  if (pointerRoot) {
+    const outputRelDir = path.isAbsolute(a.outDir) && path.isAbsolute(pointerRoot)
+      ? path.relative(pointerRoot, a.outDir)
+      : a.outDir;
+    const pointer = buildLatestPointer({
+      lineage: { ...lineageReceipt, changeStorySha256: synth.receipt.changeStorySha256 },
+      outputRelDir,
+      completedAt: a.completedAt, // provenance only; may be undefined in deterministic paths
+    });
+    // Best-effort: the artifact/package/receipt are already written and verified.
+    // The latest pointer is a convenience/recovery aid, so a write failure (e.g. an
+    // unwritable root) must NOT undo an otherwise-verified run — we just omit it.
+    try {
+      latestPath = await writeLatestPointer(pointerRoot, pointer);
+    } catch {
+      latestPath = null;
+    }
+  }
+
   // Contract-shaped result: artifactPath is now the rendered local HTML (Phase 1C
   // fulfils the acceptance criterion that the tool returns the final artifact,
   // not only the bundle), while bundle/receipt lineage is retained.
@@ -156,6 +183,7 @@ export async function captureAndSynthesize(a) {
     bundlePath,
     captureReceiptPath,
     lineageReceiptPath,
+    ...(latestPath ? { latestPath } : {}),
     openCommand: synth.openCommand,
     checkpointId: synth.checkpointId,
     publication: bundle.privacy.publication,

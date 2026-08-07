@@ -40,6 +40,7 @@ const SOURCE_FILES = [
   "tools/session/safety.mjs",
   "tools/session/bundle-schema.mjs",
   "tools/session/change-story-schema.mjs",
+  "tools/session/latest-pointer.mjs",
   "tools/session-synthesis/change-story.mjs",
   "tools/session-synthesis/session-synthesis.mjs",
   "tools/workstream-brief/brief.mjs",

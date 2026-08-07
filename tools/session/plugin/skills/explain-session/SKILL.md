@@ -37,6 +37,11 @@ yet), so it is not a candidate. If more than one completed session exists, pass
    - optionally `session.id` to explain a specific completed session when more
      than one has been captured.
 
+   Trust the server's auto-select. Do **not** enumerate `.explainify/sessions/`
+   yourself or pass a `session.id` on the first attempt — call the tool with no
+   `session.id` and only supply one if the tool returns an explicit
+   "Multiple completed sessions…" ambiguity error naming the ids to choose from.
+
 3. The tool returns local paths to the final rendered explanation plus the
    capture bundle/receipt lineage:
 
@@ -49,13 +54,41 @@ yet), so it is not a candidate. If more than one completed session exists, pass
      "bundlePath": "…/bundle.json",
      "captureReceiptPath": "…/capture-receipt.json",
      "lineageReceiptPath": "…/lineage-receipt.json",
+     "latestPath": "…/.explainify/latest.json",
      "openCommand": "open …/index.html",
      "publication": "local_only"
    }
    ```
 
-   Open `artifactPath` (`index.html`) in a browser to read the explanation
-   (diagram + exact quotes). Everything is on the local filesystem.
+   Open `artifactPath` (`index.html`) in a browser to read the explanation. For a
+   v2 (Phase 1E) capture this is the **change story**: a first-viewport flow
+   overview (objective → steps → outcome) whose nodes are keyboard-selectable
+   (↑/↓ + Enter) and drill down to the exact before/after code that landed, the
+   verification runs, and any explicit unknowns. Everything is on the local
+   filesystem.
+
+4. **Emit one short completion line.** After the tool returns `status:"verified"`,
+   write a single confirmation line naming the artifact, e.g.
+   `Explained session <id> → <artifactPath> (verified, local_only).` This makes
+   success observable even if the surrounding turn is later cut off by a
+   stream-idle timeout — the line, plus `.explainify/latest.json`, is the durable
+   signal that the run completed.
+
+## Recovery (if a run seems to hang or the turn was cut off)
+
+The last **verified** artifact is always recorded atomically at
+`<repo>/.explainify/latest.json` — written only after the artifact, package, and
+receipt hashes validated, so it never points at a partial/failed attempt. To
+recover without re-running:
+
+1. Read `.explainify/latest.json`; it names `outputDir` and the bound
+   `artifactSha256` / `packageSha256` / `changeStorySha256` (and `checkpointId`).
+2. Open `outputDir/index.html`. If the file's hash no longer matches
+   `artifactSha256` the pointer is **stale** (the output was edited/regenerated
+   since it was verified) — re-run the tool to refresh it. A pointer whose own
+   `latestSha256` does not recompute has been **tampered** with; do not trust it.
+3. If `latest.json` is absent, no session has completed a verified render yet —
+   run the tool.
 
 ## Guarantees to tell the user
 
@@ -75,5 +108,22 @@ yet), so it is not a candidate. If more than one completed session exists, pass
 ## Boundary
 
 This skill captures the **evidence bundle** (Phase 1A) and renders the final
-explanation via the accepted Phase 1B synthesis (Phase 1C integration) — all
-local. It never calls a hosted API/model or publishes remotely.
+explanation via the accepted Phase 1B synthesis (Phase 1C integration), with the
+Phase 1E change story + code drill-down for v2 captures — all local. It never
+calls a hosted API/model or publishes remotely.
+
+## Setup & scope notes
+
+- **Target a git repository.** `repository.root` must be a git repo checkout;
+  the tool collects git evidence (changed files, revisions) and reads final file
+  content to confirm which edits actually landed.
+- **Project vs. shared caches.** Per-project settings (`.mcp.json`, the hook, the
+  plugin reference) are repo-local, but the marketplace/plugin **caches are shared
+  under `~/.claude`**. Removing the plugin from one project can invalidate another
+  project's discovery of it — if a second project stops finding the skill/MCP
+  server after you cleaned up the first, re-add the plugin there.
+- **Network, precisely.** Explainify makes **no hosted call** and writes only to
+  the local filesystem (`publication: local_only`). This is a scope statement
+  about Explainify's own behavior; Claude Code's own model/provider traffic and
+  ordinary `git` network operations still happen as usual. No packet-capture proof
+  is claimed — the guarantee is that this tool adds no upload of its own.

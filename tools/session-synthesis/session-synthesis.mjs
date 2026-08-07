@@ -231,6 +231,9 @@ export async function writeSessionArtifacts(input, outputDirectory) {
   await mkdir(outputDirectory, { recursive: true });
   const packageText = `${JSON.stringify(result.package, null, 2)}\n`;
   const htmlText = result.html;
+  // v2 packages carry a ChangeStory; bind its hash into the receipt so a tamper on
+  // the story is detectable through the same lineage chain as the package/artifact.
+  const changeStorySha256 = result.package.session?.changeStory?.provenance?.changeStorySha256;
   const receiptCore = {
     schemaVersion: 1,
     status: "verified",
@@ -238,6 +241,7 @@ export async function writeSessionArtifacts(input, outputDirectory) {
     packageSha256: sha256(packageText),
     artifactSha256: sha256(htmlText),
     sessionSha256: result.package.sessionSha256,
+    ...(changeStorySha256 ? { changeStorySha256 } : {}),
     publication: "local_only",
     files: { artifact: "index.html", package: "workstream-package.json", receipt: "receipt.json" },
   };
