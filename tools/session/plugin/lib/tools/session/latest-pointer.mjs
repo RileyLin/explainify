@@ -28,15 +28,30 @@ export function latestPath(root) {
   return path.join(root, ".explainify", "latest.json");
 }
 
+const HEX64 = /^[0-9a-f]{64}$/;
+// The exact, ordered set of core fields a pointer may carry (plus the optional
+// changeStorySha256). The reader rejects any unknown or missing field so a pointer
+// cannot smuggle extra state or omit a bound identity (blocker #2).
+const REQUIRED_CORE_FIELDS = [
+  "schemaVersion", "status", "sessionId", "checkpointId",
+  "bundleSha256", "packageSha256", "artifactSha256", "receiptSha256",
+  "lineageReceiptSha256", "outputDir", "completedAt", "files",
+];
+const OPTIONAL_CORE_FIELDS = ["changeStorySha256"];
+const REQUIRED_FILE_KEYS = ["artifact", "package", "htmlReceipt", "lineageReceipt"];
+
 /**
  * Build the canonical, self-binding latest pointer from a verified lineage.
- * `completedAt` MUST be supplied by the caller (no Date.now() in the runtime path
- * that must stay deterministic under test/resume). It is BOUND into the pointer
- * identity (finding #4): a reader that recomputes the self-hash will catch any
- * edit of the recorded completion time. When it is omitted (the deterministic
- * path), it is absent from the core and two such runs still compare equal.
+ * `completedAt` is MANDATORY (blocker #2) and BOUND into the pointer identity
+ * (finding #4): a reader recomputes the self-hash and catches any edit of the
+ * recorded completion time. The caller sources it deterministically (transcript
+ * endedAt), never Date.now(). Every identity/hash/file field is always present so
+ * the reader can reject a pointer that omits any of them.
  */
 export function buildLatestPointer({ lineage, outputRelDir, completedAt }) {
+  if (!completedAt || typeof completedAt !== "string") {
+    throw new Error("buildLatestPointer: completedAt (ISO string) is required");
+  }
   const core = {
     schemaVersion: LATEST_SCHEMA_VERSION,
     status: "verified",
@@ -51,7 +66,7 @@ export function buildLatestPointer({ lineage, outputRelDir, completedAt }) {
     lineageReceiptSha256: lineage.lineageReceiptSha256,
     outputDir: outputRelDir,
     // completedAt is bound provenance (finding #4): tampering it must be detected.
-    ...(completedAt ? { completedAt } : {}),
+    completedAt,
     files: {
       artifact: "index.html",
       package: "workstream-package.json",
@@ -78,16 +93,21 @@ function isSafeName(name) {
   );
 }
 
-// outputDir must be a relative path that stays under the repo root (no absolute
-// path, no `..` escape). Returns the resolved absolute dir, or null if unsafe.
-function safeOutputDir(root, outputDir) {
+// outputDir must be the run's own `.explainify/out/<sessionId>` subtree — a
+// relative path, no absolute path, no `..` escape, and exactly the expected
+// segments for this session (blocker #2). Returns the resolved absolute dir, or
+// null if it is anything else.
+function safeOutputDir(root, outputDir, sessionId) {
   if (typeof outputDir !== "string" || outputDir.length === 0) return null;
   if (path.isAbsolute(outputDir)) return null;
   const resolvedRoot = path.resolve(root);
   const resolved = path.resolve(resolvedRoot, outputDir);
   const rel = path.relative(resolvedRoot, resolved);
-  if (rel === "" ) return resolvedRoot;
   if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  // Constrain to the expected .explainify/out/<sessionId> location, not merely
+  // anywhere under the repo. Compare on normalized path segments.
+  const expected = path.join(".explainify", "out", String(sessionId || ""));
+  if (path.normalize(rel) !== path.normalize(expected)) return null;
   return resolved;
 }
 
@@ -138,22 +158,42 @@ export async function readLatestPointer(root) {
   if (sha256Of(stableStringify(core)) !== latestSha256) {
     return { present: true, ok: false, reason: "tampered" };
   }
-  // Shape/path integrity: the pointer may only name files under the repo's own
-  // output tree. An absolute or traversing outputDir, or a bound filename that is
-  // not a plain basename, is malformed — a self-consistent pointer that still
-  // tries to read outside the repo (finding #4).
-  const dir = safeOutputDir(root, pointer.outputDir);
+  // Strict shape: a self-consistent pointer must still carry EXACTLY the expected
+  // fields with the right types/values before any staleness check runs (blocker
+  // #2). Reject unknown or missing fields, a wrong schema/status, non-hex hashes,
+  // a missing/blank completedAt, or a malformed files map — fail closed.
+  const bad = (error) => ({ present: true, ok: false, reason: "malformed", error });
+  const coreKeys = Object.keys(core);
+  for (const k of coreKeys) {
+    if (!REQUIRED_CORE_FIELDS.includes(k) && !OPTIONAL_CORE_FIELDS.includes(k)) return bad(`unknown field "${k}"`);
+  }
+  for (const k of REQUIRED_CORE_FIELDS) {
+    if (!(k in core)) return bad(`missing required field "${k}"`);
+  }
+  if (core.schemaVersion !== LATEST_SCHEMA_VERSION) return bad(`unsupported schemaVersion ${core.schemaVersion}`);
+  if (core.status !== "verified") return bad(`status must be "verified" (a pointer is only written for a verified run)`);
+  if (typeof core.sessionId !== "string" || core.sessionId.length === 0) return bad("sessionId is required");
+  if (typeof core.checkpointId !== "string" || core.checkpointId.length === 0) return bad("checkpointId is required");
+  for (const hk of ["bundleSha256", "packageSha256", "artifactSha256", "receiptSha256", "lineageReceiptSha256"]) {
+    if (!HEX64.test(core[hk])) return bad(`${hk} must be a sha-256 hex string`);
+  }
+  if ("changeStorySha256" in core && !HEX64.test(core.changeStorySha256)) return bad("changeStorySha256 must be a sha-256 hex string");
+  if (typeof core.completedAt !== "string" || core.completedAt.length === 0) return bad("completedAt is required");
+
+  const files = core.files;
+  if (!files || typeof files !== "object" || Array.isArray(files)) return bad("files map is required");
+  for (const key of Object.keys(files)) {
+    if (!REQUIRED_FILE_KEYS.includes(key)) return bad(`unknown files entry "${key}"`);
+  }
+  for (const key of REQUIRED_FILE_KEYS) {
+    if (!isSafeName(files[key])) return bad(`files.${key} must be a plain filename under outputDir`);
+  }
+
+  // Path integrity: outputDir must be exactly this run's .explainify/out/<sessionId>
+  // subtree — not merely anywhere under the repo (blocker #2).
+  const dir = safeOutputDir(root, core.outputDir, core.sessionId);
   if (dir === null) {
-    return { present: true, ok: false, reason: "malformed", error: "outputDir must be a relative path under the repo root" };
-  }
-  const files = pointer.files;
-  if (!files || typeof files !== "object") {
-    return { present: true, ok: false, reason: "malformed", error: "files map is required" };
-  }
-  for (const key of ["artifact", "package", "htmlReceipt", "lineageReceipt"]) {
-    if (files[key] !== undefined && !isSafeName(files[key])) {
-      return { present: true, ok: false, reason: "malformed", error: `files.${key} must be a plain filename under outputDir` };
-    }
+    return bad("outputDir must be the run's .explainify/out/<sessionId> subtree");
   }
 
   // Staleness: verify each named on-disk output still matches what the pointer
@@ -198,19 +238,20 @@ export async function readLatestPointer(root) {
     return { core, self, obj };
   };
 
-  await checkFileContent(files.artifact, pointer.artifactSha256, "artifact (index.html)");
-  await checkFileContent(files.package, pointer.packageSha256, "package (workstream-package.json)");
+  await checkFileContent(files.artifact, core.artifactSha256, "artifact (index.html)");
+  await checkFileContent(files.package, core.packageSha256, "package (workstream-package.json)");
 
-  // HTML receipt: its recomputed self-hash must equal what the pointer bound, and
-  // its own package/artifact hashes must match the pointer's (a receipt swapped in
-  // from another run is stale even if internally self-consistent).
-  if (pointer.receiptSha256 && files.htmlReceipt) {
+  // HTML receipt: it is always bound (strict shape guaranteed it above), so its
+  // absence is a stale signal. Its recomputed self-hash must equal what the pointer
+  // bound, and its own package/artifact/story hashes must match — a receipt deleted
+  // or swapped in from another run is stale even if internally self-consistent.
+  {
     const r = await recomputeReceipt(files.htmlReceipt, "receiptSha256", "HTML receipt (receipt.json)");
     if (r) {
-      if (r.self !== pointer.receiptSha256) staleReasons.push("HTML receipt self-hash does not match the verified pointer");
-      if (r.core.packageSha256 !== pointer.packageSha256) staleReasons.push("HTML receipt no longer binds the verified package");
-      if (r.core.artifactSha256 !== pointer.artifactSha256) staleReasons.push("HTML receipt no longer binds the verified artifact");
-      if (pointer.changeStorySha256 && r.core.changeStorySha256 !== pointer.changeStorySha256) {
+      if (r.self !== core.receiptSha256) staleReasons.push("HTML receipt self-hash does not match the verified pointer");
+      if (r.core.packageSha256 !== core.packageSha256) staleReasons.push("HTML receipt no longer binds the verified package");
+      if (r.core.artifactSha256 !== core.artifactSha256) staleReasons.push("HTML receipt no longer binds the verified artifact");
+      if ("changeStorySha256" in core && r.core.changeStorySha256 !== core.changeStorySha256) {
         staleReasons.push("HTML receipt no longer binds the verified change story");
       }
     }
@@ -219,16 +260,16 @@ export async function readLatestPointer(root) {
   // Lineage receipt: recompute its self-hash, match it to the pointer, and confirm
   // its internal references still name the same bundle/package/artifact/html-receipt
   // and belong to the same session (a stale prior-session pointer is caught here).
-  if (pointer.lineageReceiptSha256 && files.lineageReceipt) {
+  {
     const l = await recomputeReceipt(files.lineageReceipt, "lineageReceiptSha256", "lineage receipt (lineage-receipt.json)");
     if (l) {
-      if (l.self !== pointer.lineageReceiptSha256) staleReasons.push("lineage receipt self-hash does not match the verified pointer");
-      if (l.core.bundleSha256 !== pointer.bundleSha256) staleReasons.push("lineage receipt no longer binds the verified bundle");
-      if (l.core.packageSha256 !== pointer.packageSha256) staleReasons.push("lineage receipt no longer binds the verified package");
-      if (l.core.artifactSha256 !== pointer.artifactSha256) staleReasons.push("lineage receipt no longer binds the verified artifact");
-      if (l.core.htmlReceiptSha256 !== pointer.receiptSha256) staleReasons.push("lineage receipt no longer binds the verified HTML receipt");
-      if (pointer.sessionId && l.core.sessionId !== pointer.sessionId) staleReasons.push("lineage receipt belongs to a different session (stale prior-session pointer)");
-      if (pointer.checkpointId && l.core.checkpointId !== pointer.checkpointId) staleReasons.push("lineage receipt names a different checkpoint (stale prior-session pointer)");
+      if (l.self !== core.lineageReceiptSha256) staleReasons.push("lineage receipt self-hash does not match the verified pointer");
+      if (l.core.bundleSha256 !== core.bundleSha256) staleReasons.push("lineage receipt no longer binds the verified bundle");
+      if (l.core.packageSha256 !== core.packageSha256) staleReasons.push("lineage receipt no longer binds the verified package");
+      if (l.core.artifactSha256 !== core.artifactSha256) staleReasons.push("lineage receipt no longer binds the verified artifact");
+      if (l.core.htmlReceiptSha256 !== core.receiptSha256) staleReasons.push("lineage receipt no longer binds the verified HTML receipt");
+      if (l.core.sessionId !== core.sessionId) staleReasons.push("lineage receipt belongs to a different session (stale prior-session pointer)");
+      if (l.core.checkpointId !== core.checkpointId) staleReasons.push("lineage receipt names a different checkpoint (stale prior-session pointer)");
     }
   }
 

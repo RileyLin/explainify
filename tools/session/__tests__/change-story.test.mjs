@@ -201,7 +201,35 @@ test("an observed_sequence edge missing an endpoint's evidence fails closed (fin
   story.provenance.changeStorySha256 = hashChangeStory(story);
   const { ok, errors } = validateChangeStory(story, bundle);
   assert.equal(ok, false);
-  assert.ok(errors.some((e) => /anchoring BOTH endpoints/.test(e)));
+  assert.ok(errors.some((e) => /exactly the two evidence anchors/.test(e)));
+});
+
+test("reordering story.steps without reordering the nodes fails closed (blocker #1)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  assert.ok(story.steps.length >= 2);
+  // Swap the first two steps but leave overview node order untouched, then rehash.
+  const tmp = story.steps[0];
+  story.steps[0] = story.steps[1];
+  story.steps[1] = tmp;
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /step-node order does not match story\.steps/.test(e)));
+});
+
+test("an observed_sequence edge whose refs are not its endpoint anchors fails closed (blocker #1)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const edge = story.overview.edges.find((e) => e.kind === "observed_sequence");
+  assert.ok(edge);
+  // Two copies of the objective ref: right count, wrong anchors.
+  const objRef = story.objective.evidence[0];
+  edge.evidence = [objRef, objRef];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must equal the "from" node's anchor evidence/.test(e)));
 });
 
 test("assertChangeStory rejects a tampered provenance.bundleSha256 (finding #3)", () => {

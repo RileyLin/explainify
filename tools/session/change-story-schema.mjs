@@ -180,13 +180,16 @@ export function validateChangeStory(story, bundle) {
       default: return null;
     }
   };
-  // A step/verification node's anchor position: the timeline position of its first
-  // evidence ref (the tool event, receipt, or diagnosis excerpt it stands for).
+  // A step/verification node's anchor is its FIRST evidence ref; its anchor
+  // position is that ref's slot in the attested timeline.
+  const anchorRefOfNode = (n) => (Array.isArray(n?.evidence) && n.evidence.length ? n.evidence[0] : null);
   const anchorPosOfNode = (n) => {
-    const ref = Array.isArray(n?.evidence) ? n.evidence[0] : null;
-    const key = orderKeyOfRef(ref);
+    const key = orderKeyOfRef(anchorRefOfNode(n));
     return key && posByKey.has(key) ? posByKey.get(key) : null;
   };
+  // Exact evidence-ref equality (type + id + hash) — an observed edge's refs must
+  // BE its endpoints' anchors, not merely two arbitrary refs of the right count.
+  const sameRef = (a, b) => isObj(a) && isObj(b) && a.type === b.type && a.ref === b.ref && a.sha256 === b.sha256;
 
   // Resolve one EvidenceRef: dangling id or hash drift both fail closed.
   const checkRef = (ref, path) => {
@@ -272,8 +275,16 @@ export function validateChangeStory(story, bundle) {
           } else if (!(fromPos < toPos)) {
             err(`${p}`, `observed_sequence must follow the attested order: "${e.from}" (pos ${fromPos}) does not precede "${e.to}" (pos ${toPos})`);
           }
-          if (!Array.isArray(e.evidence) || e.evidence.length < 2) {
-            err(`${p}.evidence`, "an observed_sequence edge must cite the evidence anchoring BOTH endpoints");
+          // The edge's two refs must BE the anchors of its endpoints, in order —
+          // not merely two refs of the right count. Two copies of an unrelated ref
+          // (e.g. the objective) no longer count as "proof" (blocker #1).
+          if (!Array.isArray(e.evidence) || e.evidence.length !== 2) {
+            err(`${p}.evidence`, "an observed_sequence edge must cite exactly the two evidence anchors of its endpoints");
+          } else {
+            const fromAnchor = anchorRefOfNode(fromNode);
+            const toAnchor = anchorRefOfNode(toNode);
+            if (!sameRef(e.evidence[0], fromAnchor)) err(`${p}.evidence[0]`, `must equal the "from" node's anchor evidence`);
+            if (!sameRef(e.evidence[1], toAnchor)) err(`${p}.evidence[1]`, `must equal the "to" node's anchor evidence`);
           }
         }
       });
@@ -348,11 +359,40 @@ export function validateChangeStory(story, bundle) {
     });
   }
 
-  // Every step node in the overview must reference an existing step, and vice versa.
-  if (isObj(ov) && Array.isArray(ov.nodes)) {
-    ov.nodes.forEach((n, i) => {
-      if (isObj(n) && n.kind === "step" && nonEmpty(n.stepId) && !stepIds.has(n.stepId)) {
-        err(`overview.nodes[${i}].stepId`, `references unknown step "${n.stepId}"`);
+  // Step nodes and story.steps must be a strict, order-matched bijection, and the
+  // steps must run monotonically forward along the attested timeline (blocker #1).
+  // A step node is any overview node carrying a stepId (kind step | verification).
+  // Without this, swapping story.steps[0]/[1] (and rehashing) would still validate
+  // while node selection shows the wrong panel.
+  if (isObj(ov) && Array.isArray(ov.nodes) && Array.isArray(story.steps)) {
+    const stepNodes = ov.nodes.filter((n) => isObj(n) && nonEmpty(n.stepId));
+    // Each step node must reference a real step.
+    for (const n of stepNodes) if (!stepIds.has(n.stepId)) err("overview", `step node references unknown step "${n.stepId}"`);
+    // Order-matched bijection: the stepId sequence must equal the story.steps id
+    // sequence exactly (same length, same members, same order).
+    const nodeStepIds = stepNodes.map((n) => n.stepId);
+    const storyStepIds = story.steps.map((s) => (isObj(s) ? s.id : ""));
+    if (nodeStepIds.length !== storyStepIds.length) {
+      err("overview.nodes", `step nodes (${nodeStepIds.length}) do not match story.steps (${storyStepIds.length}) one-to-one`);
+    } else {
+      for (let i = 0; i < storyStepIds.length; i += 1) {
+        if (nodeStepIds[i] !== storyStepIds[i]) {
+          err(`overview.nodes`, `step-node order does not match story.steps at index ${i}: node "${nodeStepIds[i]}" vs step "${storyStepIds[i]}"`);
+          break;
+        }
+      }
+    }
+    // Monotonic along the timeline: each step node's anchor must resolve and each
+    // must strictly follow the previous one's anchor position.
+    let prevPos = -1;
+    stepNodes.forEach((n, i) => {
+      const pos = anchorPosOfNode(n);
+      if (pos === null) {
+        err(`overview.nodes`, `step node "${n.stepId}" is not anchored in the bundle observedOrder timeline`);
+      } else if (!(pos > prevPos)) {
+        err(`overview.nodes`, `steps must run forward along the attested order; step node ${i} ("${n.stepId}", pos ${pos}) does not follow the previous (pos ${prevPos})`);
+      } else {
+        prevPos = pos;
       }
     });
   }

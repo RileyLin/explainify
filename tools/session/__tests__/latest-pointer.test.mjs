@@ -30,26 +30,27 @@ const LINEAGE = {
   changeStorySha256: "5".repeat(64),
   lineageReceiptSha256: "6".repeat(64),
 };
+// The only valid outputRelDir for LINEAGE.sessionId, and a completed timestamp;
+// both are now mandatory/strict (blocker #2).
+const OUT_REL = ".explainify/out/s1";
+const DONE_AT = "2026-08-07T10:05:00.000Z";
 
-test("buildLatestPointer binds completedAt into the self-hash (finding #4)", () => {
-  const a = buildLatestPointer({ lineage: LINEAGE, outputRelDir: ".explainify/out/s1", completedAt: "2026-08-07T10:00:00Z" });
-  const b = buildLatestPointer({ lineage: LINEAGE, outputRelDir: ".explainify/out/s1", completedAt: "2026-08-07T23:59:00Z" });
+test("buildLatestPointer binds completedAt into the self-hash and requires it (finding #4 / blocker #2)", () => {
+  const a = buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: "2026-08-07T10:00:00Z" });
+  const b = buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: "2026-08-07T23:59:00Z" });
   assert.equal(a.status, "verified");
   // completedAt is now part of the bound identity: a different time ⇒ a different
   // self-hash, so an edit of the recorded completion time is detectable.
   assert.notEqual(a.latestSha256, b.latestSha256, "the bound identity includes completedAt");
   assert.equal(a.completedAt, "2026-08-07T10:00:00Z");
-  // The deterministic path (no completedAt) is still stable and self-consistent.
-  const c = buildLatestPointer({ lineage: LINEAGE, outputRelDir: ".explainify/out/s1" });
-  const d = buildLatestPointer({ lineage: LINEAGE, outputRelDir: ".explainify/out/s1" });
-  assert.equal(c.latestSha256, d.latestSha256, "two completedAt-less runs compare equal");
-  assert.equal(c.completedAt, undefined);
+  // completedAt is MANDATORY now (blocker #2): omitting it fails closed.
+  assert.throws(() => buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL }), /completedAt/);
 });
 
 test("write is atomic (no leftover temp files) and read verifies a clean pointer", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-latest-"));
   try {
-    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "out" });
+    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT });
     const target = await writeLatestPointer(root, pointer);
     assert.equal(target, latestPath(root));
     const entries = await readdir(path.join(root, ".explainify"));
@@ -76,7 +77,7 @@ test("reader reports absent when there is no pointer", async () => {
 test("reader detects a TAMPERED pointer (self-hash no longer recomputes)", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-latest-"));
   try {
-    await writeLatestPointer(root, buildLatestPointer({ lineage: LINEAGE, outputRelDir: "out" }));
+    await writeLatestPointer(root, buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT }));
     const p = latestPath(root);
     const obj = JSON.parse(await readFile(p, "utf8"));
     obj.artifactSha256 = "0".repeat(64); // repoint without recomputing latestSha256
@@ -93,7 +94,7 @@ test("reader detects a MALFORMED pointer", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-latest-"));
   try {
     const p = latestPath(root);
-    await writeLatestPointer(root, buildLatestPointer({ lineage: LINEAGE, outputRelDir: "out" }));
+    await writeLatestPointer(root, buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT }));
     await writeFile(p, "{not json");
     const res = await readLatestPointer(root);
     assert.equal(res.ok, false);
@@ -107,7 +108,7 @@ test("reader flags STALENESS when an on-disk output no longer matches the verifi
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-latest-"));
   try {
     // Lay down real outputs whose hashes the pointer will bind.
-    const outRel = "out";
+    const outRel = OUT_REL;
     const outAbs = path.join(root, outRel);
     await rm(outAbs, { recursive: true, force: true });
     const { mkdir } = await import("node:fs/promises");
@@ -128,7 +129,7 @@ test("reader flags STALENESS when an on-disk output no longer matches the verifi
     const lineageReceipt = { ...lineageCore, lineageReceiptSha256: sha256Of(stableStringify(lineageCore)) };
     await writeFile(path.join(outAbs, "lineage-receipt.json"), `${JSON.stringify(lineageReceipt, null, 2)}\n`);
     const lineage = { ...LINEAGE, artifactSha256, packageSha256, htmlReceiptSha256: htmlReceipt.receiptSha256, lineageReceiptSha256: lineageReceipt.lineageReceiptSha256 };
-    await writeLatestPointer(root, buildLatestPointer({ lineage, outputRelDir: outRel }));
+    await writeLatestPointer(root, buildLatestPointer({ lineage, outputRelDir: outRel, completedAt: DONE_AT }));
     // Clean read: not stale.
     let res = await readLatestPointer(root);
     assert.equal(res.ok, true);
@@ -150,7 +151,7 @@ test("a failed run never overwrites a good pointer (best-effort write only on ve
   // unwritable root (simulating a failed attempt's environment).
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-latest-"));
   try {
-    const good = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "out" });
+    const good = buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT });
     await writeLatestPointer(root, good);
     const before = await readFile(latestPath(root), "utf8");
     // A failed attempt would not reach writeLatestPointer at all; simulate a
@@ -289,12 +290,12 @@ test("reader rejects a pointer whose outputDir escapes the repo via traversal (f
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
   try {
     // A self-consistent pointer whose outputDir tries to escape the repo root.
-    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "../../etc" });
+    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "../../etc", completedAt: DONE_AT });
     await writeLatestPointer(root, pointer);
     const res = await readLatestPointer(root);
     assert.equal(res.ok, false);
     assert.equal(res.reason, "malformed");
-    assert.match(res.error, /under the repo root/);
+    assert.match(res.error, /out\/<sessionId>/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -303,11 +304,84 @@ test("reader rejects a pointer whose outputDir escapes the repo via traversal (f
 test("reader rejects a pointer that names an absolute output path (finding #4)", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
   try {
-    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "/etc" });
+    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: "/etc", completedAt: DONE_AT });
     await writeLatestPointer(root, pointer);
     const res = await readLatestPointer(root);
     assert.equal(res.ok, false);
     assert.equal(res.reason, "malformed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader rejects an outputDir that is under the repo but NOT the run's session subtree (blocker #2)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    // A different session's subtree — under the repo, but not this pointer's.
+    const pointer = buildLatestPointer({ lineage: LINEAGE, outputRelDir: ".explainify/out/other-session", completedAt: DONE_AT });
+    await writeLatestPointer(root, pointer);
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, "malformed");
+    assert.match(res.error, /out\/<sessionId>/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader rejects a self-consistent pointer with an unknown extra field (blocker #2)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const core = { ...buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT }) };
+    delete core.latestSha256;
+    core.injected = "surprise"; // an unknown field
+    const { sha256Of, stableStringify } = await import("../receipt.mjs");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.dirname(latestPath(root)), { recursive: true });
+    const tampered = { ...core, latestSha256: sha256Of(stableStringify(core)) };
+    await writeFile(latestPath(root), `${JSON.stringify(tampered, null, 2)}\n`);
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, "malformed");
+    assert.match(res.error, /unknown field/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader rejects a self-consistent pointer with schemaVersion:999,status:failed (blocker #2)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const built = buildLatestPointer({ lineage: LINEAGE, outputRelDir: OUT_REL, completedAt: DONE_AT });
+    const { latestSha256, ...core } = built;
+    core.schemaVersion = 999;
+    core.status = "failed";
+    const { sha256Of, stableStringify } = await import("../receipt.mjs");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(path.dirname(latestPath(root)), { recursive: true });
+    const tampered = { ...core, latestSha256: sha256Of(stableStringify(core)) };
+    await writeFile(latestPath(root), `${JSON.stringify(tampered, null, 2)}\n`);
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, "malformed");
+    assert.match(res.error, /schemaVersion|status/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader treats deleted receipt files as fail-closed staleness, never ok:true stale:false (blocker #2)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const { outDir } = await runE2E(root);
+    const { rm: rmFile } = await import("node:fs/promises");
+    await rmFile(path.join(outDir, "receipt.json"), { force: true });
+    await rmFile(path.join(outDir, "lineage-receipt.json"), { force: true });
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, true, "the pointer itself is intact");
+    assert.equal(res.stale, true, "missing receipts must NOT read as fresh");
+    assert.ok(res.staleReasons.some((r) => /HTML receipt.*missing/.test(r)));
+    assert.ok(res.staleReasons.some((r) => /lineage receipt.*missing/.test(r)));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

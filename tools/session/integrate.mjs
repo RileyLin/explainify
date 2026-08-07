@@ -157,10 +157,15 @@ export async function captureAndSynthesize(a) {
     const outputRelDir = path.isAbsolute(a.outDir) && path.isAbsolute(pointerRoot)
       ? path.relative(pointerRoot, a.outDir)
       : a.outDir;
+    // completedAt is a MANDATORY bound field (blocker #2). Prefer the caller's
+    // value; otherwise fall back to the transcript's own endedAt/startedAt — an
+    // immutable, deterministic ISO timestamp from the evidence itself (never
+    // Date.now(), which the deterministic runtime forbids).
+    const completedAt = a.completedAt || timeRange.endedAt || timeRange.startedAt;
     const pointer = buildLatestPointer({
       lineage: { ...lineageReceipt, changeStorySha256: synth.receipt.changeStorySha256 },
       outputRelDir,
-      completedAt: a.completedAt, // provenance only; may be undefined in deterministic paths
+      completedAt,
     });
     // Best-effort: the artifact/package/receipt are already written and verified.
     // The latest pointer is a convenience/recovery aid, so a write failure (e.g. an
