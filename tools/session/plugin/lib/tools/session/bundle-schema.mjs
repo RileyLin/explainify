@@ -12,7 +12,17 @@
 
 import { createHash } from "node:crypto";
 
+// v1 is the original evidence bundle; v2 (Phase 1E) ADDS a hash-bound
+// `codeEvidence` collection (CodeExcerpt[]) derived by the adapter and joined to
+// repository.changedFiles. Both versions validate; a v1 bundle must NOT carry
+// codeEvidence, a v2 bundle MUST. The default emitted by the adapter is v2.
 export const BUNDLE_SCHEMA_VERSION = 1;
+export const BUNDLE_SCHEMA_VERSION_V2 = 2;
+export const SUPPORTED_BUNDLE_SCHEMA_VERSIONS = [BUNDLE_SCHEMA_VERSION, BUNDLE_SCHEMA_VERSION_V2];
+
+// CodeExcerpt classification (Phase 1E, R1/R2/R5).
+export const CODE_EXCERPT_KINDS = ["hunk", "full_file", "unsupported"];
+export const CODE_COMPLETENESS = ["landed", "superseded", "unknown"];
 
 export const EXCERPT_KINDS = [
   "user_requirement",
@@ -40,6 +50,16 @@ export const LIMITS = {
   maxExcerpts: 200,
   maxToolEvents: 200,
   maxReceipts: 100,
+  // Phase 1E code evidence (R2): an exact, bounded preimage of real code. A
+  // before/after that would exceed either bound is NOT clipped — the whole
+  // CodeExcerpt becomes kind:"unsupported" with a reason, so a truncated hunk is
+  // never presented as exact code. maxFieldChars still caps the field for the
+  // shared `bounded` check; these are the tighter, code-specific gates the
+  // adapter enforces before emission.
+  maxCodeExcerptBytes: 4000, // per before/after field, UTF-8 bytes
+  maxCodeExcerptLines: 120, // per before/after field, line count
+  maxCodeEvidenceBytes: 48 * 1024, // aggregate over all codeEvidence before/after
+  maxCodeExcerpts: 60,
 };
 
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -99,10 +119,37 @@ export function canonicalReceipt(rc) {
 }
 export const hashReceipt = (rc) => sha256(canonicalReceipt(rc));
 
+// CodeExcerpt hash binds EVERY semantic field (R3): a relabel of the path, the
+// completeness classification, the resolved symbol, either locator, or the
+// before/after code text invalidates the hash, so a tampered code story cannot
+// pass validation by keeping the text. Optional fields serialize as "" / null in
+// a fixed positional order so producer and consumer canonicalize identically.
+export function canonicalCodeExcerpt(c) {
+  return JSON.stringify([
+    "code_excerpt",
+    c.id ?? "",
+    c.toolEventId ?? "",
+    c.path ?? "",
+    c.changeStatus ?? "",
+    c.kind ?? "",
+    c.completeness ?? "",
+    c.before ?? "",
+    c.after ?? "",
+    c.symbol ?? "",
+    c.codeLocator ?? "",
+    c.transcriptLocator ?? "",
+    c.finalContentSha256 ?? "",
+    c.unknownReason ?? "",
+  ]);
+}
+export const hashCodeExcerpt = (c) => sha256(canonicalCodeExcerpt(c));
+
 // --- allowed key sets, for strict unknown-field rejection ---
 
 const KEYS = {
-  bundle: ["schemaVersion", "request", "session", "objective", "excerpts", "toolEvents", "repository", "receipts", "exclusions", "privacy"],
+  // `codeEvidence` is v2-only: required when schemaVersion===2, forbidden at v1.
+  bundle: ["schemaVersion", "request", "session", "objective", "excerpts", "toolEvents", "repository", "receipts", "exclusions", "privacy", "codeEvidence"],
+  codeExcerpt: ["id", "toolEventId", "path", "changeStatus", "kind", "completeness", "before", "after", "symbol", "codeLocator", "transcriptLocator", "finalContentSha256", "unknownReason", "sha256"],
   request: ["question", "audience"],
   audience: ["role", "technicalDepth"],
   session: ["id", "source", "captureEvent", "cwd", "transcriptSha256", "startedAt", "endedAt", "finalMessageSha256"],
@@ -140,9 +187,31 @@ export function validateBundle(bundle) {
     }
   };
 
+  // A repo-relative path is safe iff it is non-empty, uses forward slashes, is
+  // not absolute, and contains no `.`/`..` traversal segment. R3 requires the
+  // CodeExcerpt path to be a normalized repo-relative path with no traversal.
+  const isSafeRelPath = (p) => {
+    if (!nonEmpty(p)) return false;
+    if (p.includes("\\")) return false; // must be forward-slash normalized
+    if (p.startsWith("/")) return false; // absolute
+    if (/^[A-Za-z]:/.test(p)) return false; // windows drive
+    const segs = p.split("/");
+    return !segs.some((s) => s === "" || s === "." || s === "..");
+  };
+  const utf8 = (v) => (isStr(v) ? Buffer.byteLength(v, "utf8") : 0);
+  const lineCount = (v) => (isStr(v) && v.length ? v.split("\n").length : 0);
+
   if (!isObj(bundle)) return { ok: false, errors: ["bundle: not an object"] };
   strictKeys(bundle, KEYS.bundle, "bundle");
-  if (bundle.schemaVersion !== BUNDLE_SCHEMA_VERSION) err("schemaVersion", `must be ${BUNDLE_SCHEMA_VERSION}`);
+  const isV2 = bundle.schemaVersion === BUNDLE_SCHEMA_VERSION_V2;
+  if (!SUPPORTED_BUNDLE_SCHEMA_VERSIONS.includes(bundle.schemaVersion)) {
+    err("schemaVersion", `one of ${SUPPORTED_BUNDLE_SCHEMA_VERSIONS.join("|")}`);
+  }
+  // codeEvidence is v2-only. At v1 its mere presence is an unknown-field-style
+  // violation; at v2 it is required. This keeps the two shapes non-overlapping.
+  if (!isV2 && bundle.codeEvidence !== undefined) {
+    err("bundle.codeEvidence", "present only in schemaVersion 2");
+  }
 
   // request (caller context — NOT evidence)
   const rq = bundle.request;
@@ -179,6 +248,8 @@ export function validateBundle(bundle) {
 
   // Collect ids across excerpts/tools/receipts for uniqueness + reference checks.
   const excerptIds = new Set();
+  const toolEventIds = new Set(); // for the CodeExcerpt.toolEventId join (R3)
+  const changedFileByPath = new Map(); // path -> { status, sha256 } for the code join
   const allIds = new Set();
   const dupCheck = (id, path) => {
     if (!nonEmpty(id)) { err(`${path}.id`, "required"); return; }
@@ -217,6 +288,7 @@ export function validateBundle(bundle) {
       if (!isObj(t)) return err(p, "not an object");
       strictKeys(t, KEYS.toolEvent, p);
       dupCheck(t.id, p);
+      if (nonEmpty(t.id)) toolEventIds.add(t.id);
       if (!nonEmpty(t.toolName)) err(`${p}.toolName`, "required");
       if (!inSet(t.status, TOOL_STATUSES)) err(`${p}.status`, `one of ${TOOL_STATUSES.join("|")}`);
       if (!isStr(t.inputSummary)) err(`${p}.inputSummary`, "required string");
@@ -259,7 +331,90 @@ export function validateBundle(bundle) {
         if (!nonEmpty(c.path)) err(`${p}.path`, "required");
         if (!inSet(c.status, CHANGE_STATUSES)) err(`${p}.status`, `one of ${CHANGE_STATUSES.join("|")}`);
         if (c.sha256 !== undefined && !isHex(c.sha256)) err(`${p}.sha256`, "must be sha-256 hex when present");
+        if (nonEmpty(c.path)) changedFileByPath.set(c.path, { status: c.status, sha256: c.sha256 });
       });
+    }
+  }
+
+  // codeEvidence (v2, Phase 1E) — hash-bound CodeExcerpts derived by the adapter
+  // from successful Edit/Write tool events and joined to repository.changedFiles.
+  // Every field is bound by hashCodeExcerpt (R3); referential integrity is
+  // fail-closed: a dangling toolEventId, a path not in changedFiles, an inconsistent
+  // completeness/kind, or an over-limit before/after all reject the whole bundle.
+  if (isV2) {
+    if (!Array.isArray(bundle.codeEvidence)) {
+      err("codeEvidence", "required array in schemaVersion 2");
+    } else {
+      if (bundle.codeEvidence.length > LIMITS.maxCodeExcerpts) err("codeEvidence", `exceeds ${LIMITS.maxCodeExcerpts}`);
+      let aggregateBytes = 0;
+      bundle.codeEvidence.forEach((c, i) => {
+        const p = `codeEvidence[${i}]`;
+        if (!isObj(c)) return err(p, "not an object");
+        strictKeys(c, KEYS.codeExcerpt, p);
+        dupCheck(c.id, p);
+        // toolEventId must resolve to a selected tool event (no dangling ref).
+        if (!nonEmpty(c.toolEventId)) err(`${p}.toolEventId`, "required");
+        else if (!toolEventIds.has(c.toolEventId)) err(`${p}.toolEventId`, `dangling reference "${c.toolEventId}" (must resolve to a selected tool event)`);
+        // path must be a normalized repo-relative path AND join an actual changed file.
+        if (!isSafeRelPath(c.path)) err(`${p}.path`, "must be a normalized repo-relative path (no absolute/traversal/backslash)");
+        else if (!changedFileByPath.has(c.path)) err(`${p}.path`, `path "${c.path}" is not in repository.changedFiles (exact join required)`);
+        if (!inSet(c.changeStatus, CHANGE_STATUSES)) err(`${p}.changeStatus`, `one of ${CHANGE_STATUSES.join("|")}`);
+        else if (changedFileByPath.has(c.path) && changedFileByPath.get(c.path).status !== c.changeStatus) {
+          err(`${p}.changeStatus`, `must equal changedFiles["${c.path}"].status`);
+        }
+        if (!inSet(c.kind, CODE_EXCERPT_KINDS)) err(`${p}.kind`, `one of ${CODE_EXCERPT_KINDS.join("|")}`);
+        if (!inSet(c.completeness, CODE_COMPLETENESS)) err(`${p}.completeness`, `one of ${CODE_COMPLETENESS.join("|")}`);
+
+        // before/after bounds (R2): present iff kind !== unsupported; each within
+        // per-item byte + line limits; the aggregate within maxCodeEvidenceBytes.
+        for (const field of ["before", "after"]) {
+          const v = c[field];
+          if (v !== undefined) {
+            if (!isStr(v)) { err(`${p}.${field}`, "must be string when present"); continue; }
+            bounded(v, `${p}.${field}`);
+            if (utf8(v) > LIMITS.maxCodeExcerptBytes) err(`${p}.${field}`, `exceeds ${LIMITS.maxCodeExcerptBytes} UTF-8 bytes (must be unsupported, not clipped)`);
+            if (lineCount(v) > LIMITS.maxCodeExcerptLines) err(`${p}.${field}`, `exceeds ${LIMITS.maxCodeExcerptLines} lines (must be unsupported, not clipped)`);
+            aggregateBytes += utf8(v);
+          }
+        }
+        if (c.kind === "unsupported") {
+          if (c.before !== undefined || c.after !== undefined) err(`${p}`, "unsupported code excerpt must not carry before/after code");
+        } else {
+          // A supported hunk/full_file must carry the exact code it stands for.
+          if (!isStr(c.after)) err(`${p}.after`, "required for a supported code excerpt");
+          if (c.kind === "hunk" && !isStr(c.before)) err(`${p}.before`, "required for a hunk (the exact old_string)");
+        }
+
+        // completeness ↔ codeLocator/unknownReason coupling (R1/R5).
+        if (c.completeness === "landed") {
+          if (c.kind === "unsupported") err(`${p}`, "an unsupported excerpt cannot be classified landed");
+          if (!nonEmpty(c.codeLocator)) err(`${p}.codeLocator`, "required when completeness is landed (final file byte/line span)");
+        } else {
+          if (c.codeLocator !== undefined) err(`${p}.codeLocator`, "present only when completeness is landed");
+          if (!nonEmpty(c.unknownReason)) err(`${p}.unknownReason`, `required when completeness is "${c.completeness}"`);
+        }
+        if (c.kind === "unsupported" && !nonEmpty(c.unknownReason)) err(`${p}.unknownReason`, "required when kind is unsupported");
+
+        // transcriptLocator is mandatory (R5) and must not be reused as codeLocator.
+        if (!nonEmpty(c.transcriptLocator)) err(`${p}.transcriptLocator`, "required (jsonl pointer to the tool input)");
+        if (nonEmpty(c.codeLocator) && nonEmpty(c.transcriptLocator) && c.codeLocator === c.transcriptLocator) {
+          err(`${p}.codeLocator`, "a code locator must not borrow the transcript locator (R5)");
+        }
+        if (c.symbol !== undefined && !isStr(c.symbol)) err(`${p}.symbol`, "must be string when present");
+        // finalContentSha256, when present, must equal the joined changed file's hash.
+        if (c.finalContentSha256 !== undefined) {
+          if (!isHex(c.finalContentSha256)) err(`${p}.finalContentSha256`, "must be sha-256 hex when present");
+          else if (changedFileByPath.has(c.path)) {
+            const fileSha = changedFileByPath.get(c.path).sha256;
+            if (fileSha !== undefined && fileSha !== c.finalContentSha256) {
+              err(`${p}.finalContentSha256`, `must equal changedFiles["${c.path}"].sha256`);
+            }
+          }
+        }
+        if (!isHex(c.sha256)) err(`${p}.sha256`, "required sha-256 hex");
+        else if (c.sha256 !== hashCodeExcerpt(c)) err(`${p}.sha256`, "does not bind all CodeExcerpt fields (hash mismatch)");
+      });
+      if (aggregateBytes > LIMITS.maxCodeEvidenceBytes) err("codeEvidence", `aggregate before/after ${aggregateBytes} exceeds ${LIMITS.maxCodeEvidenceBytes} bytes`);
     }
   }
 

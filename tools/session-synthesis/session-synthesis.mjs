@@ -4,7 +4,11 @@ import { buildSourceManifest } from "../workstream-brief/freeze.mjs";
 import { buildCoverageReceipt } from "../workstream-brief/brief.mjs";
 import { scanOutput } from "../comprehension/evidence.mjs";
 import { sha256, stableStringify } from "../comprehension/util.mjs";
-import { assertBundle, canonicalReceipt } from "../session/bundle-schema.mjs";
+import { assertBundle, canonicalReceipt, BUNDLE_SCHEMA_VERSION_V2 } from "../session/bundle-schema.mjs";
+import {
+  buildChangeStory,
+  renderSessionHtmlV2,
+} from "./change-story.mjs";
 
 const RECEIPT_KINDS = new Set(["command_receipt", "test_receipt", "deployment_receipt", "raft_message", "raft_task_state"]);
 
@@ -172,17 +176,24 @@ export function synthesizeSession(input) {
     .map((item) => ({ id: item.id, kind: item.kind, text: item.text, role: item.role, locator: item.locator, sha256: item.sha256, sourceId: `excerpt:${item.id}` }));
   if (quotes.length < 2) fail("session explanation requires at least two useful selected quotes");
   const view = chooseView(bundle, sourceById);
+  // Phase 1E (v2): a bundle carrying hash-bound codeEvidence gets an additional
+  // ChangeStory — the evidence-linked visual story + code drill-down. It is built
+  // from the SAME validated bundle, every element re-bound to bundle evidence by
+  // assertChangeStory (fail closed). v1 bundles keep exactly the old shape/render.
+  const isV2 = bundle.schemaVersion === BUNDLE_SCHEMA_VERSION_V2;
+  const changeStory = isV2 ? buildChangeStory(bundle) : null;
   const session = {
-    schemaVersion: 1,
+    schemaVersion: isV2 ? 2 : 1,
     sessionId: bundle.session.id,
     question: bundle.request.question,
     audience: bundle.request.audience,
     quotes,
     view,
+    ...(changeStory ? { changeStory } : {}),
     privacy: bundle.privacy,
   };
   const pkg = {
-    packageVersion: 1,
+    packageVersion: isV2 ? 2 : 1,
     workstreamId,
     checkpointId: brief.checkpointId,
     brief,
@@ -193,7 +204,8 @@ export function synthesizeSession(input) {
     sessionSha256: sha256(stableStringify(session)),
   };
   scanOutput(stableStringify(pkg));
-  return { package: pkg, receipt: null, html: renderSessionHtml(pkg) };
+  const html = changeStory ? renderSessionHtmlV2(pkg, changeStory) : renderSessionHtml(pkg);
+  return { package: pkg, receipt: null, html };
 }
 
 function escapeHtml(value) {

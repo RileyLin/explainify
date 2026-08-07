@@ -39,6 +39,8 @@ const SOURCE_FILES = [
   "tools/session/receipt.mjs",
   "tools/session/safety.mjs",
   "tools/session/bundle-schema.mjs",
+  "tools/session/change-story-schema.mjs",
+  "tools/session-synthesis/change-story.mjs",
   "tools/session-synthesis/session-synthesis.mjs",
   "tools/workstream-brief/brief.mjs",
   "tools/workstream-brief/freeze.mjs",

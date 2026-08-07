@@ -471,3 +471,30 @@ export async function hashChangedFiles(root, changedFiles) {
   }
   return out;
 }
+
+// The largest final-file we read as text for landed-classification. Above this,
+// the file is not loaded (the CodeExcerpt classifies `unknown` for lack of final
+// content) — a bound on work, not a trust decision.
+const MAX_FINAL_CONTENT_BYTES = 512 * 1024;
+
+// Collect FINAL file text for the (Phase 1E) landed-classification join, keyed by
+// repo-relative path. This text is used ONLY to locate where an edit's exact
+// preimage landed (indexOf/unique span) — it is NEVER emitted into the bundle, so
+// the emitted code still comes from the secret-scanned transcript preimage. A
+// binary file (NUL byte), an oversized file, a deleted file, or an unreadable one
+// is simply omitted, and the adapter then classifies that change `unknown`.
+export async function collectFinalContent(root, changedFiles) {
+  const map = {};
+  for (const c of changedFiles) {
+    if (c.status === "deleted") continue;
+    try {
+      const buf = await readFile(path.join(root, c.path));
+      if (buf.length > MAX_FINAL_CONTENT_BYTES) continue; // too large to scan for a span
+      if (buf.includes(0)) continue; // binary
+      map[c.path] = buf.toString("utf8");
+    } catch {
+      // Unreadable → omit; the change classifies as unknown (no final content).
+    }
+  }
+  return map;
+}

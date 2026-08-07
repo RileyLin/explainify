@@ -24,14 +24,18 @@
 //  - Unknown/opaque payloads are excluded, not coerced into trusted evidence.
 //  - Deterministic for an immutable transcript + repository state.
 
+import path from "node:path";
+
 import { isDeniedPath, redact, scanClean } from "./safety.mjs";
 import {
   assertBundle,
-  BUNDLE_SCHEMA_VERSION,
+  BUNDLE_SCHEMA_VERSION_V2,
+  LIMITS as SCHEMA_LIMITS,
   hashExcerpt,
   hashToolInput,
   hashToolOutput,
   hashReceipt,
+  hashCodeExcerpt,
 } from "./bundle-schema.mjs";
 
 // Byte bounds keep any single excerpt readable and the whole bundle small.
@@ -511,6 +515,70 @@ function normalizeRel(p) {
     .replace(/^\.\//, "");
 }
 
+// --- Phase 1E CodeExcerpt derivation (R1/R2/R5) -----------------------------
+//
+// A CodeExcerpt is attested code evidence: it is derived ONLY from a successful
+// direct Edit/Write tool event (raw structured input, pre-truncation), joined to
+// an actual repository.changedFiles entry by NORMALIZED repo-relative path, and
+// classified against the FINAL file content. We never infer code or topology; an
+// event we cannot bind confidently becomes a visible `unknown`/`unsupported`
+// excerpt with a reason, never a guessed or clipped hunk.
+
+// Convert a tool-input file path (usually absolute) to a normalized repo-relative
+// path against the repository root, or null if it escapes the repo / can't be
+// resolved. This is the join key to repository.changedFiles.
+function toRepoRel(filePath, repoRoot) {
+  if (!filePath || typeof filePath !== "string") return null;
+  const raw = filePath.replace(/\\/g, "/");
+  let rel;
+  if (repoRoot) {
+    const abs = path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
+    rel = path.relative(repoRoot, abs);
+  } else {
+    // No root: only a already-relative path can be used, normalized.
+    if (path.isAbsolute(raw)) return null;
+    rel = raw;
+  }
+  rel = rel.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (rel === "" || rel === ".." || rel.startsWith("../") || path.isAbsolute(rel)) return null;
+  return rel;
+}
+
+// Find the UNIQUE line span (1-based, inclusive) of `snippet` inside `content`,
+// or a reason it is not landed. Returns { startLine, endLine } when snippet
+// occurs exactly once, else { reason }. Comparison is on exact text (the raw,
+// un-redacted preimage) so the span is faithful to the real file.
+function uniqueLineSpan(content, snippet) {
+  if (typeof content !== "string") return { reason: "final file content is unavailable, so the change cannot be confirmed landed" };
+  if (typeof snippet !== "string" || snippet.length === 0) return { reason: "the change carried no comparable text" };
+  const first = content.indexOf(snippet);
+  if (first < 0) return { reason: "the edited text is not present in the final file (a later change overwrote it)" };
+  const second = content.indexOf(snippet, first + 1);
+  if (second >= 0) return { reason: "the edited text appears more than once in the final file; a unique span cannot be bound" };
+  const startLine = content.slice(0, first).split("\n").length;
+  const endLine = startLine + (snippet.split("\n").length - 1);
+  return { startLine, endLine };
+}
+
+// Deterministic, syntax-aware unique-declaration rule (R5): return a symbol name
+// ONLY when the hunk's `after` text introduces exactly one unambiguous TOP-LEVEL
+// declaration; otherwise null (the UI then shows file + exact line span). The
+// match anchors at column 0 (optionally after `export`/`export default`) so a
+// declaration nested inside a function body (e.g. an indented `let slug`) is NOT
+// counted, and a literal token appearing inside a string/expression can never be
+// mistaken for a resolved symbol. If the hunk introduces two top-level
+// declarations, the symbol is ambiguous → null.
+const DECL_RE = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/;
+function extractSymbol(afterText) {
+  if (typeof afterText !== "string") return null;
+  const names = new Set();
+  for (const line of afterText.split("\n")) {
+    const m = DECL_RE.exec(line); // no leading-whitespace allowance → column 0 only
+    if (m) names.add(m[1]);
+  }
+  return names.size === 1 ? [...names][0] : null;
+}
+
 // Explainify's OWN output/pointer tree in the target repo. Writing it is a side
 // effect of running the tool, never user session work.
 function isInternalToolPath(p) {
@@ -751,6 +819,16 @@ export function buildBundleFromTranscript(args) {
           // the input hash binds status and a tool_result can change it.
           _useId: block?.id,
           _command: toolName === "Bash" ? (block?.input?.command ?? "") : "",
+          // Raw structured input for CodeExcerpt derivation (R2): captured BEFORE
+          // the 800-char inputSummary truncation, ONLY for direct Edit/Write (the
+          // supported code-change forms). MultiEdit/NotebookEdit are NOT candidates
+          // (R1) — they stay tool events with no code excerpt.
+          _codeInput:
+            toolName === "Edit"
+              ? { tool: "Edit", filePath: block?.input?.file_path, before: block?.input?.old_string, after: block?.input?.new_string }
+              : toolName === "Write"
+                ? { tool: "Write", filePath: block?.input?.file_path, after: block?.input?.content }
+                : null,
         };
         toolEvents.push(ev);
         continue;
@@ -902,6 +980,126 @@ export function buildBundleFromTranscript(args) {
     changedFiles.push(c);
   }
 
+  // --- Phase 1E: derive hash-bound CodeExcerpts (v2) ---
+  // Candidates are ONLY successful direct Edit/Write events (R1). Each is joined
+  // to an emitted changed file by normalized repo-relative path, classified
+  // landed/superseded/unknown against the final file content, secret-scanned, and
+  // byte/line bounded (R2). An event we cannot bind cleanly becomes a visible
+  // unknown/unsupported excerpt with a reason — never a guessed or clipped hunk.
+  const repoRoot = args.repository?.root || null;
+  const finalContent = args.repository?.finalContent || {}; // { [repoRelPath]: string }
+  const changedByPath = new Map(changedFiles.map((c) => [c.path, c]));
+  const codeEvidence = [];
+  let codeEvidenceBytes = 0;
+  let codeSeq = 0;
+
+  const emitCode = (fields) => {
+    const c = { id: `code-${codeSeq}`, ...fields };
+    c.sha256 = hashCodeExcerpt(c);
+    codeEvidence.push(c);
+  };
+
+  for (const ev of toolEvents) {
+    const ci = ev._codeInput;
+    if (!ci) continue; // not an Edit/Write
+    if (ev.status !== "succeeded") continue; // R1: only successful direct edits are candidates
+    const rel = toRepoRel(ci.filePath, repoRoot);
+    // The join is exact: the edited path must be one of the (post-filter) changed
+    // files. An edit to a path we did not emit as changed (denied, tool-owned,
+    // unchanged installer setting, or outside the diff) yields no code excerpt.
+    if (!rel || !changedByPath.has(rel)) continue;
+    if (codeEvidence.length >= SCHEMA_LIMITS.maxCodeExcerpts) {
+      addExclusion("code_excerpt_over_limit");
+      continue;
+    }
+    const changed = changedByPath.get(rel);
+    codeSeq += 1;
+    const base = {
+      toolEventId: ev.id,
+      path: rel,
+      changeStatus: changed.status,
+      transcriptLocator: ev.inputLocator,
+      ...(changed.sha256 ? { finalContentSha256: changed.sha256 } : {}),
+    };
+    const kind = ci.tool === "Edit" ? "hunk" : "full_file";
+
+    // R2: code evidence must be the EXACT, bounded, clean preimage — not a
+    // clipped or redacted approximation. Unlike a prose excerpt (which may be
+    // redacted and still useful), a hunk is presented as "the actual code that
+    // was implemented"; a redacted hunk (`«redacted»` in place of a token) would
+    // misrepresent the file. So we require the RAW text to already be clean (no
+    // redaction needed) AND within the byte/line limits; any failure → unsupported
+    // with a reason, never a clipped or redacted hunk shown as real code.
+    const cleanBounded = (text, label) => {
+      if (typeof text !== "string") return { unsupported: `${label} was not captured as text` };
+      if (isDeniedPath(text)) return { unsupported: `${label} referenced a denied path` };
+      if (!scanClean(text)) return { unsupported: `${label} held secret-shaped content and cannot be shown as exact code` };
+      if (Buffer.byteLength(text, "utf8") > SCHEMA_LIMITS.maxCodeExcerptBytes) return { unsupported: `${label} exceeds the ${SCHEMA_LIMITS.maxCodeExcerptBytes}-byte exact-code limit` };
+      if (text.length && text.split("\n").length > SCHEMA_LIMITS.maxCodeExcerptLines) return { unsupported: `${label} exceeds the ${SCHEMA_LIMITS.maxCodeExcerptLines}-line exact-code limit` };
+      return { text };
+    };
+
+    const afterRes = cleanBounded(ci.after, kind === "hunk" ? "new_string" : "file content");
+    const beforeRes = kind === "hunk" ? cleanBounded(ci.before, "old_string") : { text: undefined };
+    const unsupportedReason = afterRes.unsupported || beforeRes.unsupported;
+    if (unsupportedReason) {
+      emitCode({ ...base, kind: "unsupported", completeness: "unknown", unknownReason: unsupportedReason });
+      addExclusion("code_excerpt_unsupported");
+      continue;
+    }
+    const before = beforeRes.text;
+    const after = afterRes.text;
+    redactionCount += (afterRes.redactions || 0) + (beforeRes.redactions || 0);
+
+    // Aggregate byte budget across all before/after (R2).
+    const addBytes = Buffer.byteLength(after ?? "", "utf8") + Buffer.byteLength(before ?? "", "utf8");
+    if (codeEvidenceBytes + addBytes > SCHEMA_LIMITS.maxCodeEvidenceBytes) {
+      emitCode({ ...base, kind: "unsupported", completeness: "unknown", unknownReason: "aggregate code-evidence byte budget exhausted; exact code omitted" });
+      addExclusion("code_excerpt_unsupported");
+      continue;
+    }
+    codeEvidenceBytes += addBytes;
+
+    // R1: classify landed/superseded/unknown against the FINAL file content, and
+    // R5: record the unique final line span (codeLocator) only when landed.
+    // Classification compares the RAW preimage (ci.after) to the final content —
+    // NOT the redacted form — so redaction never changes where the code landed.
+    const symbol = extractSymbol(ci.after);
+    const finalText = Object.prototype.hasOwnProperty.call(finalContent, rel) ? finalContent[rel] : undefined;
+    let completeness;
+    let codeLocator;
+    let unknownReason;
+    if (changed.status === "deleted") {
+      completeness = "unknown";
+      unknownReason = "the file was deleted after this edit, so the edited text no longer exists to confirm";
+    } else if (finalText === undefined) {
+      completeness = "unknown";
+      unknownReason = "final file content was not available to confirm the edit landed";
+    } else {
+      const span = uniqueLineSpan(finalText, ci.after);
+      if (span.reason) {
+        completeness = span.reason.includes("overwrote") ? "superseded" : "unknown";
+        unknownReason = span.reason;
+      } else {
+        completeness = "landed";
+        codeLocator = `file:${rel}#L${span.startLine}-L${span.endLine}`;
+      }
+    }
+    emitCode({
+      ...base,
+      kind,
+      completeness,
+      ...(before !== undefined ? { before } : {}),
+      ...(after !== undefined ? { after } : {}),
+      ...(symbol ? { symbol } : {}),
+      ...(codeLocator ? { codeLocator } : {}),
+      ...(unknownReason ? { unknownReason } : {}),
+    });
+  }
+
+  // Strip the raw code-input join key now that codeEvidence is derived.
+  for (const ev of toolEvents) delete ev._codeInput;
+
   const exclusions = [...exclusionCounts.entries()]
     .map(([kind, count]) => ({ kind, count, reason: reasonFor(kind) }))
     .sort((a, b) => a.kind.localeCompare(b.kind));
@@ -919,7 +1117,7 @@ export function buildBundleFromTranscript(args) {
   };
 
   const bundle = {
-    schemaVersion: BUNDLE_SCHEMA_VERSION,
+    schemaVersion: BUNDLE_SCHEMA_VERSION_V2,
     request,
     session: {
       id: args.session.id,
@@ -948,6 +1146,7 @@ export function buildBundleFromTranscript(args) {
       secretScan: "pass", // every kept item passed scanClean; secret-bearing items were excluded
       publication: "local_only",
     },
+    codeEvidence,
   };
 
   assertBundle(bundle);
@@ -964,6 +1163,8 @@ function reasonFor(kind) {
     chatter_or_boilerplate: "Progress chatter / acknowledgement, not evidence.",
     excerpt_over_limit: "Excerpt count limit reached; remaining text excerpts omitted.",
     tool_event_over_limit: "Tool-event count limit reached; remaining tool events omitted.",
+    code_excerpt_over_limit: "Code-evidence count limit reached; remaining code changes omitted.",
+    code_excerpt_unsupported: "A code change could not be retained as exact bounded code (over-limit, secret-bearing, or budget-exhausted) and is shown as unsupported.",
     denied_path_tool: "Tool touched a denied path (.env/credential/key/cache/binary).",
     denied_changed_file: "Changed file is on a denied path.",
     meta_record: "Claude Code injected control record (isMeta) — a skill/agent system prompt, not user-authored evidence.",

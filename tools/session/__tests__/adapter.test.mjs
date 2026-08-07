@@ -28,7 +28,10 @@ test("produces a schema-valid bundle from a real-shaped transcript", () => {
   const bundle = buildFeature();
   const { ok, errors } = validateBundle(bundle);
   assert.equal(ok, true, errors.join("; "));
-  assert.equal(bundle.schemaVersion, 1);
+  // Phase 1E: the adapter now emits schemaVersion 2 with a hash-bound
+  // codeEvidence collection (a v1 bundle must not carry it; a v2 bundle must).
+  assert.equal(bundle.schemaVersion, 2);
+  assert.ok(Array.isArray(bundle.codeEvidence), "v2 bundle carries codeEvidence");
   assert.equal(bundle.session.source, "claude_code");
   assert.equal(bundle.privacy.publication, "local_only");
   assert.equal(bundle.privacy.secretScan, "pass");

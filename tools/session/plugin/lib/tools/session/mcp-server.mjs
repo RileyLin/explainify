@@ -25,6 +25,7 @@ import {
   readStableTranscript,
   collectRepository,
   hashChangedFiles,
+  collectFinalContent,
   outDir as sessionOutDir,
   assertSafeSessionId,
 } from "./capture.mjs";
@@ -92,10 +93,20 @@ async function runCapture(input) {
     baseline,
   });
   const changedFiles = await hashChangedFiles(root, repoBase.changedFiles);
+  // Final file text for Phase 1E landed-classification (used only to locate where
+  // an edit landed; never emitted — the emitted code comes from the secret-scanned
+  // transcript preimage).
+  const finalContent = await collectFinalContent(root, changedFiles);
   // Pass the SessionStart installer-settings baseline hashes through so the
   // adapter can omit ONLY unchanged installer settings (.claude/settings*.json)
   // from session evidence, while keeping genuine in-session .claude edits.
-  const repository = { ...repoBase, changedFiles, installerBaselineHashes: baseline?.installerSettings || null };
+  const repository = {
+    ...repoBase,
+    root,
+    changedFiles,
+    finalContent,
+    installerBaselineHashes: baseline?.installerSettings || null,
+  };
 
   const outDir = input.outputDirectory
     ? await realpath(input.outputDirectory).catch(() => input.outputDirectory)
