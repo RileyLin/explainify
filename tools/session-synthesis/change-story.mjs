@@ -48,6 +48,15 @@ function toolLabel(ev) {
   return detail ? `${name} ${detail}` : name;
 }
 
+// Just the friendly target (path/command) of a tool event, without the tool-name
+// prefix — used for prose that already names the tool, so we don't double it up
+// ("Apply a Edit change to Edit …").
+function toolTarget(ev) {
+  const full = toolLabel(ev);
+  const stripped = full.replace(/^\w+\s/, "");
+  return stripped && stripped !== ev.toolName ? stripped : "";
+}
+
 // Classify a tool event into a coarse activity verb for the step title.
 function activityVerb(ev) {
   switch (ev.toolName) {
@@ -176,12 +185,21 @@ export function buildChangeStory(bundle) {
       anchorPos: posOf.get(`tool_event:${ev.id}`),
       step: {
         id: `step:${ev.id}`,
-        title: `${activityVerb(ev)} ${toolLabel(ev).replace(/^\w+\s/, "") || ev.toolName}`.trim(),
+        // Prefer the clean repo-relative path for the title; a raw absolute tool
+        // path reads as noise and truncates. Fall back to the tool target/name.
+        title: `${activityVerb(ev)} ${codeChanges[0]?.path || toolTarget(ev) || ev.toolName}`.trim(),
         // We cannot prove which prompt caused THIS specific edit from adjacency
         // (R4), so the change step's intent is INFERRED and cites the tool input it
         // narrates — never an unrelated excerpt's text passed off as observed (#3).
         intent: {
-          text: `Apply a ${ev.toolName} change to ${toolLabel(ev)}.`,
+          text: (() => {
+            const verb = ev.toolName === "Write" ? "Write" : "Edit";
+            // Prefer the code change's clean repo-relative path (what the reader
+            // cares about) over the raw tool input, which may be a long absolute
+            // path; fall back to the tool target, then a generic phrasing.
+            const target = codeChanges[0]?.path || toolTarget(ev);
+            return target ? `${verb} ${target}.` : `${verb} a file.`;
+          })(),
           status: "inferred",
           evidence: [anchorRef],
         },

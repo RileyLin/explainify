@@ -13,7 +13,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, readFile, writeFile } from "node:fs/promises";
 
 import { captureAndSynthesize } from "./integrate.mjs";
 
@@ -97,15 +97,36 @@ async function main() {
   const outRoot = join(REPO, "docs", "product", "eval-artifacts", "phase-1e");
   await rm(outRoot, { recursive: true, force: true });
   for (const [name, make] of [["s1c-feature", s1c], ["s2-debug", s2]]) {
-    const outDir = join(outRoot, name);
-    // Use the artifact output dir as the pointer root so latest.json stays inside
-    // the committed sample tree (no writes outside docs/).
-    const a = make(outDir);
+    // Mirror the REAL runtime layout: each slice is its own sample "repo root"
+    // (kept inside docs/ so nothing is written outside the committed tree), and
+    // artifacts land in the run's own `.explainify/out/<sessionId>` subtree —
+    // exactly where a live capture writes them. This keeps latest.json readable
+    // under the stricter reader, which constrains outputDir to that subtree.
+    const sampleRoot = join(outRoot, name);
+    const outDir = join(sampleRoot, ".explainify", "out", name);
+    const a = make(sampleRoot);
     a.outDir = outDir;
-    a.repository.root = outDir;
-    a.session.cwd = outDir;
+    a.repository.root = sampleRoot;
+    a.session.cwd = sampleRoot;
     const res = await captureAndSynthesize(a);
     process.stdout.write(`${name}: ${res.status} → ${res.artifactPath}\n`);
+
+    // The runtime layout (.explainify/) is gitignored — generated output is not
+    // committed. So also emit a flat, tracked "as-a-reader-sees-it" text snapshot
+    // of the rendered artifact next to the prior v1 grader snapshots, giving PM +
+    // Riley a durable, reviewable v2 before/after without committing the runtime
+    // tree. This is the visible change-of-result evidence, not the build output.
+    const html = await readFile(res.artifactPath, "utf8");
+    const readable = html
+      .replace(/<style>[\s\S]*?<\/style>/g, "")
+      .replace(/<script>[\s\S]*?<\/script>/g, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n\s*\n\s*\n+/g, "\n\n")
+      .trim();
+    await writeFile(join(outRoot, `${name}_v2-artifact-as-seen-by-reader.txt`), readable + "\n", "utf8");
   }
 }
 
