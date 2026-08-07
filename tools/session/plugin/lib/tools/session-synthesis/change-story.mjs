@@ -107,148 +107,191 @@ export function buildChangeStory(bundle) {
     ? `The session changed ${changedCount} file(s); ${landedCount} code change(s) are confirmed present in the final tree` +
       (passCount || failCount ? `, with ${passCount} passing and ${failCount} failing verification run(s).` : ".")
     : "The session investigated the objective without a recorded file change.";
-  // Outcome evidence: the changed-file receipts + the final agent explanation, if any.
+  // Outcome is a DERIVED summary (counts across the evidence), not a single observed
+  // quote, so its claim status is "inferred" and the framing edge into it is
+  // "derived" — never asserted as an observed transition (finding #2).
   const finalExplanation = [...bundle.excerpts].reverse().find((e) => e.kind === "agent_explanation");
   const outcome = {
     text: outcomeText,
-    status: "observed",
+    status: "inferred",
     evidence: [
       ...bundle.receipts.slice(0, 3).map(refReceipt),
       ...(finalExplanation ? [refExcerpt(finalExplanation)] : []),
     ],
   };
 
-  // --- steps: one per successful change tool event, in observed (array) order ---
-  // R4: step ids derive from the immutable toolEvent id, not step-N enumeration.
-  const decisionExcerpt = bundle.excerpts.find((e) => e.kind === "agent_decision");
+  // The attested cross-type timeline is the ONLY order the capture proves; every
+  // step anchors to exactly one timeline item and the steps are ordered by that
+  // item's position, so the narrative order equals the observed order (findings
+  // #1/#2). posOf resolves an item's timeline position; a step whose anchor is not
+  // in the timeline is a builder bug and would fail assertChangeStory.
+  const posOf = new Map();
+  (bundle.observedOrder || []).forEach((o, i) => posOf.set(`${o.kind}:${o.id}`, i));
+
+  // --- steps, one per meaningful timeline item, in attested order ---
+  // R4: step ids derive from the immutable evidence id, not step-N enumeration.
   const errorExcerpt = bundle.excerpts.find((e) => e.kind === "error");
-  const steps = [];
+  const objectiveSourceId = bundle.objective.sourceId;
+  const finalExplanationId = finalExplanation ? finalExplanation.id : null;
   const CHANGE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+  const REASONING_KINDS = new Set(["agent_decision", "agent_explanation", "error", "unresolved"]);
+  // Each descriptor: { step, anchorRef, anchorPos }. anchorRef is the single
+  // EvidenceRef that ties the step (and its overview node) to its timeline slot.
+  const descriptors = [];
+
+  // (a) reasoning steps: a diagnosis/decision/error excerpt that carries the story
+  // forward (e.g. the S2 "the bug is (page-1)*pageSize" diagnosis). The objective
+  // source and the final explanation (cited by outcome) are NOT re-emitted as steps.
+  for (const e of bundle.excerpts) {
+    if (!REASONING_KINDS.has(e.kind)) continue;
+    if (e.id === objectiveSourceId || e.id === finalExplanationId) continue;
+    const anchorRef = refExcerpt(e);
+    const label = e.kind === "error" ? "Reported problem" : e.kind === "agent_decision" ? "Decision" : "Reasoning";
+    const quoted = e.text.slice(0, 200);
+    descriptors.push({
+      anchorRef,
+      anchorPos: posOf.get(`excerpt:${e.id}`),
+      step: {
+        id: `step:${e.id}`,
+        title: `${label}: ${e.text.slice(0, 64)}`.trim(),
+        // Observed intent: the text is quoted directly FROM the cited excerpt, so it
+        // is a substring of it — the honest "observed" case the validator enforces.
+        intent: { text: quoted, status: "observed", evidence: [anchorRef] },
+        toolActivity: [],
+        outcome: { text: `${label} recorded in the session.`, evidence: [anchorRef] },
+        unknowns: [],
+      },
+    });
+  }
+
+  // (b) change steps: one per successful direct Edit/Write, carrying the landed code.
   for (const ev of bundle.toolEvents) {
     if (ev.status !== "succeeded") continue;
     if (!CHANGE_TOOLS.has(ev.toolName)) continue;
     const codeChanges = (codeByToolEvent.get(ev.id) || []).filter((c) => c.completeness === "landed");
     const unsupportedOrUnknown = (codeByToolEvent.get(ev.id) || []).filter((c) => c.completeness !== "landed");
-    const rc = receiptsByLocator.get(ev.inputLocator);
-    // intent: we cannot prove which prompt caused this specific edit from adjacency
-    // (R4), so a step's intent is INFERRED from the change unless a decision excerpt
-    // is the only design rationale in the session (still labeled inferred — it is
-    // not a per-step causal claim). Observed intent would require a direct link.
-    const intentEvidence = [refToolInput(ev)];
-    const step = {
-      id: `step:${ev.id}`,
-      title: `${activityVerb(ev)} ${toolLabel(ev).replace(/^\w+\s/, "") || ev.toolName}`.trim(),
-      intent: {
-        text: decisionExcerpt
-          ? decisionExcerpt.text.slice(0, 200)
-          : `Apply a ${ev.toolName} change to ${toolLabel(ev)}.`,
-        status: "inferred",
-        evidence: intentEvidence,
-      },
-      toolActivity: [
-        {
-          toolName: ev.toolName,
-          status: ev.status,
-          summary: toolLabel(ev),
-          evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)],
+    const anchorRef = refToolInput(ev);
+    descriptors.push({
+      anchorRef,
+      anchorPos: posOf.get(`tool_event:${ev.id}`),
+      step: {
+        id: `step:${ev.id}`,
+        title: `${activityVerb(ev)} ${toolLabel(ev).replace(/^\w+\s/, "") || ev.toolName}`.trim(),
+        // We cannot prove which prompt caused THIS specific edit from adjacency
+        // (R4), so the change step's intent is INFERRED and cites the tool input it
+        // narrates — never an unrelated excerpt's text passed off as observed (#3).
+        intent: {
+          text: `Apply a ${ev.toolName} change to ${toolLabel(ev)}.`,
+          status: "inferred",
+          evidence: [anchorRef],
         },
-      ],
-      ...(codeChanges.length
-        ? { codeChange: codeChanges.map((c) => ({ ...c })) }
-        : {}),
-      ...(rc
-        ? {
-            verification: [
-              {
-                command: rc.command,
-                status: rc.status,
-                ...(rc.exitCode !== undefined ? { exitCode: rc.exitCode } : {}),
-                outputExcerpt: (rc.content || "").slice(0, 300),
-                evidence: [refReceipt(rc)],
-              },
-            ],
-          }
-        : {}),
-      outcome: {
-        text: codeChanges.length
-          ? `${codeChanges.length} landed code change(s) at ${codeChanges[0].path}.`
-          : `Change applied via ${ev.toolName}.`,
-        evidence: codeChanges.length ? codeChanges.map(refCode) : [refToolInput(ev)],
-      },
-      unknowns: unsupportedOrUnknown.map((c) => ({
-        text: `${c.path}: exact code not confirmed as landed`,
-        reason: c.unknownReason || "unconfirmed",
-      })),
-    };
-    steps.push(step);
-  }
-
-  // Verification-only steps: a failed→passed debugging arc has Bash receipts that
-  // are not tied to a change tool. Represent standalone receipts as their own steps
-  // so the S2 (debug) slice shows failed→diagnose→fix→passed. We attach receipts
-  // whose locator was NOT already consumed by a change step.
-  const usedReceiptLocators = new Set(
-    steps.flatMap((s) => (s.verification || []).map((v) => v.evidence?.[0]?.ref)).filter(Boolean),
-  );
-  for (const rc of bundle.receipts) {
-    if (usedReceiptLocators.has(rc.id)) continue;
-    steps.push({
-      id: `step:${rc.id}`,
-      title: `${rc.status === "failed" ? "Failing" : rc.status === "succeeded" ? "Passing" : "Ran"} check: ${rc.command}`.slice(0, 90),
-      intent: {
-        text: `Run \`${rc.command}\` to verify behavior.`,
-        status: "inferred",
-        evidence: [refReceipt(rc)],
-      },
-      toolActivity: [
-        { toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [refReceipt(rc)] },
-      ],
-      verification: [
-        {
-          command: rc.command,
-          status: rc.status,
-          ...(rc.exitCode !== undefined ? { exitCode: rc.exitCode } : {}),
-          outputExcerpt: (rc.content || "").slice(0, 300),
-          evidence: [refReceipt(rc)],
+        toolActivity: [
+          {
+            toolName: ev.toolName,
+            status: ev.status,
+            summary: toolLabel(ev),
+            evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)],
+          },
+        ],
+        ...(codeChanges.length ? { codeChange: codeChanges.map((c) => ({ ...c })) } : {}),
+        outcome: {
+          text: codeChanges.length
+            ? `${codeChanges.length} landed code change(s) at ${codeChanges[0].path}.`
+            : `Change applied via ${ev.toolName}.`,
+          evidence: codeChanges.length ? codeChanges.map(refCode) : [anchorRef],
         },
-      ],
-      outcome: {
-        text: rc.status === "failed" ? "Verification failed — a fix follows." : rc.status === "succeeded" ? "Verification passed." : "Verification outcome masked.",
-        evidence: [refReceipt(rc)],
+        unknowns: unsupportedOrUnknown.map((c) => ({
+          text: `${c.path}: exact code not confirmed as landed`,
+          reason: c.unknownReason || "unconfirmed",
+        })),
       },
-      unknowns: [],
     });
   }
 
-  // Re-sort steps into observed order: by the tool-event / receipt array position.
-  const orderOf = new Map();
-  bundle.toolEvents.forEach((ev, i) => orderOf.set(`step:${ev.id}`, i));
-  bundle.receipts.forEach((rc, i) => { if (!orderOf.has(`step:${rc.id}`)) orderOf.set(`step:${rc.id}`, bundle.toolEvents.length + i); });
-  steps.sort((a, b) => (orderOf.get(a.id) ?? 0) - (orderOf.get(b.id) ?? 0));
+  // (c) verification steps: each receipt is its own step, anchored at the receipt's
+  // timeline slot (immediately after its originating Bash event), so a failed→fix→
+  // passed debugging arc renders in its true order (finding #1).
+  for (const rc of bundle.receipts) {
+    const anchorRef = refReceipt(rc);
+    descriptors.push({
+      anchorRef,
+      anchorPos: posOf.get(`receipt:${rc.id}`),
+      step: {
+        id: `step:${rc.id}`,
+        title: `${rc.status === "failed" ? "Failing" : rc.status === "succeeded" ? "Passing" : "Ran"} check: ${rc.command}`.slice(0, 90),
+        intent: { text: `Run \`${rc.command}\` to verify behavior.`, status: "inferred", evidence: [anchorRef] },
+        toolActivity: [
+          { toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [anchorRef] },
+        ],
+        verification: [
+          {
+            command: rc.command,
+            status: rc.status,
+            ...(rc.exitCode !== undefined ? { exitCode: rc.exitCode } : {}),
+            outputExcerpt: (rc.content || "").slice(0, 300),
+            evidence: [anchorRef],
+          },
+        ],
+        outcome: {
+          text: rc.status === "failed" ? "Verification failed — a fix follows." : rc.status === "succeeded" ? "Verification passed." : "Verification outcome masked.",
+          evidence: [anchorRef],
+        },
+        unknowns: [],
+      },
+    });
+  }
 
-  // --- overview nodes + observed_sequence edges ---
+  // Order every step by its attested timeline position (findings #1/#2). A missing
+  // anchorPos would mean a step is not grounded in the observed order — treat as
+  // last and let assertChangeStory catch the resulting unprovable edge.
+  descriptors.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
+  const steps = descriptors.map((d) => d.step);
+
+  // --- overview nodes + edges ---
+  // Framing nodes (objective, outcome) bracket the observed steps; the edges INTO
+  // the first step and OUT to the outcome are "derived"/inferred (synthesis framing,
+  // not a proven transition). Only step→step edges are observed_sequence, each
+  // carrying the anchors of BOTH endpoints and validated against the attested order.
   const nodes = [];
   const edges = [];
   nodes.push({ id: "n:objective", kind: "objective", label: "Objective", evidence: objective.evidence });
-  let prev = "n:objective";
-  for (const step of steps) {
-    const nodeId = `n:${step.id}`;
-    const isVerify = (step.verification && step.verification.length && (!step.codeChange || !step.codeChange.length));
+  descriptors.forEach((d) => {
+    const step = d.step;
+    const isVerify = step.verification && step.verification.length && (!step.codeChange || !step.codeChange.length);
     nodes.push({
-      id: nodeId,
+      id: `n:${step.id}`,
       kind: isVerify ? "verification" : "step",
       label: step.title,
       stepId: step.id,
-      evidence: step.toolActivity[0]?.evidence?.slice(0, 1) || [],
+      evidence: [d.anchorRef],
     });
-    // observed_sequence: array order is the only order the capture proves (R4).
-    edges.push({ from: prev, to: nodeId, kind: "observed_sequence", relationshipStatus: "observed", evidence: [] });
-    prev = nodeId;
-  }
+  });
   nodes.push({ id: "n:outcome", kind: "outcome", label: "Outcome", evidence: outcome.evidence.slice(0, 1) });
-  edges.push({ from: prev, to: "n:outcome", kind: "observed_sequence", relationshipStatus: "observed", evidence: [] });
-  // Surface an error excerpt as an explicit unknown/risk node (not a causal edge).
-  if (errorExcerpt) {
+
+  if (descriptors.length) {
+    // objective → first step: derived framing (not observed).
+    edges.push({ from: "n:objective", to: `n:${descriptors[0].step.id}`, kind: "derived", relationshipStatus: "inferred", evidence: [] });
+    // step → step: observed_sequence, proven by the attested order.
+    for (let i = 0; i < descriptors.length - 1; i += 1) {
+      const from = descriptors[i];
+      const to = descriptors[i + 1];
+      edges.push({
+        from: `n:${from.step.id}`,
+        to: `n:${to.step.id}`,
+        kind: "observed_sequence",
+        relationshipStatus: "observed",
+        evidence: [from.anchorRef, to.anchorRef],
+      });
+    }
+    // last step → outcome: derived framing (not observed).
+    edges.push({ from: `n:${descriptors[descriptors.length - 1].step.id}`, to: "n:outcome", kind: "derived", relationshipStatus: "inferred", evidence: [] });
+  } else {
+    edges.push({ from: "n:objective", to: "n:outcome", kind: "derived", relationshipStatus: "inferred", evidence: [] });
+  }
+
+  // Surface an error excerpt as an explicit unknown/risk node (not a causal edge)
+  // only when it was not already promoted to a reasoning step above.
+  if (errorExcerpt && !descriptors.some((d) => d.step.id === `step:${errorExcerpt.id}`)) {
     nodes.push({ id: "n:risk", kind: "unknown", label: "Recorded error / risk", evidence: [refExcerpt(errorExcerpt)] });
   }
 

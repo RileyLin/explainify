@@ -241,3 +241,56 @@ test("validator rejects a landed excerpt missing its codeLocator", () => {
   assert.equal(ok, false);
   assert.ok(errors.some((e) => /codeLocator/.test(e)));
 });
+
+// --- observedOrder attested timeline (findings #1/#2) ---
+
+test("v2 bundle emits an observedOrder that is a bijection over every excerpt, tool event, and receipt", () => {
+  const bundle = landedBundle();
+  assert.ok(Array.isArray(bundle.observedOrder), "observedOrder is present on a v2 bundle");
+  const expected = bundle.excerpts.length + bundle.toolEvents.length + bundle.receipts.length;
+  assert.equal(bundle.observedOrder.length, expected, "one entry per attested item");
+  const seen = new Set();
+  for (const o of bundle.observedOrder) {
+    assert.ok(["excerpt", "tool_event", "receipt"].includes(o.kind));
+    const key = `${o.kind}:${o.id}`;
+    assert.ok(!seen.has(key), "no duplicate timeline entry");
+    seen.add(key);
+  }
+  // Every excerpt/toolEvent/receipt id resolves in the timeline.
+  for (const e of bundle.excerpts) assert.ok(seen.has(`excerpt:${e.id}`));
+  for (const t of bundle.toolEvents) assert.ok(seen.has(`tool_event:${t.id}`));
+  for (const r of bundle.receipts) assert.ok(seen.has(`receipt:${r.id}`));
+  assert.equal(validateBundle(bundle).ok, true);
+});
+
+test("validator forbids observedOrder on a v1 bundle", () => {
+  const v2 = landedBundle();
+  const asV1 = { ...v2, schemaVersion: 1 };
+  const { ok, errors } = validateBundle(asV1);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /observedOrder/.test(e)));
+});
+
+test("validator rejects an observedOrder with a dangling id", () => {
+  const bundle = landedBundle();
+  bundle.observedOrder = [...bundle.observedOrder, { kind: "excerpt", id: "excerpt-does-not-exist" }];
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /observedOrder/.test(e)));
+});
+
+test("validator rejects an observedOrder that is not a complete bijection (missing an item)", () => {
+  const bundle = landedBundle();
+  bundle.observedOrder = bundle.observedOrder.slice(1); // drop one entry
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /observedOrder/.test(e)));
+});
+
+test("validator rejects a duplicated observedOrder entry", () => {
+  const bundle = landedBundle();
+  bundle.observedOrder = [...bundle.observedOrder, bundle.observedOrder[0]];
+  const { ok, errors } = validateBundle(bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /observedOrder/.test(e)));
+});

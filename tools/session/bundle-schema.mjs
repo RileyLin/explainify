@@ -148,7 +148,8 @@ export const hashCodeExcerpt = (c) => sha256(canonicalCodeExcerpt(c));
 
 const KEYS = {
   // `codeEvidence` is v2-only: required when schemaVersion===2, forbidden at v1.
-  bundle: ["schemaVersion", "request", "session", "objective", "excerpts", "toolEvents", "repository", "receipts", "exclusions", "privacy", "codeEvidence"],
+  bundle: ["schemaVersion", "request", "session", "objective", "excerpts", "toolEvents", "repository", "receipts", "exclusions", "privacy", "codeEvidence", "observedOrder"],
+  observedOrderEntry: ["kind", "id"],
   codeExcerpt: ["id", "toolEventId", "path", "changeStatus", "kind", "completeness", "before", "after", "symbol", "codeLocator", "transcriptLocator", "finalContentSha256", "unknownReason", "sha256"],
   request: ["question", "audience"],
   audience: ["role", "technicalDepth"],
@@ -212,6 +213,10 @@ export function validateBundle(bundle) {
   if (!isV2 && bundle.codeEvidence !== undefined) {
     err("bundle.codeEvidence", "present only in schemaVersion 2");
   }
+  // observedOrder (the attested cross-type timeline) is likewise v2-only.
+  if (!isV2 && bundle.observedOrder !== undefined) {
+    err("bundle.observedOrder", "present only in schemaVersion 2");
+  }
 
   // request (caller context — NOT evidence)
   const rq = bundle.request;
@@ -249,6 +254,7 @@ export function validateBundle(bundle) {
   // Collect ids across excerpts/tools/receipts for uniqueness + reference checks.
   const excerptIds = new Set();
   const toolEventIds = new Set(); // for the CodeExcerpt.toolEventId join (R3)
+  const receiptIds = new Set(); // for the observedOrder bijection (findings #1/#2)
   const changedFileByPath = new Map(); // path -> { status, sha256 } for the code join
   const allIds = new Set();
   const dupCheck = (id, path) => {
@@ -440,7 +446,40 @@ export function validateBundle(bundle) {
       if (rc.outputLocator !== undefined && !nonEmpty(rc.outputLocator)) err(`${p}.outputLocator`, "must be non-empty when present");
       if (!isHex(rc.sha256)) err(`${p}.sha256`, "required sha-256 hex");
       else if (rc.sha256 !== hashReceipt(rc)) err(`${p}.sha256`, "does not bind canonical receipt (hash mismatch)");
+      if (nonEmpty(rc.id)) receiptIds.add(rc.id);
     });
+  }
+
+  // observedOrder (v2, findings #1/#2) — the single attested cross-type timeline.
+  // It MUST be a bijection over every kept excerpt, tool event, and receipt: each
+  // appears exactly once, no dangling id, no duplicate, none omitted. This is what
+  // makes the ChangeStory's observed_sequence edges provable — the story may only
+  // claim adjacency that this order supports, so the order itself must be complete
+  // and unambiguous or the whole bundle fails closed.
+  if (isV2) {
+    if (!Array.isArray(bundle.observedOrder)) {
+      err("observedOrder", "required array in schemaVersion 2");
+    } else {
+      const kindSets = { excerpt: excerptIds, tool_event: toolEventIds, receipt: receiptIds };
+      const seen = new Set();
+      bundle.observedOrder.forEach((o, i) => {
+        const p = `observedOrder[${i}]`;
+        if (!isObj(o)) return err(p, "not an object");
+        strictKeys(o, KEYS.observedOrderEntry, p);
+        const set = kindSets[o.kind];
+        if (!set) return err(`${p}.kind`, "one of excerpt|tool_event|receipt");
+        if (!nonEmpty(o.id)) return err(`${p}.id`, "required");
+        if (!set.has(o.id)) return err(p, `dangling ${o.kind} reference "${o.id}"`);
+        const key = `${o.kind}:${o.id}`;
+        if (seen.has(key)) err(p, `duplicate timeline entry for ${o.kind} "${o.id}"`);
+        seen.add(key);
+      });
+      // Completeness: every selected item must appear exactly once.
+      const expected = excerptIds.size + toolEventIds.size + receiptIds.size;
+      if (seen.size !== expected) {
+        err("observedOrder", `must list every excerpt/tool event/receipt exactly once (has ${seen.size}, expected ${expected})`);
+      }
+    }
   }
 
   // exclusions

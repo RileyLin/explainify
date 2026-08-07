@@ -21,6 +21,7 @@ import {
   hashReceipt,
   hashCodeExcerpt,
 } from "./bundle-schema.mjs";
+import { stableStringify } from "./receipt.mjs";
 
 export const CHANGE_STORY_SCHEMA_VERSION = 2;
 
@@ -29,9 +30,13 @@ export const VIEW_TYPES = ["workflow", "architecture", "sequence", "dataflow", "
 // Layout engine only (R4) — reused vocabulary from the web app's flow.ts.
 export const RENDER_HINTS = ["sequential", "graph", "hierarchy"];
 export const NODE_KINDS = ["objective", "step", "verification", "outcome", "unknown"];
-// Only observed_sequence is derivable from the current capture (R4); the others
-// are declared so a tampered story naming them without direct evidence fails.
-export const EDGE_KINDS = ["observed_sequence", "caused_by", "architecture", "dataflow"];
+// observed_sequence is the ONLY edge derivable-as-fact from the capture (R4): it
+// asserts that two step nodes are adjacent in the bundle's attested observedOrder.
+// "derived" connects the objective/outcome framing nodes to the observed steps —
+// those are synthesis framing, NOT a proven transition, so they are always
+// inferred, never observed. caused_by/architecture/dataflow are declared so a
+// tampered story naming them without direct evidence fails closed.
+export const EDGE_KINDS = ["observed_sequence", "derived", "caused_by", "architecture", "dataflow"];
 export const RELATIONSHIP_STATUSES = ["observed", "inferred", "unknown"];
 export const INTENT_STATUSES = ["observed", "inferred"];
 
@@ -149,6 +154,39 @@ export function validateChangeStory(story, bundle) {
   for (const rc of bundle.receipts ?? []) if (isObj(rc) && nonEmpty(rc.id)) resolvers.receipt.set(rc.id, hashReceipt(rc));
   const codeById = new Map();
   for (const c of bundle.codeEvidence ?? []) if (isObj(c) && nonEmpty(c.id)) { resolvers.code_excerpt.set(c.id, hashCodeExcerpt(c)); codeById.set(c.id, c); }
+  const excerptTextById = new Map();
+  for (const e of bundle.excerpts ?? []) if (isObj(e) && nonEmpty(e.id)) excerptTextById.set(e.id, e.text ?? "");
+
+  // Position of every attested item in the bundle's observedOrder timeline. This
+  // is the ONLY order the capture proves (findings #1/#2); observed_sequence edges
+  // and the step ordering are validated against it, so a reordered story fails.
+  const posByKey = new Map();
+  (Array.isArray(bundle.observedOrder) ? bundle.observedOrder : []).forEach((o, i) => {
+    if (isObj(o) && nonEmpty(o.kind) && nonEmpty(o.id)) posByKey.set(`${o.kind}:${o.id}`, i);
+  });
+  // Resolve an EvidenceRef to its observedOrder key, mapping ref types to timeline
+  // kinds (tool_input/tool_output → the tool event; code_excerpt → its tool event).
+  const orderKeyOfRef = (ref) => {
+    if (!isObj(ref) || !nonEmpty(ref.ref)) return null;
+    switch (ref.type) {
+      case "excerpt": return `excerpt:${ref.ref}`;
+      case "tool_input":
+      case "tool_output": return `tool_event:${ref.ref}`;
+      case "receipt": return `receipt:${ref.ref}`;
+      case "code_excerpt": {
+        const c = codeById.get(ref.ref);
+        return c && nonEmpty(c.toolEventId) ? `tool_event:${c.toolEventId}` : null;
+      }
+      default: return null;
+    }
+  };
+  // A step/verification node's anchor position: the timeline position of its first
+  // evidence ref (the tool event, receipt, or diagnosis excerpt it stands for).
+  const anchorPosOfNode = (n) => {
+    const ref = Array.isArray(n?.evidence) ? n.evidence[0] : null;
+    const key = orderKeyOfRef(ref);
+    return key && posByKey.has(key) ? posByKey.get(key) : null;
+  };
 
   // Resolve one EvidenceRef: dangling id or hash drift both fail closed.
   const checkRef = (ref, path) => {
@@ -181,6 +219,7 @@ export function validateChangeStory(story, bundle) {
   // overview topology
   const nodeIds = new Set();
   const stepIds = new Set();
+  const nodeById = new Map();
   const ov = story.overview;
   if (!isObj(ov)) {
     err("overview", "required object");
@@ -194,7 +233,7 @@ export function validateChangeStory(story, bundle) {
         const p = `overview.nodes[${i}]`;
         if (!isObj(n)) return err(p, "not an object");
         if (!nonEmpty(n.id)) err(`${p}.id`, "required");
-        else { if (nodeIds.has(n.id)) err(`${p}.id`, `duplicate node id "${n.id}"`); nodeIds.add(n.id); }
+        else { if (nodeIds.has(n.id)) err(`${p}.id`, `duplicate node id "${n.id}"`); nodeIds.add(n.id); nodeById.set(n.id, n); }
         if (!inSet(n.kind, NODE_KINDS)) err(`${p}.kind`, `one of ${NODE_KINDS.join("|")}`);
         if (!nonEmpty(n.label)) err(`${p}.label`, "required");
         if (n.stepId !== undefined && !nonEmpty(n.stepId)) err(`${p}.stepId`, "must be non-empty when present");
@@ -218,6 +257,25 @@ export function validateChangeStory(story, bundle) {
         if (!nodeIds.has(e.to)) err(`${p}.to`, `unknown node "${e.to}"`);
         if (e.from === e.to) err(`${p}`, "an edge must connect two distinct nodes");
         checkRefs(e.evidence, `${p}.evidence`);
+        // An observed_sequence edge is a PROVEN transition: both endpoints must be
+        // step/verification nodes anchored in the observedOrder timeline, it must
+        // carry evidence for BOTH endpoints, and the from-anchor MUST precede the
+        // to-anchor in that timeline. A reordered story (S2 emitted Edit before the
+        // failing check) therefore fails closed (findings #1/#2).
+        if (e.kind === "observed_sequence" && nodeIds.has(e.from) && nodeIds.has(e.to)) {
+          const fromNode = nodeById.get(e.from);
+          const toNode = nodeById.get(e.to);
+          const fromPos = anchorPosOfNode(fromNode);
+          const toPos = anchorPosOfNode(toNode);
+          if (fromPos === null || toPos === null) {
+            err(`${p}`, "an observed_sequence edge must connect two nodes anchored in the bundle observedOrder timeline");
+          } else if (!(fromPos < toPos)) {
+            err(`${p}`, `observed_sequence must follow the attested order: "${e.from}" (pos ${fromPos}) does not precede "${e.to}" (pos ${toPos})`);
+          }
+          if (!Array.isArray(e.evidence) || e.evidence.length < 2) {
+            err(`${p}.evidence`, "an observed_sequence edge must cite the evidence anchoring BOTH endpoints");
+          }
+        }
       });
     }
   }
@@ -240,8 +298,18 @@ export function validateChangeStory(story, bundle) {
       // intent: "observed" is only honest when it cites a quoted excerpt.
       checkClaim(s.intent, `${p}.intent`, { requireStatus: true, statusSet: INTENT_STATUSES });
       if (isObj(s.intent) && s.intent.status === "observed") {
-        const hasExcerpt = Array.isArray(s.intent.evidence) && s.intent.evidence.some((r) => isObj(r) && r.type === "excerpt");
-        if (!hasExcerpt) err(`${p}.intent`, "an observed intent must cite an excerpt (R4); mark it inferred otherwise");
+        const excerptRef = Array.isArray(s.intent.evidence) ? s.intent.evidence.find((r) => isObj(r) && r.type === "excerpt") : null;
+        if (!excerptRef) {
+          err(`${p}.intent`, "an observed intent must cite an excerpt (R4); mark it inferred otherwise");
+        } else if (excerptTextById.has(excerptRef.ref)) {
+          // The narrative text must actually come FROM the cited excerpt, not an
+          // unrelated ref (finding #3): the intent text must be a substring of the
+          // cited excerpt's text (the builder quotes a bounded prefix of it).
+          const src = excerptTextById.get(excerptRef.ref);
+          if (nonEmpty(s.intent.text) && !src.includes(s.intent.text)) {
+            err(`${p}.intent.text`, "an observed intent's text must be quoted from the excerpt it cites (finding #3)");
+          }
+        }
       }
       if (!Array.isArray(s.toolActivity)) err(`${p}.toolActivity`, "required array");
       else s.toolActivity.forEach((a, j) => {
@@ -311,6 +379,10 @@ export function validateChangeStory(story, bundle) {
     err("provenance", "required object");
   } else {
     if (!isHex(pv.bundleSha256)) err("provenance.bundleSha256", "required sha-256 hex");
+    // The story must bind the EXACT bundle it was built from (finding #3): recompute
+    // the canonical bundle hash and require it to match, so a story cannot be paired
+    // with a different (or tampered) bundle while still validating.
+    else if (pv.bundleSha256 !== sha256(stableStringify(bundle))) err("provenance.bundleSha256", "does not bind the source bundle (hash mismatch)");
     if (!isHex(pv.changeStorySha256)) err("provenance.changeStorySha256", "required sha-256 hex");
     else if (pv.changeStorySha256 !== hashChangeStory(story)) err("provenance.changeStorySha256", "does not bind the change story (hash mismatch)");
   }

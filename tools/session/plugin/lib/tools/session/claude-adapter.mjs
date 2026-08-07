@@ -674,6 +674,12 @@ export function buildBundleFromTranscript(args) {
   let objectiveExcerptId = null;
   let excerptSeq = 0;
   let toolSeq = 0;
+  // A single monotonic counter stamped on every kept excerpt AND tool event as it
+  // is appended, in transcript order. This is the ONLY attested cross-type order
+  // the capture proves; the emitted `observedOrder` timeline (v2) is derived from
+  // it, and the ChangeStory's observed_sequence edges are validated against it so a
+  // reordered story fails closed (Phase 1E findings #1/#2).
+  let orderSeq = 0;
 
   for (const { obj } of records) {
     const type = obj?.type;
@@ -748,6 +754,7 @@ export function buildBundleFromTranscript(args) {
               locator: `jsonl:${uuid}#content[${b}]`,
             };
             ex.sha256 = hashExcerpt(ex);
+            ex._seq = orderSeq++;
             excerpts.push(ex);
             continue;
           }
@@ -777,6 +784,7 @@ export function buildBundleFromTranscript(args) {
           locator: `jsonl:${uuid}#content[${b}]`,
         };
         ex.sha256 = hashExcerpt(ex);
+        ex._seq = orderSeq++;
         excerpts.push(ex);
         continue;
       }
@@ -829,6 +837,8 @@ export function buildBundleFromTranscript(args) {
               : toolName === "Write"
                 ? { tool: "Write", filePath: block?.input?.file_path, after: block?.input?.content }
                 : null,
+          // Attested transcript position (see orderSeq); stripped before emit.
+          _seq: orderSeq++,
         };
         toolEvents.push(ev);
         continue;
@@ -907,6 +917,10 @@ export function buildBundleFromTranscript(args) {
       ...(ev.outputLocator ? { outputLocator: ev.outputLocator } : {}),
     };
     rc.sha256 = hashReceipt(rc);
+    // A derived receipt is the verification outcome OF this Bash tool event; it
+    // occupies the same attested transcript position, so the observedOrder timeline
+    // places it immediately after its originating event (findings #1/#2).
+    rc._originSeq = ev._seq;
     receipts.push(rc);
   }
 
@@ -932,14 +946,37 @@ export function buildBundleFromTranscript(args) {
       ...(rc.outputLocator ? { outputLocator: rc.outputLocator } : {}),
     };
     out.sha256 = hashReceipt(out);
+    // An externally-collected receipt has no originating in-transcript Bash event;
+    // it is appended to the timeline after every in-transcript item, in the order
+    // supplied. orderSeq has already advanced past every excerpt/tool event, so
+    // reusing it here keeps external receipts strictly last and mutually ordered.
+    out._originSeq = orderSeq++;
     receipts.push(out);
   }
 
-  // Strip internal join keys before emitting.
+  // --- Phase 1E (findings #1/#2): the attested observed-order timeline ---
+  // ONE total order over every kept excerpt, tool event, and receipt, derived
+  // strictly from the transcript position each was stamped with — never from a
+  // guessed causal topology. A receipt sits immediately AFTER its originating tool
+  // event (odd key = originSeq*2+1) while excerpts/tool events take the even slot
+  // (seq*2), so a failed Bash → Edit → passed Bash session serializes in its true
+  // order. The ChangeStory may only assert observed_sequence between items adjacent
+  // in THIS timeline; a reordered story fails validation.
+  const timeline = [
+    ...excerpts.map((e) => ({ kind: "excerpt", id: e.id, key: e._seq * 2 })),
+    ...toolEvents.map((t) => ({ kind: "tool_event", id: t.id, key: t._seq * 2 })),
+    ...receipts.map((rc) => ({ kind: "receipt", id: rc.id, key: rc._originSeq * 2 + 1 })),
+  ].sort((a, b) => a.key - b.key);
+  const observedOrder = timeline.map((t) => ({ kind: t.kind, id: t.id }));
+
+  // Strip internal join/order keys before emitting.
   for (const ev of toolEvents) {
     delete ev._useId;
     delete ev._command;
+    delete ev._seq;
   }
+  for (const ex of excerpts) delete ex._seq;
+  for (const rc of receipts) delete rc._originSeq;
 
   // Observed objective: the first user requirement, else the first selected
   // excerpt of any kind (so sourceId always resolves). A session with zero
@@ -1147,6 +1184,8 @@ export function buildBundleFromTranscript(args) {
       publication: "local_only",
     },
     codeEvidence,
+    // v2 attested cross-type order (findings #1/#2): the single provable timeline.
+    observedOrder,
   };
 
   assertBundle(bundle);

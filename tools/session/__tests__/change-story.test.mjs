@@ -74,10 +74,20 @@ test("S1c feature slice: story is workflow/sequential with landed code steps + a
   assert.ok(slugStep.codeChange.some((c) => c.symbol === "slugify"));
   // A verification step reflects the passing node test.
   assert.ok(story.steps.some((s) => (s.verification || []).some((v) => v.status === "succeeded")));
-  // Overview begins at objective, ends at outcome, all edges observed_sequence.
+  // Overview begins at objective, ends at outcome. The objective→first and
+  // last→outcome framing edges are DERIVED/inferred (synthesis framing, not a
+  // proven transition); only step→step edges are observed_sequence and each of
+  // those carries evidence for BOTH endpoints (findings #1/#2).
   assert.equal(story.overview.nodes[0].kind, "objective");
   assert.equal(story.overview.nodes[story.overview.nodes.length - 1].kind, "outcome");
-  assert.ok(story.overview.edges.every((e) => e.kind === "observed_sequence" && e.relationshipStatus === "observed"));
+  const framing = story.overview.edges.filter((e) => e.from === "n:objective" || e.to === "n:outcome");
+  assert.ok(framing.length >= 2, "objective and outcome are connected by framing edges");
+  assert.ok(framing.every((e) => e.kind === "derived" && e.relationshipStatus === "inferred"), "framing edges are derived/inferred, never observed");
+  const seq = story.overview.edges.filter((e) => e.kind === "observed_sequence");
+  assert.ok(seq.length >= 1, "at least one observed step→step transition");
+  assert.ok(seq.every((e) => e.relationshipStatus === "observed" && Array.isArray(e.evidence) && e.evidence.length >= 2), "observed edges cite both endpoints");
+  // outcome is a DERIVED summary, not a single observed quote.
+  assert.equal(story.outcome.status, "inferred");
   // Fully valid against its bundle.
   assert.equal(validateChangeStory(story, bundle).ok, true);
 });
@@ -141,6 +151,80 @@ test("S2 debug slice: viewType sequence, a failed then a passed verification, an
   const html = renderSessionHtmlV2({ workstreamId: "s2", checkpointId: "c", brief: {} }, story);
   assert.match(html, /badge failed/);
   assert.match(html, /badge succeeded/);
+});
+
+test("S2 debug slice: steps follow the attested order failedCheck → diagnosis → fix → passedCheck (finding #1)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  // The diagnosis excerpt ("the bug is ... (page-1)*pageSize") becomes a reasoning
+  // step, sitting BETWEEN the failing check and the landed fix (finding #2).
+  const diagIdx = story.steps.findIndex((s) => s.intent.status === "observed" && /page-1|0-indexed/.test(s.intent.text));
+  assert.ok(diagIdx >= 0, "the diagnosis is emitted as an observed-intent reasoning step");
+  const failIdx = story.steps.findIndex((s) => (s.verification || []).some((v) => v.status === "failed"));
+  const fixIdx = story.steps.findIndex((s) => (s.codeChange || []).some((c) => c.path === "paginate.js"));
+  const passIdx = story.steps.findIndex((s) => (s.verification || []).some((v) => v.status === "succeeded"));
+  assert.ok(failIdx >= 0 && fixIdx >= 0 && passIdx >= 0);
+  // TRUE order: failing check first, then diagnosis, then the fix, then passing check.
+  assert.ok(failIdx < diagIdx, "failing check precedes the diagnosis");
+  assert.ok(diagIdx < fixIdx, "the diagnosis precedes the fix (not the old Edit-first order)");
+  assert.ok(fixIdx < passIdx, "the fix precedes the passing check");
+  // The diagnosis intent is quoted verbatim from its excerpt (observed, not invented).
+  const diagStep = story.steps[diagIdx];
+  const cited = diagStep.intent.evidence.find((r) => r.type === "excerpt");
+  const srcExcerpt = bundle.excerpts.find((e) => e.id === cited.ref);
+  assert.ok(srcExcerpt.text.includes(diagStep.intent.text), "diagnosis text is a substring of the cited excerpt");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("a reordered observed_sequence edge fails closed against the attested order (findings #1/#2)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  // Find a real step→step observed edge and reverse its endpoints. The reversed
+  // transition contradicts the bundle observedOrder, so it must fail.
+  const edge = story.overview.edges.find((e) => e.kind === "observed_sequence");
+  assert.ok(edge, "there is an observed_sequence edge to reverse");
+  const from = edge.from, to = edge.to, ev = edge.evidence;
+  edge.from = to;
+  edge.to = from;
+  edge.evidence = [ev[1], ev[0]];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must follow the attested order/.test(e)));
+});
+
+test("an observed_sequence edge missing an endpoint's evidence fails closed (finding #2)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const edge = story.overview.edges.find((e) => e.kind === "observed_sequence");
+  edge.evidence = [edge.evidence[0]]; // drop the second endpoint's anchor
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /anchoring BOTH endpoints/.test(e)));
+});
+
+test("assertChangeStory rejects a tampered provenance.bundleSha256 (finding #3)", () => {
+  const bundle = s1cBundle();
+  const story = buildChangeStory(bundle);
+  story.provenance.bundleSha256 = "f".repeat(64);
+  // Note: changeStorySha256 is NOT recomputed here on purpose — provenance is
+  // outside the story hash, so tampering bundleSha256 must be caught on its own.
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /does not bind the source bundle/.test(e)));
+});
+
+test("assertChangeStory rejects an observed intent whose text is not quoted from its excerpt (finding #3)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const diagStep = story.steps.find((s) => s.intent.status === "observed" && s.intent.evidence.some((r) => r.type === "excerpt"));
+  assert.ok(diagStep, "there is an observed-intent step");
+  diagStep.intent.text = "A claim that appears in no excerpt whatsoever.";
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must be quoted from the excerpt it cites/.test(e)));
 });
 
 // --- fail-closed tamper surface (assertChangeStory) ---
