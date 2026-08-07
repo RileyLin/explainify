@@ -449,6 +449,39 @@ export function validateChangeStory(story, bundle) {
         prevPos = pos;
       }
     });
+
+    // ADJACENCY (task #38 blocker): the per-edge check above only proves each
+    // observed_sequence edge points forward — it does NOT prove the observed edges
+    // form the complete, gap-free chain of the story. Without this, a recomputed
+    // story could rewire an observed edge from step 0 straight to step 2, cite both
+    // exact endpoint anchors, skip the diagnosis step entirely, and still validate.
+    // Require the observed_sequence edge SET to equal EXACTLY the consecutive
+    // step-node pairs: one edge per adjacent pair, none skipped, duplicated, or
+    // extra. (Non-observed derived/inferred edges — objective→first, last→outcome —
+    // are unconstrained here; only proven transitions must be exact.)
+    if (Array.isArray(ov.edges)) {
+      const observed = ov.edges.filter((e) => isObj(e) && e.kind === "observed_sequence");
+      const expected = [];
+      for (let i = 0; i < stepNodes.length - 1; i += 1) {
+        expected.push(`${stepNodes[i].id}→${stepNodes[i + 1].id}`);
+      }
+      const expectedSet = new Set(expected);
+      const seen = new Set();
+      for (const e of observed) {
+        const key = `${e.from}→${e.to}`;
+        if (!expectedSet.has(key)) {
+          err("overview.edges", `observed_sequence edge "${key}" is not a consecutive step-node pair — observed edges may not skip steps or connect non-adjacent nodes (task #38)`);
+        } else if (seen.has(key)) {
+          err("overview.edges", `observed_sequence edge "${key}" is duplicated — each adjacent step pair must be proven exactly once (task #38)`);
+        }
+        seen.add(key);
+      }
+      for (const key of expected) {
+        if (!seen.has(key)) {
+          err("overview.edges", `missing observed_sequence edge for adjacent step pair "${key}" — the proven transition chain must be complete (task #38)`);
+        }
+      }
+    }
   }
 
   // evidence drawer — quotes are subordinate; each must resolve to an excerpt.

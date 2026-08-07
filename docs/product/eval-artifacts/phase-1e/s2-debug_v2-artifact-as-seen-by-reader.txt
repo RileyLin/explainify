@@ -3,7 +3,7 @@ Page 1 of paginate returns the wrong items — please debug an · Explainify
  Explainify · change story · local only
  What was broken and how was it fixed?
  The session changed 1 file(s); 1 code change(s) are confirmed present in the final tree, with 1 passing and 1 failing verification run(s).
- view: sequence layout: sequential 4 step(s) checkpoint-36733532be4d story 2ded931da5c1…
+ view: sequence layout: sequential 4 step(s) checkpoint-36733532be4d story b982ebc430ad…
 
  What happened
  Click or use ↑/↓ + Enter to drill into a step.

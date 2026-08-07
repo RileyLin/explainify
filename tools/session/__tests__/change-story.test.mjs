@@ -232,6 +232,57 @@ test("an observed_sequence edge whose refs are not its endpoint anchors fails cl
   assert.ok(errors.some((e) => /must equal the "from" node's anchor evidence/.test(e)));
 });
 
+test("a rehashed observed_sequence edge that skips a step (0→2) fails closed on adjacency (task #38)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  assert.ok(story.steps.length >= 3, "S2 has ≥3 steps (failed check, diagnosis, fix, passed check)");
+  const stepNodes = story.overview.nodes.filter((n) => n.stepId);
+  assert.ok(stepNodes.length >= 3);
+  // Rewire the first observed edge to jump from step 0 directly to step 2, citing
+  // both exact endpoint anchors (so the per-edge forward + anchor checks pass) and
+  // dropping the intervening step's proven transition. This is the exact probe:
+  // it must be rejected because the observed edge set no longer equals the
+  // consecutive step-node pairs.
+  const edge = story.overview.edges.find((e) => e.kind === "observed_sequence");
+  assert.ok(edge);
+  const from = stepNodes[0];
+  const skipTo = stepNodes[2];
+  edge.from = from.id;
+  edge.to = skipTo.id;
+  edge.evidence = [from.evidence[0], skipTo.evidence[0]];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /not a consecutive step-node pair|missing observed_sequence edge/.test(e)),
+    `adjacency error expected, got ${JSON.stringify(errors)}`);
+});
+
+test("dropping one observed_sequence edge (leaving a gap in the proven chain) fails closed (task #38)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const before = story.overview.edges.filter((e) => e.kind === "observed_sequence").length;
+  assert.ok(before >= 2);
+  // Remove one proven transition; the chain is now incomplete.
+  const idx = story.overview.edges.findIndex((e) => e.kind === "observed_sequence");
+  story.overview.edges.splice(idx, 1);
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /missing observed_sequence edge/.test(e)));
+});
+
+test("a duplicated observed_sequence edge fails closed (task #38)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const edge = story.overview.edges.find((e) => e.kind === "observed_sequence");
+  assert.ok(edge);
+  story.overview.edges.push({ ...edge, evidence: [...edge.evidence] });
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /duplicated/.test(e)));
+});
+
 test("assertChangeStory rejects a tampered provenance.bundleSha256 (finding #3)", () => {
   const bundle = s1cBundle();
   const story = buildChangeStory(bundle);

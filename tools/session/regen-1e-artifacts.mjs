@@ -102,12 +102,22 @@ async function main() {
     // artifacts land in the run's own `.explainify/out/<sessionId>` subtree —
     // exactly where a live capture writes them. This keeps latest.json readable
     // under the stricter reader, which constrains outputDir to that subtree.
+    // IDENTITY ROOT vs WRITE ROOT are deliberately DECOUPLED (blocker: the story
+    // hash must be checkout-path-independent). The synthetic transcript embeds its
+    // repo root into session.cwd + each tool file_path, and those bytes flow into
+    // transcriptSha256 → the change-story hash. If we used the real (per-checkout)
+    // sampleRoot for identity, the tracked snapshot's visible story id would differ
+    // for every reviewer's checkout path. So identity uses a FIXED synthetic root
+    // that is byte-identical on every machine, while artifacts still WRITE to the
+    // real out dir. The adapter resolves paths as pure string math and reads final
+    // content from memory, so the synthetic root never has to exist on disk.
+    const identityRoot = `/explainify-dogfood/${name}`;
     const sampleRoot = join(outRoot, name);
     const outDir = join(sampleRoot, ".explainify", "out", name);
-    const a = make(sampleRoot);
+    const a = make(identityRoot);
     a.outDir = outDir;
-    a.repository.root = sampleRoot;
-    a.session.cwd = sampleRoot;
+    a.repository.root = identityRoot;
+    a.session.cwd = identityRoot;
     const res = await captureAndSynthesize(a);
     process.stdout.write(`${name}: ${res.status} → ${res.artifactPath}\n`);
 

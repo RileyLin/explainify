@@ -3,7 +3,7 @@ Add an optional maxLength option to slugify and cover it wit · Explainify
  Explainify · change story · local only
  What did this session change and why?
  The session changed 2 file(s); 2 code change(s) are confirmed present in the final tree, with 1 passing and 0 failing verification run(s).
- view: workflow layout: sequential 4 step(s) checkpoint-4413ce9c06b1 story 10e60bfdf7b3…
+ view: workflow layout: sequential 4 step(s) checkpoint-4413ce9c06b1 story 148ab6604279…
 
  What happened
  Click or use ↑/↓ + Enter to drill into a step.
