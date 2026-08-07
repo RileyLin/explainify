@@ -125,6 +125,9 @@ async function main() {
       .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
       .replace(/[ \t]+/g, " ")
       .replace(/\n\s*\n\s*\n+/g, "\n\n")
+      // Strip per-line trailing whitespace (tag→space substitution leaves spaces
+      // before newlines) so the committed snapshot is `git diff --check` clean.
+      .replace(/[ \t]+$/gm, "")
       .trim();
     await writeFile(join(outRoot, `${name}_v2-artifact-as-seen-by-reader.txt`), readable + "\n", "utf8");
   }

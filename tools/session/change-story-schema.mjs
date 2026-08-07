@@ -50,6 +50,33 @@ export const EVIDENCE_REF_TYPES = ["excerpt", "tool_input", "tool_output", "rece
 const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
 const HEX64 = /^[0-9a-f]{64}$/;
 
+// --- allowed key sets, for strict unknown-field rejection (Codex blocker #3) ---
+//
+// The ChangeStory hash (canonicalChangeStory) binds only KNOWN semantic fields.
+// Without exact key enforcement, an attacker could add an UNhashed field carrying
+// accepted semantics (e.g. steps[0].intent.injectedClaim) and still pass. Every
+// object level in the IR is validated against these allow-lists so no field
+// outside the hashed surface is accepted.
+const STORY_KEYS = {
+  story: ["schemaVersion", "objective", "outcome", "overview", "steps", "evidenceDrawer", "provenance"],
+  claim: ["text", "status", "evidence"],
+  overview: ["viewType", "renderHint", "nodes", "edges"],
+  node: ["id", "kind", "label", "stepId", "evidence"],
+  edge: ["from", "to", "kind", "relationshipStatus", "label", "evidence"],
+  step: ["id", "title", "intent", "toolActivity", "codeChange", "verification", "outcome", "unknowns"],
+  toolActivity: ["toolName", "status", "summary", "evidence"],
+  // codeChange entries are inline CodeExcerpts, bound by their own hash; enforce
+  // the same key surface the bundle CodeExcerpt uses so no extra field rides along.
+  codeChange: ["id", "toolEventId", "path", "changeStatus", "kind", "completeness", "before", "after", "symbol", "codeLocator", "transcriptLocator", "finalContentSha256", "unknownReason", "sha256"],
+  verification: ["command", "status", "exitCode", "outputExcerpt", "evidence"],
+  unknown: ["text", "reason"],
+  evidenceRef: ["type", "ref", "sha256"],
+  drawer: ["quotes", "excludedCounts"],
+  quote: ["id", "kind", "role", "text", "locator", "sha256"],
+  excludedCount: ["kind", "count", "reason"],
+  provenance: ["bundleSha256", "changeStorySha256"],
+};
+
 // --- canonical serializations (positional arrays, deterministic order) ---
 
 function canonicalEvidenceRef(e) {
@@ -134,8 +161,18 @@ export function validateChangeStory(story, bundle) {
   const isHex = (v) => isStr(v) && HEX64.test(v);
   const inSet = (v, set) => isStr(v) && set.includes(v);
 
+  // Reject any key outside the allow-list at a given level (blocker #3): a field
+  // not covered by canonicalChangeStory carries UNhashed semantics and must fail.
+  const strictKeys = (obj, allowed, path) => {
+    if (!isObj(obj)) return;
+    for (const k of Object.keys(obj)) {
+      if (!allowed.includes(k)) err(`${path}.${k}`, "unknown field (not part of the hashed change-story schema)");
+    }
+  };
+
   if (!isObj(story)) return { ok: false, errors: ["changeStory: not an object"] };
   if (!isObj(bundle)) return { ok: false, errors: ["changeStory: a validated bundle is required to resolve evidence refs"] };
+  strictKeys(story, STORY_KEYS.story, "changeStory");
 
   // Build resolver maps: id -> recomputed canonical hash, per source type.
   const resolvers = {
@@ -194,6 +231,7 @@ export function validateChangeStory(story, bundle) {
   // Resolve one EvidenceRef: dangling id or hash drift both fail closed.
   const checkRef = (ref, path) => {
     if (!isObj(ref)) return err(path, "evidence ref must be an object");
+    strictKeys(ref, STORY_KEYS.evidenceRef, path);
     if (!inSet(ref.type, EVIDENCE_REF_TYPES)) return err(`${path}.type`, `one of ${EVIDENCE_REF_TYPES.join("|")}`);
     if (!nonEmpty(ref.ref)) return err(`${path}.ref`, "required source id");
     if (!isHex(ref.sha256)) return err(`${path}.sha256`, "required sha-256 hex");
@@ -208,6 +246,7 @@ export function validateChangeStory(story, bundle) {
   };
   const checkClaim = (c, path, { requireStatus = false, statusSet = INTENT_STATUSES, requireEvidence = false } = {}) => {
     if (!isObj(c)) return err(path, "required object");
+    strictKeys(c, STORY_KEYS.claim, path);
     if (!nonEmpty(c.text)) err(`${path}.text`, "required non-empty string");
     if (requireStatus && !inSet(c.status, statusSet)) err(`${path}.status`, `one of ${statusSet.join("|")}`);
     checkRefs(c.evidence, `${path}.evidence`);
@@ -227,6 +266,7 @@ export function validateChangeStory(story, bundle) {
   if (!isObj(ov)) {
     err("overview", "required object");
   } else {
+    strictKeys(ov, STORY_KEYS.overview, "overview");
     if (!inSet(ov.viewType, VIEW_TYPES)) err("overview.viewType", `one of ${VIEW_TYPES.join("|")}`);
     if (!inSet(ov.renderHint, RENDER_HINTS)) err("overview.renderHint", `one of ${RENDER_HINTS.join("|")}`);
     if (!Array.isArray(ov.nodes) || ov.nodes.length === 0) {
@@ -235,6 +275,7 @@ export function validateChangeStory(story, bundle) {
       ov.nodes.forEach((n, i) => {
         const p = `overview.nodes[${i}]`;
         if (!isObj(n)) return err(p, "not an object");
+        strictKeys(n, STORY_KEYS.node, p);
         if (!nonEmpty(n.id)) err(`${p}.id`, "required");
         else { if (nodeIds.has(n.id)) err(`${p}.id`, `duplicate node id "${n.id}"`); nodeIds.add(n.id); nodeById.set(n.id, n); }
         if (!inSet(n.kind, NODE_KINDS)) err(`${p}.kind`, `one of ${NODE_KINDS.join("|")}`);
@@ -249,6 +290,7 @@ export function validateChangeStory(story, bundle) {
       ov.edges.forEach((e, i) => {
         const p = `overview.edges[${i}]`;
         if (!isObj(e)) return err(p, "not an object");
+        strictKeys(e, STORY_KEYS.edge, p);
         if (!inSet(e.kind, EDGE_KINDS)) err(`${p}.kind`, `one of ${EDGE_KINDS.join("|")}`);
         if (!inSet(e.relationshipStatus, RELATIONSHIP_STATUSES)) err(`${p}.relationshipStatus`, `one of ${RELATIONSHIP_STATUSES.join("|")}`);
         // R4: only observed_sequence may be asserted as "observed"; any other
@@ -298,6 +340,7 @@ export function validateChangeStory(story, bundle) {
     story.steps.forEach((s, i) => {
       const p = `steps[${i}]`;
       if (!isObj(s)) return err(p, "not an object");
+      strictKeys(s, STORY_KEYS.step, p);
       // R4: step id derives from immutable evidence, not step-N enumeration.
       if (!nonEmpty(s.id)) err(`${p}.id`, "required");
       else {
@@ -326,6 +369,7 @@ export function validateChangeStory(story, bundle) {
       else s.toolActivity.forEach((a, j) => {
         const ap = `${p}.toolActivity[${j}]`;
         if (!isObj(a)) return err(ap, "not an object");
+        strictKeys(a, STORY_KEYS.toolActivity, ap);
         if (!nonEmpty(a.toolName)) err(`${ap}.toolName`, "required");
         checkRefs(a.evidence, `${ap}.evidence`);
       });
@@ -337,6 +381,7 @@ export function validateChangeStory(story, bundle) {
         else s.codeChange.forEach((c, j) => {
           const cp = `${p}.codeChange[${j}]`;
           if (!isObj(c)) return err(cp, "not an object");
+          strictKeys(c, STORY_KEYS.codeChange, cp);
           if (!nonEmpty(c.id)) return err(`${cp}.id`, "required");
           if (!codeById.has(c.id)) return err(cp, `references CodeExcerpt "${c.id}" not present in bundle.codeEvidence`);
           if (!isHex(c.sha256) || c.sha256 !== hashCodeExcerpt(c)) err(`${cp}.sha256`, "does not bind its CodeExcerpt fields (hash mismatch)");
@@ -349,13 +394,22 @@ export function validateChangeStory(story, bundle) {
         else s.verification.forEach((v, j) => {
           const vp = `${p}.verification[${j}]`;
           if (!isObj(v)) return err(vp, "not an object");
+          strictKeys(v, STORY_KEYS.verification, vp);
           if (!nonEmpty(v.command)) err(`${vp}.command`, "required");
           if (!inSet(v.status, ["succeeded", "failed", "unknown"])) err(`${vp}.status`, "one of succeeded|failed|unknown");
           checkRefs(v.evidence, `${vp}.evidence`);
         });
       }
       checkClaim(s.outcome, `${p}.outcome`);
-      if (s.unknowns !== undefined && !Array.isArray(s.unknowns)) err(`${p}.unknowns`, "must be an array");
+      if (s.unknowns !== undefined) {
+        if (!Array.isArray(s.unknowns)) err(`${p}.unknowns`, "must be an array");
+        else s.unknowns.forEach((u, j) => {
+          const up = `${p}.unknowns[${j}]`;
+          if (!isObj(u)) return err(up, "not an object");
+          strictKeys(u, STORY_KEYS.unknown, up);
+          if (!nonEmpty(u.text)) err(`${up}.text`, "required");
+        });
+      }
     });
   }
 
@@ -402,15 +456,20 @@ export function validateChangeStory(story, bundle) {
   if (!isObj(d)) {
     err("evidenceDrawer", "required object");
   } else {
+    strictKeys(d, STORY_KEYS.drawer, "evidenceDrawer");
     if (!Array.isArray(d.quotes)) err("evidenceDrawer.quotes", "required array");
     else d.quotes.forEach((q, i) => {
       const qp = `evidenceDrawer.quotes[${i}]`;
       if (!isObj(q)) return err(qp, "not an object");
+      strictKeys(q, STORY_KEYS.quote, qp);
       if (!nonEmpty(q.id)) err(`${qp}.id`, "required");
       else if (!resolvers.excerpt.has(q.id)) err(qp, `quote "${q.id}" is not a selected excerpt`);
       else if (resolvers.excerpt.get(q.id) !== q.sha256) err(`${qp}.sha256`, "does not match the bundle excerpt (hash drift)");
     });
-    if (d.excludedCounts !== undefined && !Array.isArray(d.excludedCounts)) err("evidenceDrawer.excludedCounts", "must be an array");
+    if (d.excludedCounts !== undefined) {
+      if (!Array.isArray(d.excludedCounts)) err("evidenceDrawer.excludedCounts", "must be an array");
+      else d.excludedCounts.forEach((x, i) => strictKeys(x, STORY_KEYS.excludedCount, `evidenceDrawer.excludedCounts[${i}]`));
+    }
   }
 
   // provenance — binds the story to itself and to the bundle it was built from.
@@ -418,6 +477,7 @@ export function validateChangeStory(story, bundle) {
   if (!isObj(pv)) {
     err("provenance", "required object");
   } else {
+    strictKeys(pv, STORY_KEYS.provenance, "provenance");
     if (!isHex(pv.bundleSha256)) err("provenance.bundleSha256", "required sha-256 hex");
     // The story must bind the EXACT bundle it was built from (finding #3): recompute
     // the canonical bundle hash and require it to match, so a story cannot be paired

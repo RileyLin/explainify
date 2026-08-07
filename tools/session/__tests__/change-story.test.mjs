@@ -326,6 +326,57 @@ test("assertChangeStory rejects a step id using step-N enumeration (R4)", () => 
   assert.ok(errors.some((e) => /step-N enumeration/.test(e)));
 });
 
+// --- blocker #3: the v2 IR must not accept unhashed semantic fields anywhere.
+// Codex's probe: inject a field at the top, at a step, and inside a step's intent,
+// recompute the story hash, and the story must still be rejected — otherwise a
+// caller could smuggle accepted-but-unhashed semantics past the tamper check.
+
+test("validateChangeStory rejects an injected top-level field even after rehash (blocker #3)", () => {
+  const bundle = s1cBundle();
+  const story = buildChangeStory(bundle);
+  story.injectedTop = { anything: true };
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /changeStory\.injectedTop/.test(e) && /unknown field/.test(e)));
+});
+
+test("validateChangeStory rejects an injected step field even after rehash (blocker #3)", () => {
+  const bundle = s1cBundle();
+  const story = buildChangeStory(bundle);
+  story.steps[0].injectedStep = "smuggled";
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /injectedStep/.test(e) && /unknown field/.test(e)));
+});
+
+test("validateChangeStory rejects an injected step.intent claim field even after rehash (blocker #3)", () => {
+  const bundle = s1cBundle();
+  const story = buildChangeStory(bundle);
+  story.steps[0].intent.injectedClaim = "smuggled semantics";
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /injectedClaim/.test(e) && /unknown field/.test(e)));
+});
+
+test("validateChangeStory rejects injected fields on overview / node / edge even after rehash (blocker #3)", () => {
+  for (const mutate of [
+    (s) => { s.overview.injectedOverview = 1; },
+    (s) => { s.overview.nodes[0].injectedNode = 1; },
+    (s) => { const e = s.overview.edges[0]; if (e) e.injectedEdge = 1; },
+  ]) {
+    const bundle = s1cBundle();
+    const story = buildChangeStory(bundle);
+    mutate(story);
+    story.provenance.changeStorySha256 = hashChangeStory(story);
+    const { ok, errors } = validateChangeStory(story, bundle);
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => /unknown field/.test(e)), `unknown-field error expected, got ${JSON.stringify(errors)}`);
+  }
+});
+
 test("buildChangeStory throws (fail closed) when handed a bundle it cannot bind cleanly", () => {
   // A v2 bundle with codeEvidence removed is not internally consistent for v2, but
   // buildChangeStory is only ever called on a validated v2 bundle; assert that the

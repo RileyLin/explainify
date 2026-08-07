@@ -171,6 +171,80 @@ test("R5: a literal token match inside a string is never resolved as a symbol", 
   assert.equal(bundle.codeEvidence[0].symbol, undefined);
 });
 
+test("R1: a REVERTED Edit is never 'landed' — the same text pre-existing elsewhere cannot attest this edit landed (blocker #1)", () => {
+  // The edit tried to turn `const target = 0;` into `const shared = 1;`, but the
+  // edit was later reverted. `const shared = 1;` DOES appear in the final file —
+  // only because it pre-existed on another line. Binding the excerpt to that
+  // occurrence would falsely attest a reverted edit as landed.
+  const oldText = "const target = 0;";
+  const newText = "const shared = 1;";
+  const final = "const target = 0;\nconst shared = 1;\n"; // edit reverted; new_string pre-existed
+  const bundle = build({
+    tools: [{ name: "Edit", input: { file_path: "/repo/m.js", old_string: oldText, new_string: newText }, result: "updated" }],
+    changedFiles: [{ path: "m.js", status: "modified", sha256: sha256(final) }],
+    finalContent: { "m.js": final },
+  });
+  const c = bundle.codeEvidence[0];
+  assert.equal(c.completeness, "unknown", "a reverted edit must not be landed");
+  assert.equal(c.codeLocator, undefined, "no codeLocator is bound when landing is unproven");
+  assert.match(c.unknownReason, /replaced text still appears/);
+  assert.equal(validateBundle(bundle).ok, true);
+});
+
+test("R1: a genuine unique landed Edit is still landed after the reverted-edit guard (no false negative)", () => {
+  const oldText = "const target = 0;";
+  const newText = "const shared = 1;";
+  const final = "const shared = 1;\n"; // the replaced text is gone; the edit truly landed
+  const bundle = build({
+    tools: [{ name: "Edit", input: { file_path: "/repo/m.js", old_string: oldText, new_string: newText }, result: "updated" }],
+    changedFiles: [{ path: "m.js", status: "modified", sha256: sha256(final) }],
+    finalContent: { "m.js": final },
+  });
+  const c = bundle.codeEvidence[0];
+  assert.equal(c.completeness, "landed");
+  assert.match(c.codeLocator, /^file:m\.js#L\d+-L\d+$/);
+});
+
+test("R5: a declaration inside a block comment is never resolved as a symbol (blocker #2)", () => {
+  const after = "/*\nfunction fakeSymbol() {}\n*/\nexport const real = 1;";
+  const final = after + "\n";
+  const bundle = build({
+    tools: [{ name: "Edit", input: { file_path: "/repo/m.js", old_string: "// x", new_string: after }, result: "ok" }],
+    changedFiles: [{ path: "m.js", status: "modified", sha256: sha256(final) }],
+    finalContent: { "m.js": final },
+  });
+  const c = bundle.codeEvidence[0];
+  assert.equal(c.completeness, "landed");
+  assert.equal(c.symbol, "real", "the commented fakeSymbol is ignored; the one real decl resolves");
+});
+
+test("R5: a declaration inside a template literal is never resolved as a symbol (blocker #2)", () => {
+  // The template literal's inner `function fakeSymbol` must be stripped; the only
+  // real top-level decl is `tpl`, so that (never fakeSymbol) is what resolves.
+  const after = "const tpl = `function fakeSymbol() {}`;";
+  const final = after + "\n";
+  const bundle = build({
+    tools: [{ name: "Edit", input: { file_path: "/repo/m.js", old_string: "// x", new_string: after }, result: "ok" }],
+    changedFiles: [{ path: "m.js", status: "modified", sha256: sha256(final) }],
+    finalContent: { "m.js": final },
+  });
+  assert.notEqual(bundle.codeEvidence[0].symbol, "fakeSymbol", "a decl inside a template literal is not a real symbol");
+  assert.equal(bundle.codeEvidence[0].symbol, "tpl", "the real top-level declaration resolves instead");
+});
+
+test("R5: symbols are omitted for a language the parser does not support (blocker #2)", () => {
+  const after = "def fake_symbol():\n    return 1";
+  const final = after + "\n";
+  const bundle = build({
+    tools: [{ name: "Edit", input: { file_path: "/repo/m.py", old_string: "# x", new_string: after }, result: "ok" }],
+    changedFiles: [{ path: "m.py", status: "modified", sha256: sha256(final) }],
+    finalContent: { "m.py": final },
+  });
+  const c = bundle.codeEvidence[0];
+  assert.equal(c.completeness, "landed");
+  assert.equal(c.symbol, undefined, "no JS-shaped regex symbol is invented for a .py file");
+});
+
 test("uncaptured final content → unknown (no fabricated landed classification)", () => {
   const bundle = build({
     tools: [{ name: "Edit", input: { file_path: "/repo/a.js", old_string: "a", new_string: "b" }, result: "ok" }],

@@ -29,6 +29,7 @@ const LINEAGE = {
   htmlReceiptSha256: "4".repeat(64),
   changeStorySha256: "5".repeat(64),
   lineageReceiptSha256: "6".repeat(64),
+  captureContentSha256: "7".repeat(64),
 };
 // The only valid outputRelDir for LINEAGE.sessionId, and a completed timestamp;
 // both are now mandatory/strict (blocker #2).
@@ -120,15 +121,23 @@ test("reader flags STALENESS when an on-disk output no longer matches the verifi
     const { sha256Of, stableStringify } = await import("../receipt.mjs");
     const artifactSha256 = sha256(artifact);
     const packageSha256 = sha256(pkg);
+    // The reader now also binds the two lineage roots — bundle (by file-content
+    // hash) and the capture receipt (by its content identity) — so lay down real
+    // ones or the clean read would (correctly) be stale.
+    const bundleText = "{\"schemaVersion\":2}\n";
+    await writeFile(path.join(outAbs, "bundle.json"), bundleText);
+    const bundleSha256 = sha256(bundleText);
+    const captureContentSha256 = "7".repeat(64);
+    await writeFile(path.join(outAbs, "capture-receipt.json"), `${JSON.stringify({ schemaVersion: 1, contentSha256: captureContentSha256 }, null, 2)}\n`);
     // Real self-consistent receipt files so the clean read is genuinely non-stale
     // under the stricter reader (it recomputes both receipts' self-hashes).
     const htmlReceiptCore = { schemaVersion: 1, status: "verified", checkpointId: "checkpoint-abc", packageSha256, artifactSha256, sessionSha256: "9".repeat(64), changeStorySha256: LINEAGE.changeStorySha256 };
     const htmlReceipt = { ...htmlReceiptCore, receiptSha256: sha256Of(stableStringify(htmlReceiptCore)) };
     await writeFile(path.join(outAbs, "receipt.json"), `${JSON.stringify(htmlReceipt, null, 2)}\n`);
-    const lineageCore = { schemaVersion: 1, status: "verified", sessionId: "s1", checkpointId: "checkpoint-abc", bundleSha256: LINEAGE.bundleSha256, packageSha256, artifactSha256, htmlReceiptSha256: htmlReceipt.receiptSha256 };
+    const lineageCore = { schemaVersion: 1, status: "verified", sessionId: "s1", checkpointId: "checkpoint-abc", bundleSha256, packageSha256, artifactSha256, htmlReceiptSha256: htmlReceipt.receiptSha256 };
     const lineageReceipt = { ...lineageCore, lineageReceiptSha256: sha256Of(stableStringify(lineageCore)) };
     await writeFile(path.join(outAbs, "lineage-receipt.json"), `${JSON.stringify(lineageReceipt, null, 2)}\n`);
-    const lineage = { ...LINEAGE, artifactSha256, packageSha256, htmlReceiptSha256: htmlReceipt.receiptSha256, lineageReceiptSha256: lineageReceipt.lineageReceiptSha256 };
+    const lineage = { ...LINEAGE, bundleSha256, captureContentSha256, artifactSha256, packageSha256, htmlReceiptSha256: htmlReceipt.receiptSha256, lineageReceiptSha256: lineageReceipt.lineageReceiptSha256 };
     await writeLatestPointer(root, buildLatestPointer({ lineage, outputRelDir: outRel, completedAt: DONE_AT }));
     // Clean read: not stale.
     let res = await readLatestPointer(root);
@@ -382,6 +391,73 @@ test("reader treats deleted receipt files as fail-closed staleness, never ok:tru
     assert.equal(res.stale, true, "missing receipts must NOT read as fresh");
     assert.ok(res.staleReasons.some((r) => /HTML receipt.*missing/.test(r)));
     assert.ok(res.staleReasons.some((r) => /lineage receipt.*missing/.test(r)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader flags STALENESS when the bound bundle.json is deleted — never ok:true stale:false (blocker #4)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const { outDir } = await runE2E(root);
+    // A fresh, verified pointer is not stale; deleting the bundle it binds is.
+    let res = await readLatestPointer(root);
+    assert.equal(res.stale, false, "fresh E2E pointer is not stale");
+    const { rm: rmFile } = await import("node:fs/promises");
+    await rmFile(path.join(outDir, "bundle.json"), { force: true });
+    res = await readLatestPointer(root);
+    assert.equal(res.ok, true, "the pointer itself is intact");
+    assert.equal(res.stale, true, "a deleted bundle must NOT read as fresh");
+    assert.ok(res.staleReasons.some((r) => /bundle.*missing/.test(r)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader flags STALENESS when bundle.json is edited without updating the pointer (blocker #4)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const { outDir } = await runE2E(root);
+    // The bundle is bound by whole-file content hash, so any byte change is stale.
+    await writeFile(path.join(outDir, "bundle.json"), "{\"schemaVersion\":2,\"tampered\":true}\n");
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, true, "the pointer itself is intact");
+    assert.equal(res.stale, true);
+    assert.ok(res.staleReasons.some((r) => /bundle.*no longer matches/.test(r)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader flags STALENESS when the capture receipt is deleted (blocker #4)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const { outDir } = await runE2E(root);
+    const { rm: rmFile } = await import("node:fs/promises");
+    await rmFile(path.join(outDir, "capture-receipt.json"), { force: true });
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, true, "the pointer itself is intact");
+    assert.equal(res.stale, true, "a deleted capture receipt must NOT read as fresh");
+    assert.ok(res.staleReasons.some((r) => /capture receipt.*missing/.test(r)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reader flags STALENESS when the capture receipt no longer binds the verified capture content (blocker #4)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "explainify-e2e-"));
+  try {
+    const { outDir } = await runE2E(root);
+    // Rewrite capture-receipt.json with a different contentSha256 — the exact
+    // "swapped from another run / content drifted" case the pointer must catch.
+    const rp = path.join(outDir, "capture-receipt.json");
+    const obj = JSON.parse(await readFile(rp, "utf8"));
+    obj.contentSha256 = "0".repeat(64);
+    await writeFile(rp, `${JSON.stringify(obj, null, 2)}\n`);
+    const res = await readLatestPointer(root);
+    assert.equal(res.ok, true, "the pointer itself is intact");
+    assert.equal(res.stale, true);
+    assert.ok(res.staleReasons.some((r) => /capture receipt no longer binds/.test(r)));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

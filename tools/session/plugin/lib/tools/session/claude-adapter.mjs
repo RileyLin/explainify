@@ -557,7 +557,28 @@ function uniqueLineSpan(content, snippet) {
   if (second >= 0) return { reason: "the edited text appears more than once in the final file; a unique span cannot be bound" };
   const startLine = content.slice(0, first).split("\n").length;
   const endLine = startLine + (snippet.split("\n").length - 1);
-  return { startLine, endLine };
+  return { startLine, endLine, charStart: first, charEnd: first + snippet.length };
+}
+
+// An Edit REPLACES the unique `old_string` occurrence with `new_string`. Merely
+// finding `new_string` in the final file does not prove THIS edit landed: the
+// identical text may have pre-existed elsewhere while the edit's own region was
+// reverted (Codex blocker #1). We prove the edit's effect only when every
+// occurrence of `old_string` in the final file lies INSIDE the matched
+// `new_string` span (legitimate when new_string is a superset of old_string) —
+// any occurrence OUTSIDE that span means the replaced text still exists, so the
+// edit was reverted/overwritten and cannot be attested as landed. Returns null
+// when landed is provable, else a reason string. An empty/absent old_string (a
+// pure insertion) has nothing to revert, so it is treated as landed.
+function editReverted(content, oldText, span) {
+  if (typeof oldText !== "string" || oldText.length === 0) return null;
+  for (let idx = content.indexOf(oldText); idx >= 0; idx = content.indexOf(oldText, idx + 1)) {
+    const inside = idx >= span.charStart && idx + oldText.length <= span.charEnd;
+    if (!inside) {
+      return "the replaced text still appears in the final file outside the edited region, so this edit cannot be confirmed landed (it may have been reverted or its result overwritten)";
+    }
+  }
+  return null;
 }
 
 // Deterministic, syntax-aware unique-declaration rule (R5): return a symbol name
@@ -569,10 +590,67 @@ function uniqueLineSpan(content, snippet) {
 // mistaken for a resolved symbol. If the hunk introduces two top-level
 // declarations, the symbol is ambiguous → null.
 const DECL_RE = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/;
-function extractSymbol(afterText) {
+// Symbol resolution is a JS/TS-family rule; the keyword grammar only holds for
+// those. For any other (or extensionless) file we omit the symbol rather than
+// guess with the wrong grammar (Codex blocker #2, language-unsupported case).
+const JS_LIKE_EXT = /\.(mjs|cjs|jsx?|tsx?)$/i;
+
+// Blank out the CONTENT of comments and string/template literals so a
+// declaration-looking token inside them (`/* function foo(){} */`, a backtick
+// template, a quoted string) is never mistaken for real top-level code. A single
+// forward pass over the characters with an explicit state machine; newlines are
+// preserved so per-line matching keeps stable line numbers. Regex literals are
+// left as code (a `/`-led regex at column 0 preceded by a declaration keyword is
+// not a construct DECL_RE can be fooled by), and template `${…}` interpolation is
+// blanked (conservative: an interpolated declaration is never a top-level one).
+function stripNonCode(src) {
+  let out = "";
+  let state = "code"; // code | line | block | sq | dq | tpl
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    const n = src[i + 1];
+    switch (state) {
+      case "code":
+        if (c === "/" && n === "/") { state = "line"; out += "  "; i += 1; }
+        else if (c === "/" && n === "*") { state = "block"; out += "  "; i += 1; }
+        else if (c === "'") { state = "sq"; out += " "; }
+        else if (c === '"') { state = "dq"; out += " "; }
+        else if (c === "`") { state = "tpl"; out += " "; }
+        else out += c;
+        break;
+      case "line":
+        if (c === "\n") { state = "code"; out += "\n"; } else out += " ";
+        break;
+      case "block":
+        if (c === "*" && n === "/") { state = "code"; out += "  "; i += 1; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "sq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "'") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "dq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === '"') { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "tpl":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "`") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      default:
+        out += c;
+    }
+  }
+  return out;
+}
+function extractSymbol(afterText, rel) {
   if (typeof afterText !== "string") return null;
+  if (rel && !JS_LIKE_EXT.test(rel)) return null; // unsupported language → omit
   const names = new Set();
-  for (const line of afterText.split("\n")) {
+  for (const line of stripNonCode(afterText).split("\n")) {
     const m = DECL_RE.exec(line); // no leading-whitespace allowance → column 0 only
     if (m) names.add(m[1]);
   }
@@ -1101,7 +1179,7 @@ export function buildBundleFromTranscript(args) {
     // R5: record the unique final line span (codeLocator) only when landed.
     // Classification compares the RAW preimage (ci.after) to the final content —
     // NOT the redacted form — so redaction never changes where the code landed.
-    const symbol = extractSymbol(ci.after);
+    const symbol = extractSymbol(ci.after, rel);
     const finalText = Object.prototype.hasOwnProperty.call(finalContent, rel) ? finalContent[rel] : undefined;
     let completeness;
     let codeLocator;
@@ -1118,8 +1196,17 @@ export function buildBundleFromTranscript(args) {
         completeness = span.reason.includes("overwrote") ? "superseded" : "unknown";
         unknownReason = span.reason;
       } else {
-        completeness = "landed";
-        codeLocator = `file:${rel}#L${span.startLine}-L${span.endLine}`;
+        // The `new_string` span is unique — but for an Edit we must also prove the
+        // replaced `old_string` no longer survives outside that span, or the edit
+        // was reverted while identical text pre-existed elsewhere (blocker #1).
+        const revertReason = kind === "hunk" ? editReverted(finalText, ci.before, span) : null;
+        if (revertReason) {
+          completeness = "unknown";
+          unknownReason = revertReason;
+        } else {
+          completeness = "landed";
+          codeLocator = `file:${rel}#L${span.startLine}-L${span.endLine}`;
+        }
       }
     }
     emitCode({

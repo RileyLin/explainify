@@ -34,11 +34,15 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // cannot smuggle extra state or omit a bound identity (blocker #2).
 const REQUIRED_CORE_FIELDS = [
   "schemaVersion", "status", "sessionId", "checkpointId",
-  "bundleSha256", "packageSha256", "artifactSha256", "receiptSha256",
+  "bundleSha256", "captureContentSha256", "packageSha256", "artifactSha256", "receiptSha256",
   "lineageReceiptSha256", "outputDir", "completedAt", "files",
 ];
 const OPTIONAL_CORE_FIELDS = ["changeStorySha256"];
-const REQUIRED_FILE_KEYS = ["artifact", "package", "htmlReceipt", "lineageReceipt"];
+// The complete verified chain the lineage receipt promises: bundle → capture
+// receipt → artifact/package → HTML receipt → lineage receipt. The pointer binds
+// and the reader checks EVERY link, so deleting any one (e.g. bundle.json) is
+// staleness, never a silent ok:true/stale:false (Codex blocker #4).
+const REQUIRED_FILE_KEYS = ["bundle", "captureReceipt", "artifact", "package", "htmlReceipt", "lineageReceipt"];
 
 /**
  * Build the canonical, self-binding latest pointer from a verified lineage.
@@ -58,7 +62,11 @@ export function buildLatestPointer({ lineage, outputRelDir, completedAt }) {
     sessionId: lineage.sessionId,
     checkpointId: lineage.checkpointId,
     // The bound artifact identities (any of these missing/mismatched ⇒ stale).
+    // bundle + capture receipt are the lineage ROOTS; binding them here means a
+    // deleted/edited bundle.json or capture-receipt.json is caught as stale
+    // (blocker #4), not silently reported fresh.
     bundleSha256: lineage.bundleSha256,
+    captureContentSha256: lineage.captureContentSha256,
     packageSha256: lineage.packageSha256,
     artifactSha256: lineage.artifactSha256,
     receiptSha256: lineage.htmlReceiptSha256,
@@ -68,6 +76,8 @@ export function buildLatestPointer({ lineage, outputRelDir, completedAt }) {
     // completedAt is bound provenance (finding #4): tampering it must be detected.
     completedAt,
     files: {
+      bundle: "bundle.json",
+      captureReceipt: "capture-receipt.json",
       artifact: "index.html",
       package: "workstream-package.json",
       htmlReceipt: "receipt.json",
@@ -174,7 +184,7 @@ export async function readLatestPointer(root) {
   if (core.status !== "verified") return bad(`status must be "verified" (a pointer is only written for a verified run)`);
   if (typeof core.sessionId !== "string" || core.sessionId.length === 0) return bad("sessionId is required");
   if (typeof core.checkpointId !== "string" || core.checkpointId.length === 0) return bad("checkpointId is required");
-  for (const hk of ["bundleSha256", "packageSha256", "artifactSha256", "receiptSha256", "lineageReceiptSha256"]) {
+  for (const hk of ["bundleSha256", "captureContentSha256", "packageSha256", "artifactSha256", "receiptSha256", "lineageReceiptSha256"]) {
     if (!HEX64.test(core[hk])) return bad(`${hk} must be a sha-256 hex string`);
   }
   if ("changeStorySha256" in core && !HEX64.test(core.changeStorySha256)) return bad("changeStorySha256 must be a sha-256 hex string");
@@ -240,6 +250,25 @@ export async function readLatestPointer(root) {
 
   await checkFileContent(files.artifact, core.artifactSha256, "artifact (index.html)");
   await checkFileContent(files.package, core.packageSha256, "package (workstream-package.json)");
+  // Bundle is written as canonical text and bound by whole-file content hash, so a
+  // deleted or edited bundle.json is stale (blocker #4) — never silently fresh.
+  await checkFileContent(files.bundle, core.bundleSha256, "bundle (bundle.json)");
+
+  // Capture receipt is bound by its location-independent CONTENT identity
+  // (contentSha256), not a whole-file hash (it carries absolute provenance paths).
+  // A deleted, unreadable, malformed, or content-drifted capture receipt is stale.
+  {
+    try {
+      const obj = JSON.parse(await readOut(files.captureReceipt));
+      if (!obj || typeof obj !== "object" || typeof obj.contentSha256 !== "string") {
+        staleReasons.push("capture receipt (capture-receipt.json) is malformed on disk");
+      } else if (obj.contentSha256 !== core.captureContentSha256) {
+        staleReasons.push("capture receipt no longer binds the verified capture content");
+      }
+    } catch (e) {
+      staleReasons.push(e && e.code === "ENOENT" ? "capture receipt (capture-receipt.json) is missing on disk" : "capture receipt (capture-receipt.json) is not readable JSON");
+    }
+  }
 
   // HTML receipt: it is always bound (strict shape guaranteed it above), so its
   // absence is a stale signal. Its recomputed self-hash must equal what the pointer
