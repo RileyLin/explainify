@@ -25,6 +25,14 @@ import { stableStringify } from "./receipt.mjs";
 
 export const CHANGE_STORY_SCHEMA_VERSION = 2;
 
+// Phase 1F semantic-compaction bound (task #39): the overview may present at most
+// this many evidence-backed implementation/verification step nodes. Framing nodes
+// (objective, outcome) and a surfaced risk/unknown node do not count. This is a
+// tamper-evident CONTRACT, not just a builder preference: a rehashed story that
+// inflates the overview past the cap fails closed here. The builder imports this
+// same constant so producer and validator cannot disagree on the bound.
+export const MAX_OVERVIEW_STEPS = 5;
+
 // Semantic evidence view (R4) — what the topology MEANS.
 export const VIEW_TYPES = ["workflow", "architecture", "sequence", "dataflow", "lifecycle"];
 // Layout engine only (R4) — reused vocabulary from the web app's flow.ts.
@@ -481,6 +489,47 @@ export function validateChangeStory(story, bundle) {
           err("overview.edges", `missing observed_sequence edge for adjacent step pair "${key}" — the proven transition chain must be complete (task #38)`);
         }
       }
+    }
+
+    // COMPACTION CAP (Phase 1F, task #39, gate 1): the overview presents at most
+    // MAX_OVERVIEW_STEPS implementation/verification step nodes. A step node is any
+    // node carrying a stepId; framing (objective/outcome) and risk/unknown nodes do
+    // not. A rehashed story that re-inflates the overview to a per-Edit replay fails
+    // closed here — the bound is part of the tamper surface, not a soft preference.
+    if (stepNodes.length > MAX_OVERVIEW_STEPS) {
+      err("overview.nodes", `the overview presents ${stepNodes.length} step nodes, exceeding the compaction cap of ${MAX_OVERVIEW_STEPS} (task #39 gate 1)`);
+    }
+  }
+
+  // COMPACTION COMPLETENESS (Phase 1F, task #39, gate 3): every LANDED CodeExcerpt
+  // in the bundle must appear in EXACTLY ONE step's codeChange, by id. This makes
+  // grouping tamper-evident in both directions: dropping a landed change to shrink
+  // the story (hiding real work) OR showing one landed change under two steps
+  // (double-counting to inflate a unit) both fail closed. Non-landed excerpts are
+  // never narrated as code changes (enforced per-step above), so they are excluded
+  // from this partition. Only checked once the per-step codeChange shape is known.
+  if (Array.isArray(story.steps)) {
+    const landedIds = new Set();
+    for (const c of bundle.codeEvidence ?? []) {
+      if (isObj(c) && nonEmpty(c.id) && c.completeness === "landed") landedIds.add(c.id);
+    }
+    const seenCode = new Map(); // id -> count across all steps
+    for (const s of story.steps) {
+      if (!isObj(s) || !Array.isArray(s.codeChange)) continue;
+      for (const c of s.codeChange) {
+        if (isObj(c) && nonEmpty(c.id)) seenCode.set(c.id, (seenCode.get(c.id) || 0) + 1);
+      }
+    }
+    for (const id of landedIds) {
+      const n = seenCode.get(id) || 0;
+      if (n === 0) err("steps", `landed CodeExcerpt "${id}" is not shown in any step's code change — compaction must not drop attested landed work (task #39 gate 3)`);
+      else if (n > 1) err("steps", `landed CodeExcerpt "${id}" appears in ${n} steps — each landed change must belong to exactly one step (task #39 gate 3)`);
+    }
+    // And no step may show a landed CodeExcerpt that the bundle does not mark landed
+    // (already covered by the byte-for-byte + landed-only per-step checks, but the
+    // partition would otherwise silently ignore an id absent from landedIds).
+    for (const [id, n] of seenCode) {
+      if (!landedIds.has(id) && n > 0) err("steps", `step code change references CodeExcerpt "${id}" which is not a landed excerpt in the bundle (task #39 gate 3)`);
     }
   }
 

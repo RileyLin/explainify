@@ -435,3 +435,176 @@ test("buildChangeStory throws (fail closed) when handed a bundle it cannot bind 
   const bundle = s1cBundle();
   assert.doesNotThrow(() => assertChangeStory(buildChangeStory(bundle), bundle));
 });
+
+// --- Phase 1F: semantic compaction of a real multi-file session (task #39) ---
+//
+// The Phase 1E builder replayed a multi-file session as one node per reasoning
+// excerpt AND one per Edit AND one per receipt — the "blocks/prompts, not
+// explanation" failure. These tests build a realistic four-file feature session
+// (mirroring the preserved dogfood: releaseStock in inventory, cancelOrder in
+// orders, a barrel export, and new tests, verified by a single `node --test` run
+// whose pass is a SUCCEEDED Bash event, NOT a promoted receipt) and prove the five
+// compaction gates, all fail-closed.
+
+const INV_BEFORE = "const stock = new Map();\nexport function availableStock(sku) {\n  return stock.get(sku) ?? 0;\n}\nexport function resetInventory() {\n  stock.clear();\n}";
+const INV_AFTER = "const stock = new Map();\nexport function availableStock(sku) {\n  return stock.get(sku) ?? 0;\n}\nexport function releaseStock(sku, quantity) {\n  stock.set(sku, availableStock(sku) + quantity);\n}\nexport function resetInventory() {\n  stock.clear();\n}";
+const ORD_BEFORE = "import { reserveStock } from \"./inventory.js\";\nconst orders = new Map();\nexport function getOrder(id) {\n  return orders.get(id);\n}";
+const ORD_AFTER = "import { releaseStock, reserveStock } from \"./inventory.js\";\nconst orders = new Map();\nexport function cancelOrder(id) {\n  const order = orders.get(id);\n  if (!order) throw new Error(`Order ${id} not found`);\n  if (order.status === \"cancelled\") return { ...order };\n  order.status = \"cancelled\";\n  releaseStock(order.sku, order.quantity);\n  return { ...order };\n}\nexport function getOrder(id) {\n  return orders.get(id);\n}";
+const IDX_BEFORE = "export { createOrder, getOrder } from \"./orders.js\";";
+const IDX_AFTER = "export { cancelOrder, createOrder, getOrder } from \"./orders.js\";";
+const TST_BEFORE = "import { createOrder } from \"../src/index.js\";\ntest(\"creating an order reserves inventory\", () => {});";
+const TST_AFTER = "import { cancelOrder, createOrder } from \"../src/index.js\";\ntest(\"creating an order reserves inventory\", () => {});\ntest(\"cancelling a confirmed order restores stock\", () => {});\ntest(\"cancelling is idempotent\", () => {});";
+const NODE_TEST_OUTPUT = "✔ creating an order reserves inventory\n✔ cancelling a confirmed order restores stock\n✔ cancelling is idempotent\nℹ tests 3\nℹ pass 3\nℹ fail 0";
+
+function multiFileBundle() {
+  const root = "/repo";
+  const invF = INV_AFTER + "\n", ordF = ORD_AFTER + "\n", idxF = IDX_AFTER + "\n", tstF = TST_AFTER + "\n";
+  return bundleFrom({
+    root,
+    records: [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Implement idempotent order cancellation across the repo and cover it with tests." }] } },
+      { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "text", text: "Let me explore the repository structure first." }] } },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "text", text: "I have everything I need. Let me implement this across four files." }] } },
+      { type: "assistant", uuid: "e1", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/repo/src/inventory.js", old_string: INV_BEFORE, new_string: INV_AFTER } }] } },
+      { type: "user", uuid: "r1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "updated" }] } },
+      { type: "assistant", uuid: "e2", message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Edit", input: { file_path: "/repo/src/orders.js", old_string: ORD_BEFORE, new_string: ORD_AFTER } }] } },
+      { type: "user", uuid: "r2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: "updated" }] } },
+      { type: "assistant", uuid: "e3", message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "Edit", input: { file_path: "/repo/src/index.js", old_string: IDX_BEFORE, new_string: IDX_AFTER } }] } },
+      { type: "user", uuid: "r3", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", content: "updated" }] } },
+      { type: "assistant", uuid: "a3", message: { role: "assistant", content: [{ type: "text", text: "Now add the cancellation tests to the test file." }] } },
+      { type: "assistant", uuid: "e4", message: { role: "assistant", content: [{ type: "tool_use", id: "t4", name: "Edit", input: { file_path: "/repo/test/orders.test.js", old_string: TST_BEFORE, new_string: TST_AFTER } }] } },
+      { type: "user", uuid: "r4", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t4", content: "updated" }] } },
+      { type: "assistant", uuid: "b1", message: { role: "assistant", content: [{ type: "tool_use", id: "t5", name: "Bash", input: { command: "node --test 2>&1" } }] } },
+      { type: "user", uuid: "rb1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t5", is_error: false, content: NODE_TEST_OUTPUT }] } },
+      { type: "assistant", uuid: "a4", message: { role: "assistant", content: [{ type: "text", text: "All 3 tests pass. Cancellation is implemented across the four files." }] } },
+    ],
+    changedFiles: [
+      { path: "src/inventory.js", status: "modified", sha256: sha256(invF) },
+      { path: "src/orders.js", status: "modified", sha256: sha256(ordF) },
+      { path: "src/index.js", status: "modified", sha256: sha256(idxF) },
+      { path: "test/orders.test.js", status: "modified", sha256: sha256(tstF) },
+    ],
+    finalContent: { "src/inventory.js": invF, "src/orders.js": ordF, "src/index.js": idxF, "test/orders.test.js": tstF },
+  });
+}
+
+test("1F: a multi-file session compacts to ≤5 behavior-specific steps (gates 1+3)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const stepNodes = story.overview.nodes.filter((n) => n.stepId);
+  assert.ok(stepNodes.length <= 5, `overview capped at 5 (got ${stepNodes.length})`);
+  // One step per implementation unit (file) + a verification step: 4 + 1 = 5.
+  assert.equal(story.steps.length, 5);
+  // Labels are BEHAVIOR-SPECIFIC, derived from the exact landed code — not "Edited <file>".
+  const titles = story.steps.map((s) => s.title).join(" | ");
+  assert.ok(/releaseStock/.test(titles), "new declaration named in a title");
+  assert.ok(/cancelOrder/.test(titles), "cancelOrder surfaced");
+  assert.ok(/Expose|Export/.test(titles), "the barrel export is described as an export, not a file edit");
+  assert.ok(/test/i.test(titles), "the test additions are named as tests");
+  assert.ok(!/Edited src\//.test(titles), "no bare 'Edited <file>' label remains");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("1F: reasoning/prompt excerpts stay in the drawer, never as steps (gate 2)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // None of the plain narration ("Let me explore…", "Now add the tests…") is a step.
+  for (const s of story.steps) {
+    assert.ok(!/Let me explore|Now add the cancellation|I have everything/.test(s.title + s.intent.text),
+      `narration leaked into a step: ${s.title}`);
+  }
+  // With no failing verification, no reasoning excerpt is promoted (no diagnosis arc).
+  assert.ok(!story.steps.some((s) => s.intent.status === "observed"), "no observed-intent reasoning step without a failure arc");
+  // The narration still exists as evidence, in the drawer.
+  assert.ok(story.evidenceDrawer.quotes.length >= 2, "narration preserved in the evidence drawer");
+});
+
+test("1F: an attested succeeded Bash check (no receipt) becomes a verification step and binds the outcome (gate 4)", () => {
+  const bundle = multiFileBundle();
+  // The frozen classifier does NOT mint a receipt for `node --test` (the --test flag
+  // is not a NODE_RUN_SAFE option), so this is the real-session case: verification
+  // must come from the attested Bash tool event, not a receipt.
+  assert.equal(bundle.receipts.length, 0, "no receipt was minted for `node --test`");
+  const bashPass = bundle.toolEvents.find((t) => t.toolName === "Bash" && t.status === "succeeded");
+  assert.ok(bashPass, "there is a succeeded Bash verification event");
+  const story = buildChangeStory(bundle);
+  const verifStep = story.steps.find((s) => (s.verification || []).some((v) => v.status === "succeeded"));
+  assert.ok(verifStep, "a verification step surfaces the passing check");
+  assert.ok(/3\/3|3 test/.test(verifStep.title + verifStep.outcome.text), "the parsed pass count is shown");
+  // The outcome BINDS the verification evidence (its tool_input anchor), not raw-only.
+  const outcomeRefs = story.outcome.evidence.map((r) => `${r.type}:${r.ref}`);
+  assert.ok(outcomeRefs.some((r) => r.startsWith("tool_input:")), "outcome binds the attested verification");
+  assert.ok(/passing|passed/.test(story.outcome.text), "outcome states verification passed");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("1F: no inferred cross-file architecture/dataflow edges (gate 5)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  for (const e of story.overview.edges) {
+    assert.ok(["observed_sequence", "derived"].includes(e.kind), `unexpected edge kind ${e.kind}`);
+    if (e.kind !== "observed_sequence") assert.notEqual(e.relationshipStatus, "observed");
+  }
+  // Cross-file causal kinds are never emitted.
+  assert.ok(!story.overview.edges.some((e) => ["caused_by", "architecture", "dataflow"].includes(e.kind)));
+});
+
+test("1F: dropping a landed change to shrink the story fails closed (gate 3 completeness)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Remove one landed code change from its step, then rehash — the partition check
+  // must catch that an attested landed excerpt is now shown in no step.
+  const step = story.steps.find((s) => Array.isArray(s.codeChange) && s.codeChange.length);
+  const dropped = step.codeChange.pop();
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.includes(dropped.id) && /not shown in any step/.test(e)),
+    `expected a dropped-landed error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: double-counting a landed change across two steps fails closed (gate 3 partition)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Copy one step's landed code change into another step, then rehash.
+  const withCode = story.steps.filter((s) => Array.isArray(s.codeChange) && s.codeChange.length);
+  assert.ok(withCode.length >= 2);
+  const dup = { ...withCode[0].codeChange[0] };
+  withCode[1].codeChange = [...(withCode[1].codeChange || []), dup];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.includes(dup.id) && /exactly one step|appears in \d+ steps/.test(e)),
+    `expected a double-count error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: re-inflating the overview past the compaction cap fails closed (gate 1)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Duplicate a step + its node to push the overview to 6 step nodes, keeping the
+  // chain internally consistent, then rehash. The cap must reject it.
+  const srcStep = story.steps[0];
+  const clonedStep = { ...srcStep, id: srcStep.id + ":clone" };
+  // Insert clone right after the original in BOTH steps and nodes to keep the
+  // order-matched bijection intact, so the failure is specifically the cap.
+  const nodeIdx = story.overview.nodes.findIndex((n) => n.stepId === srcStep.id);
+  const srcNode = story.overview.nodes[nodeIdx];
+  const clonedNode = { ...srcNode, id: srcNode.id + ":clone", stepId: clonedStep.id };
+  story.steps.splice(1, 0, clonedStep);
+  story.overview.nodes.splice(nodeIdx + 1, 0, clonedNode);
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /compaction cap/.test(e)), `expected a cap error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: the debugging-arc diagnosis is still promoted when a failure precedes it (no S2 regression)", () => {
+  // Gate 2's drawer rule must NOT swallow a genuine diagnosis. Reuse S2: a failing
+  // check precedes the "(page-1)*pageSize" reasoning and a landed fix follows it, so
+  // it remains an observed-intent step (the Phase 1E behavior is preserved).
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const diag = story.steps.find((s) => s.intent.status === "observed" && /page-1|0-indexed/.test(s.intent.text));
+  assert.ok(diag, "the diagnosis remains a step in a debugging arc");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});

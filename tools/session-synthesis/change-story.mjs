@@ -23,6 +23,7 @@ import {
   assertChangeStory,
   hashChangeStory,
   CHANGE_STORY_SCHEMA_VERSION,
+  MAX_OVERVIEW_STEPS,
 } from "../session/change-story-schema.mjs";
 import { sha256, stableStringify } from "../comprehension/util.mjs";
 
@@ -57,34 +58,273 @@ function toolTarget(ev) {
   return stripped && stripped !== ev.toolName ? stripped : "";
 }
 
-// Classify a tool event into a coarse activity verb for the step title.
-function activityVerb(ev) {
-  switch (ev.toolName) {
-    case "Edit":
-      return "Edited";
-    case "Write":
-      return "Wrote";
-    case "Bash":
-      return "Ran";
-    case "Read":
-      return "Read";
-    default:
-      return ev.toolName;
+// --------------------------------------------------------------------------
+// Phase 1F semantic-compaction helpers — derive BEHAVIOR-SPECIFIC step labels
+// from the exact landed code (declaration / export / test names), never from
+// file names alone (PM contract, task #39). Everything here reads the attested
+// CodeExcerpt before/after text that is already hash-bound in the bundle; it
+// resolves names deterministically and falls back VISIBLY to a file-level label
+// when no unique semantic name can be derived — it never infers.
+// --------------------------------------------------------------------------
+
+// A top-level JS/TS declaration at column 0 (mirrors the adapter's rule so the
+// two layers agree on what a "symbol" is; kept local so the frozen capture module
+// is untouched).
+const DECL_RE = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/;
+const JS_LIKE_EXT = /\.(mjs|cjs|jsx?|tsx?)$/i;
+
+// Blank the CONTENT of comments and string/template literals (newlines preserved)
+// so a declaration-looking token inside them is never mistaken for real code. A
+// byte-for-byte copy of the adapter's stripNonCode discipline, replicated here to
+// avoid importing from — and thereby coupling to — the frozen capture boundary.
+function stripNonCodeLocal(src) {
+  let out = "";
+  let state = "code"; // code | line | block | sq | dq | tpl
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    const n = src[i + 1];
+    switch (state) {
+      case "code":
+        if (c === "/" && n === "/") { state = "line"; out += "  "; i += 1; }
+        else if (c === "/" && n === "*") { state = "block"; out += "  "; i += 1; }
+        else if (c === "'") { state = "sq"; out += " "; }
+        else if (c === '"') { state = "dq"; out += " "; }
+        else if (c === "`") { state = "tpl"; out += " "; }
+        else out += c;
+        break;
+      case "line":
+        if (c === "\n") { state = "code"; out += "\n"; } else out += " ";
+        break;
+      case "block":
+        if (c === "*" && n === "/") { state = "code"; out += "  "; i += 1; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "sq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "'") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "dq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === '"') { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "tpl":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "`") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      default:
+        out += c;
+    }
   }
+  return out;
+}
+
+// Names of top-level declarations in a source string (column 0 only).
+function topLevelDecls(text) {
+  const names = new Set();
+  for (const line of stripNonCodeLocal(text || "").split("\n")) {
+    const m = DECL_RE.exec(line);
+    if (m) names.add(m[1]);
+  }
+  return names;
+}
+
+// Names added to an `export { … }` re-export list between before and after.
+function exportedNames(text) {
+  const names = new Set();
+  const re = /export\s*\{([^}]*)\}/g;
+  const stripped = stripNonCodeLocal(text || "");
+  let m;
+  while ((m = re.exec(stripped))) {
+    for (const part of m[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/)[0].trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+  return names;
+}
+
+// Names of `test("…")` / `it("…")` cases. Read from RAW text (the string content
+// is exactly what we want) — display only, never a trust decision.
+function testNames(text) {
+  const names = [];
+  const re = /\b(?:test|it)\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
+  let m;
+  while ((m = re.exec(text || ""))) names.push(m[2]);
+  return names;
+}
+
+const setDiff = (after, before) => [...after].filter((x) => !before.has(x));
+
+// A short, human title for a title/label — bounded so the SVG node and header do
+// not overflow (R7). Ellipsis keeps the derivation honest (the full list lives in
+// the drill-down panel).
+function clip(s, n = 72) {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+// Derive a behavior-specific label + intent for a grouped change step from its
+// landed CodeExcerpts. Priority: new declarations → new exports → new tests →
+// modified named symbol → VISIBLE file-level fallback. Returns { title, intent }.
+function deriveChangeLabel(path, landed) {
+  const isJsLike = JS_LIKE_EXT.test(path || "");
+  const decls = [];
+  const exportsAdded = [];
+  const tests = [];
+  const modifiedSymbols = [];
+  for (const c of landed) {
+    if (isJsLike) {
+      for (const d of newDecls(c.before, c.after)) if (!decls.includes(d)) decls.push(d);
+      const be = exportedNames(c.before);
+      for (const e of setDiff(exportedNames(c.after), be)) if (!exportsAdded.includes(e)) exportsAdded.push(e);
+      // a modification of an existing named symbol (present in before AND after,
+      // body changed): use the excerpt's resolved symbol if the adapter set one.
+      if (c.symbol && (c.before || "").length && topLevelDecls(c.before).has(c.symbol)) {
+        if (!modifiedSymbols.includes(c.symbol)) modifiedSymbols.push(c.symbol);
+      }
+    }
+    const bt = new Set(testNames(c.before));
+    for (const t of testNames(c.after)) if (!bt.has(t) && !tests.includes(t)) tests.push(t);
+  }
+  if (decls.length) {
+    return { title: clip(`Add ${decls.join(", ")}`), intent: `Add ${decls.join(", ")} in ${path}.` };
+  }
+  if (exportsAdded.length) {
+    return { title: clip(`Expose ${exportsAdded.join(", ")}`), intent: `Export ${exportsAdded.join(", ")} from ${path}.` };
+  }
+  if (tests.length) {
+    const head = tests.length === 1 ? tests[0] : `${tests.length} tests: ${tests.join("; ")}`;
+    return { title: clip(`Add ${head}`), intent: `Add ${tests.length} test(s) in ${path}: ${tests.join("; ")}.` };
+  }
+  if (modifiedSymbols.length) {
+    return { title: clip(`Update ${modifiedSymbols.join(", ")}`), intent: `Update ${modifiedSymbols.join(", ")} in ${path}.` };
+  }
+  // No unique semantic name derivable → visible file-level fallback (never infer).
+  const rel = path || "a file";
+  return { title: clip(`Edit ${rel}`), intent: `Edit ${rel}.` };
+}
+function newDecls(before, after) {
+  const b = topLevelDecls(before || "");
+  return setDiff(topLevelDecls(after || ""), b);
+}
+
+// Deterministic parse of a test-runner RESULT summary from attested output. Reads
+// the machine-printed totals (node --test's "ℹ pass N / ℹ fail N / ℹ tests N", or
+// a TAP "# pass N / # fail N" footer). Returns { pass, fail, total } or null. This
+// only READS attested evidence to LABEL/bind an already-attested verification — it
+// never decides trust and never mints a receipt (no classifier expansion).
+function parseTestSummary(output) {
+  const s = String(output || "");
+  const grab = (re) => { const m = re.exec(s); return m ? Number(m[1]) : null; };
+  let pass = grab(/(?:^|\n)\s*(?:ℹ|#)\s*pass\s+(\d+)/i);
+  let fail = grab(/(?:^|\n)\s*(?:ℹ|#)\s*fail\s+(\d+)/i);
+  let total = grab(/(?:^|\n)\s*(?:ℹ|#)\s*tests?\s+(\d+)/i);
+  if (pass === null && fail === null && total === null) return null;
+  if (fail === null) fail = 0;
+  if (pass === null) pass = total !== null ? Math.max(0, total - fail) : 0;
+  if (total === null) total = pass + fail;
+  return { pass, fail, total };
+}
+
+// A combined behavior-specific label for an AGGREGATE change step (several folded
+// implementation units). Lists the new declarations/exports/test additions across
+// all folded units; falls back to the file list. Bounded for the node/header.
+function deriveAggregateLabel(units) {
+  const decls = [];
+  const exportsAdded = [];
+  let testCount = 0;
+  const files = [];
+  for (const u of units) {
+    if (!files.includes(u.path)) files.push(u.path);
+    const isJsLike = JS_LIKE_EXT.test(u.path || "");
+    for (const c of u.landed) {
+      if (isJsLike) {
+        for (const d of newDecls(c.before, c.after)) if (!decls.includes(d)) decls.push(d);
+        for (const e of setDiff(exportedNames(c.after), exportedNames(c.before))) if (!exportsAdded.includes(e)) exportsAdded.push(e);
+      }
+      const bt = new Set(testNames(c.before));
+      testCount += testNames(c.after).filter((t) => !bt.has(t)).length;
+    }
+  }
+  const bits = [];
+  if (decls.length) bits.push(`add ${decls.join(", ")}`);
+  if (exportsAdded.length) bits.push(`export ${exportsAdded.join(", ")}`);
+  if (testCount) bits.push(`${testCount} test(s)`);
+  const detail = bits.length ? bits.join("; ") : files.join(", ");
+  return {
+    title: clip(`Implement across ${files.length} file(s): ${detail}`, 80),
+    intent: clip(`Implementation across ${files.join(", ")} — ${detail}.`, 240),
+  };
+}
+
+// Cap the overview at `max` steps (gate 1). Diagnosis + verification descriptors
+// are never folded (they carry the debugging arc / the required verification); the
+// fold targets CHANGE units only. Keep as many individual change units as fit, and
+// collapse the remainder into ONE aggregate change step that retains EVERY landed
+// CodeExcerpt ref and tool activity — evidence is grouped, never dropped. Mutates
+// `descriptors` in place, preserving attested order. If even a single aggregate
+// change step cannot fit under `max` (i.e. non-change steps alone exceed it), the
+// descriptors are left intact and the downstream cap assertion surfaces it as a
+// real, honest limitation rather than silently hiding evidence.
+function capOverview(descriptors, max, { refCode }) {
+  if (descriptors.length <= max) return;
+  const changes = descriptors.filter((d) => d.kind === "change");
+  const nonChange = descriptors.length - changes.length;
+  const slots = max - nonChange;
+  if (slots < 1) return; // cannot fold below the cap without dropping the arc; fail-closed downstream
+  const keepIndividual = Math.max(0, slots - 1);
+  if (changes.length <= slots) return; // change units already fit (with room for the arc)
+  // Change units are already in attested order within `descriptors`. Keep the first
+  // `keepIndividual`, fold the rest.
+  const foldedFrom = keepIndividual; // index into `changes`
+  const kept = changes.slice(0, keepIndividual);
+  const folded = changes.slice(foldedFrom);
+  if (folded.length <= 1) return; // nothing to gain
+  const units = folded.map((d) => d.unit);
+  const allLanded = units.flatMap((u) => u.landed);
+  const allUnknown = units.flatMap((u) => u.unknown);
+  const allToolActivity = units.flatMap((u) => u.toolActivity);
+  // Anchor the aggregate at the earliest folded unit's anchor (a single attested
+  // timeline item). Its step id derives from that immutable event id.
+  const earliest = folded.reduce((a, b) => ((a.anchorPos ?? Infinity) <= (b.anchorPos ?? Infinity) ? a : b));
+  const label = deriveAggregateLabel(units);
+  const aggregate = {
+    kind: "change",
+    anchorRef: earliest.anchorRef,
+    anchorPos: earliest.anchorPos,
+    unit: { path: units.map((u) => u.path).join(", "), landed: allLanded, unknown: allUnknown },
+    step: {
+      id: `step:agg:${earliest.step.id.replace(/^step:/, "")}`,
+      title: label.title,
+      intent: { text: label.intent, status: "inferred", evidence: [earliest.anchorRef] },
+      toolActivity: allToolActivity,
+      ...(allLanded.length ? { codeChange: allLanded.map((c) => ({ ...c })) } : {}),
+      outcome: {
+        text: `${allLanded.length} landed change(s) across ${units.length} file(s).`,
+        evidence: allLanded.length ? allLanded.map(refCode) : [earliest.anchorRef],
+      },
+      unknowns: allUnknown.map((c) => ({ text: `${c.path}: exact code not confirmed as landed`, reason: c.unknownReason || "unconfirmed" })),
+    },
+  };
+  // Rebuild `descriptors`: drop the folded change descriptors, insert the aggregate,
+  // then re-sort by attested position so the chain stays monotonic.
+  const foldedIds = new Set(folded.map((d) => d.step.id));
+  const remaining = descriptors.filter((d) => !foldedIds.has(d.step.id));
+  remaining.push(aggregate);
+  remaining.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
+  descriptors.length = 0;
+  descriptors.push(...remaining);
+  void kept;
 }
 
 // Choose the semantic view (R4). Only observed_sequence edges are provable, so
 // renderHint is always "sequential" for now; viewType reflects the evidence shape:
 // a failed→passed verification arc reads as a "sequence" (debugging), otherwise a
 // "workflow". This is a labeling choice over observed evidence, never an inferred
-// causal topology.
-function chooseViewType(bundle) {
-  const statuses = bundle.receipts.map((r) => r.status);
-  const hasFail = statuses.includes("failed");
-  const hasPass = statuses.includes("succeeded");
-  if (hasFail && hasPass) return "sequence"; // failed → fix → passed debugging arc
-  return "workflow";
-}
+// causal topology. (Computed inline from the unified verification set in
+// buildChangeStory so it also counts bare Bash checks, not only receipts.)
 
 export function buildChangeStory(bundle) {
   const excerptById = new Map(bundle.excerpts.map((e) => [e.id, e]));
@@ -110,24 +350,11 @@ export function buildChangeStory(bundle) {
 
   const landedCount = bundle.codeEvidence.filter((c) => c.completeness === "landed").length;
   const changedCount = bundle.repository.changedFiles.length;
-  const passCount = bundle.receipts.filter((r) => r.status === "succeeded").length;
-  const failCount = bundle.receipts.filter((r) => r.status === "failed").length;
-  const outcomeText = changedCount
-    ? `The session changed ${changedCount} file(s); ${landedCount} code change(s) are confirmed present in the final tree` +
-      (passCount || failCount ? `, with ${passCount} passing and ${failCount} failing verification run(s).` : ".")
-    : "The session investigated the objective without a recorded file change.";
-  // Outcome is a DERIVED summary (counts across the evidence), not a single observed
-  // quote, so its claim status is "inferred" and the framing edge into it is
-  // "derived" — never asserted as an observed transition (finding #2).
+  // The outcome is DERIVED, and gate 4 requires it to BIND the attested verification
+  // (a receipt OR a bare succeeded/failed Bash check). Both the counts and the
+  // bound evidence are computed AFTER the unified `verifications` array below, so we
+  // only capture the final explanation here (also used to exclude it as a step).
   const finalExplanation = [...bundle.excerpts].reverse().find((e) => e.kind === "agent_explanation");
-  const outcome = {
-    text: outcomeText,
-    status: "inferred",
-    evidence: [
-      ...bundle.receipts.slice(0, 3).map(refReceipt),
-      ...(finalExplanation ? [refExcerpt(finalExplanation)] : []),
-    ],
-  };
 
   // The attested cross-type timeline is the ONLY order the capture proves; every
   // step anchors to exactly one timeline item and the steps are ordered by that
@@ -137,8 +364,26 @@ export function buildChangeStory(bundle) {
   const posOf = new Map();
   (bundle.observedOrder || []).forEach((o, i) => posOf.set(`${o.kind}:${o.id}`, i));
 
-  // --- steps, one per meaningful timeline item, in attested order ---
+  // --- steps: SEMANTICALLY COMPACTED (Phase 1F, task #39) ---
   // R4: step ids derive from the immutable evidence id, not step-N enumeration.
+  // The Phase 1E builder emitted one step per reasoning excerpt AND one per Edit
+  // AND one per receipt — a 10-node "blocks/prompts" replay on a real multi-file
+  // session. The compaction rules (PM 5-gate contract):
+  //   (1) group landed edits by their declared implementation unit (file) → one
+  //       step per unit, carrying ALL its landed CodeExcerpt refs, anchored at the
+  //       unit's EARLIEST attested tool event;
+  //   (2) label each unit BEHAVIOR-SPECIFICALLY from the exact landed code (new
+  //       declarations / exports / test names), with a visible file-level fallback;
+  //   (3) reasoning/prompt excerpts stay in the evidence drawer and NEVER become
+  //       top-level steps — EXCEPT a genuine debug diagnosis (a reasoning excerpt
+  //       that sits between an observed FAILING verification and a later landed
+  //       change), which remains a step so the S2 debugging arc is not lost;
+  //   (4) every attested verification (a receipt OR a succeeded/failed Bash tool
+  //       event the frozen classifier did not promote) is a verification step and
+  //       binds the outcome — no raw-evidence-only green;
+  //   (5) the overview is capped at MAX_OVERVIEW_STEPS; any overflow change units
+  //       fold into ONE aggregate step that keeps every ref (evidence is never
+  //       dropped, only visually grouped).
   const errorExcerpt = bundle.excerpts.find((e) => e.kind === "error");
   const objectiveSourceId = bundle.objective.sourceId;
   const finalExplanationId = finalExplanation ? finalExplanation.id : null;
@@ -148,111 +393,224 @@ export function buildChangeStory(bundle) {
   // EvidenceRef that ties the step (and its overview node) to its timeline slot.
   const descriptors = [];
 
-  // (a) reasoning steps: a diagnosis/decision/error excerpt that carries the story
-  // forward (e.g. the S2 "the bug is (page-1)*pageSize" diagnosis). The objective
-  // source and the final explanation (cited by outcome) are NOT re-emitted as steps.
+  // Attested verifications, unified across receipts and un-promoted Bash events.
+  // A receipt already carries a clean command/status; a bare succeeded/failed Bash
+  // event (e.g. `node --test`, which the frozen receipt classifier declines) is
+  // ALSO attested verification evidence — we surface it from the raw tool event
+  // WITHOUT minting a receipt (no classifier expansion). Dedupe on the command
+  // locator so a Bash event that DID mint a receipt is never counted twice.
+  const receiptLocators = new Set(bundle.receipts.map((rc) => rc.commandLocator).filter(Boolean));
+  const VERIFY_TOOLS = new Set(["Bash"]);
+  const verifications = [];
+  for (const rc of bundle.receipts) {
+    const summary = parseTestSummary(rc.content);
+    verifications.push({
+      kind: "receipt",
+      anchorRef: refReceipt(rc),
+      anchorPos: posOf.get(`receipt:${rc.id}`),
+      idPart: rc.id,
+      command: rc.command,
+      status: rc.status,
+      exitCode: rc.exitCode,
+      output: (rc.content || "").slice(0, 300),
+      summary,
+      toolActivity: [{ toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [refReceipt(rc)] }],
+    });
+  }
+  for (const ev of bundle.toolEvents) {
+    if (!VERIFY_TOOLS.has(ev.toolName)) continue;
+    if (ev.status !== "succeeded" && ev.status !== "failed") continue;
+    if (ev.inputLocator && receiptLocators.has(ev.inputLocator)) continue; // already a receipt
+    const cmd = toolTarget(ev) || ev.toolName; // the command string
+    const output = ev.outputSummary || "";
+    const summary = parseTestSummary(output);
+    // Only surface a Bash event as VERIFICATION when it looks like a check that
+    // reported a result (a parseable test/suite summary). A bare command with no
+    // result summary is not verification evidence — leave it out rather than call
+    // an arbitrary shell run a "verification".
+    if (!summary) continue;
+    const anchorRef = refToolInput(ev);
+    verifications.push({
+      kind: "bash",
+      anchorRef,
+      anchorPos: posOf.get(`tool_event:${ev.id}`),
+      idPart: ev.id,
+      command: cmd,
+      status: ev.status,
+      exitCode: undefined,
+      output: output.slice(0, 300),
+      summary,
+      toolActivity: [{ toolName: "Bash", status: ev.status, summary: cmd, evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)] }],
+    });
+  }
+  const firstFailPos = verifications
+    .filter((v) => v.status === "failed")
+    .reduce((min, v) => Math.min(min, v.anchorPos ?? Infinity), Infinity);
+
+  // --- outcome (DERIVED summary that BINDS the attested verification, gate 4) ---
+  const passCount = verifications.filter((v) => v.status === "succeeded").length;
+  const failCount = verifications.filter((v) => v.status === "failed").length;
+  // Prefer a parsed test count from the LAST attested verification (most recent
+  // result) so the outcome reads "5/5 tests passed", not just "1 run".
+  const lastVerify = verifications.slice().sort((a, b) => (a.anchorPos ?? 0) - (b.anchorPos ?? 0)).pop();
+  const testTotals = lastVerify && lastVerify.summary ? lastVerify.summary : null;
+  const verifSentence = verifications.length
+    ? testTotals
+      ? ` The final test run reported ${testTotals.pass}/${testTotals.total} passing${testTotals.fail ? ` (${testTotals.fail} failing)` : ""}.`
+      : ` ${passCount} passing and ${failCount} failing verification run(s) were recorded.`
+    : "";
+  const outcomeText = changedCount
+    ? `The session changed ${changedCount} file(s); ${landedCount} code change(s) are confirmed present in the final tree.${verifSentence}`
+    : "The session investigated the objective without a recorded file change.";
+  // Bind the outcome to the attested verifications (gate 4: no raw-only green) plus
+  // the final explanation quote. Status is "inferred" (a derived summary, not a
+  // single observed quote), so the framing edge into it stays derived (finding #2).
+  const outcome = {
+    text: outcomeText,
+    status: "inferred",
+    evidence: [
+      ...verifications.slice(0, 3).map((v) => v.anchorRef),
+      ...(finalExplanation ? [refExcerpt(finalExplanation)] : []),
+    ],
+  };
+
+  // (a) diagnosis reasoning steps (gate 2 exception). A reasoning excerpt becomes a
+  // top-level step ONLY when it is a genuine debug diagnosis: there is an observed
+  // FAILING verification before it AND a landed code change after it. This is a
+  // purely structural test over the attested timeline — no semantic guessing — so
+  // narration like "Let me explore the repo" (no preceding failure) always stays in
+  // the drawer, while the S2 "(page-1)*pageSize" diagnosis remains a step.
+  const landedPositions = bundle.codeEvidence
+    .filter((c) => c.completeness === "landed")
+    .map((c) => {
+      const ev = bundle.toolEvents.find((t) => t.id === c.toolEventId);
+      return ev ? posOf.get(`tool_event:${ev.id}`) : undefined;
+    })
+    .filter((p) => p !== undefined);
   for (const e of bundle.excerpts) {
     if (!REASONING_KINDS.has(e.kind)) continue;
     if (e.id === objectiveSourceId || e.id === finalExplanationId) continue;
+    const pos = posOf.get(`excerpt:${e.id}`);
+    if (pos === undefined) continue;
+    const hasPriorFailure = firstFailPos < pos;
+    const hasLaterLanding = landedPositions.some((lp) => lp > pos);
+    if (!(hasPriorFailure && hasLaterLanding)) continue; // → stays in the drawer
     const anchorRef = refExcerpt(e);
-    const label = e.kind === "error" ? "Reported problem" : e.kind === "agent_decision" ? "Decision" : "Reasoning";
     const quoted = e.text.slice(0, 200);
     descriptors.push({
+      kind: "diagnosis",
       anchorRef,
-      anchorPos: posOf.get(`excerpt:${e.id}`),
+      anchorPos: pos,
       step: {
         id: `step:${e.id}`,
-        title: `${label}: ${e.text.slice(0, 64)}`.trim(),
-        // Observed intent: the text is quoted directly FROM the cited excerpt, so it
-        // is a substring of it — the honest "observed" case the validator enforces.
+        title: clip(`Diagnosis: ${e.text.slice(0, 60)}`),
+        // Observed intent: quoted directly FROM the cited excerpt (a substring), the
+        // honest "observed" case the validator enforces.
         intent: { text: quoted, status: "observed", evidence: [anchorRef] },
         toolActivity: [],
-        outcome: { text: `${label} recorded in the session.`, evidence: [anchorRef] },
+        outcome: { text: "Root cause identified from the failing check.", evidence: [anchorRef] },
         unknowns: [],
       },
     });
   }
 
-  // (b) change steps: one per successful direct Edit/Write, carrying the landed code.
+  // (b) change steps: GROUP landed edits by implementation unit (file). One step
+  // per unit, carrying every landed CodeExcerpt in the unit as exact refs, anchored
+  // at the unit's EARLIEST attested change tool event (gate 3). Labels are behavior-
+  // specific (gate: file names cannot be the explanation).
+  const unitOrder = []; // preserve first-seen order of units
+  const unitMap = new Map(); // path -> { events:Set, landed:[], unknown:[], earliestPos, earliestEvId }
   for (const ev of bundle.toolEvents) {
     if (ev.status !== "succeeded") continue;
     if (!CHANGE_TOOLS.has(ev.toolName)) continue;
-    const codeChanges = (codeByToolEvent.get(ev.id) || []).filter((c) => c.completeness === "landed");
-    const unsupportedOrUnknown = (codeByToolEvent.get(ev.id) || []).filter((c) => c.completeness !== "landed");
-    const anchorRef = refToolInput(ev);
-    descriptors.push({
+    const all = codeByToolEvent.get(ev.id) || [];
+    // The implementation unit is the changed file path. If a tool event produced no
+    // code excerpt at all (path unknown), fall back to its own tool target as a unit
+    // key so it is still represented (visible, not dropped).
+    const path = all[0]?.path || toolTarget(ev) || ev.toolName;
+    const pos = posOf.get(`tool_event:${ev.id}`);
+    if (!unitMap.has(path)) { unitMap.set(path, { path, eventRefs: [], landed: [], unknown: [], earliestPos: pos, earliestEvId: ev.id, toolActivity: [] }); unitOrder.push(path); }
+    const u = unitMap.get(path);
+    if (pos !== undefined && (u.earliestPos === undefined || pos < u.earliestPos)) { u.earliestPos = pos; u.earliestEvId = ev.id; }
+    for (const c of all) {
+      if (c.completeness === "landed") u.landed.push(c);
+      else u.unknown.push(c);
+    }
+    u.toolActivity.push({
+      toolName: ev.toolName,
+      status: ev.status,
+      summary: toolLabel(ev),
+      evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)],
+    });
+  }
+  const changeUnits = unitOrder.map((path) => unitMap.get(path));
+  // Anchor a unit at its earliest change tool event's INPUT ref (a stable, single
+  // attested item in the timeline). The step id derives from that immutable event.
+  const unitDescriptors = changeUnits.map((u) => {
+    const anchorEv = bundle.toolEvents.find((t) => t.id === u.earliestEvId);
+    const anchorRef = refToolInput(anchorEv);
+    const label = deriveChangeLabel(u.path, u.landed);
+    return {
+      kind: "change",
       anchorRef,
-      anchorPos: posOf.get(`tool_event:${ev.id}`),
+      anchorPos: u.earliestPos,
+      unit: u,
       step: {
-        id: `step:${ev.id}`,
-        // Prefer the clean repo-relative path for the title; a raw absolute tool
-        // path reads as noise and truncates. Fall back to the tool target/name.
-        title: `${activityVerb(ev)} ${codeChanges[0]?.path || toolTarget(ev) || ev.toolName}`.trim(),
-        // We cannot prove which prompt caused THIS specific edit from adjacency
-        // (R4), so the change step's intent is INFERRED and cites the tool input it
-        // narrates — never an unrelated excerpt's text passed off as observed (#3).
-        intent: {
-          text: (() => {
-            const verb = ev.toolName === "Write" ? "Write" : "Edit";
-            // Prefer the code change's clean repo-relative path (what the reader
-            // cares about) over the raw tool input, which may be a long absolute
-            // path; fall back to the tool target, then a generic phrasing.
-            const target = codeChanges[0]?.path || toolTarget(ev);
-            return target ? `${verb} ${target}.` : `${verb} a file.`;
-          })(),
-          status: "inferred",
-          evidence: [anchorRef],
-        },
-        toolActivity: [
-          {
-            toolName: ev.toolName,
-            status: ev.status,
-            summary: toolLabel(ev),
-            evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)],
-          },
-        ],
-        ...(codeChanges.length ? { codeChange: codeChanges.map((c) => ({ ...c })) } : {}),
+        id: `step:${u.earliestEvId}`,
+        title: label.title,
+        // Intent is INFERRED (we cannot prove which prompt caused this unit from
+        // adjacency, R4) and cites the anchoring tool input it narrates — never an
+        // unrelated excerpt passed off as observed (#3).
+        intent: { text: label.intent, status: "inferred", evidence: [anchorRef] },
+        toolActivity: u.toolActivity,
+        ...(u.landed.length ? { codeChange: u.landed.map((c) => ({ ...c })) } : {}),
         outcome: {
-          text: codeChanges.length
-            ? `${codeChanges.length} landed code change(s) at ${codeChanges[0].path}.`
-            : `Change applied via ${ev.toolName}.`,
-          evidence: codeChanges.length ? codeChanges.map(refCode) : [anchorRef],
+          text: u.landed.length
+            ? `${u.landed.length} landed change(s) in ${u.path}.`
+            : `Change applied to ${u.path}.`,
+          evidence: u.landed.length ? u.landed.map(refCode) : [anchorRef],
         },
-        unknowns: unsupportedOrUnknown.map((c) => ({
+        unknowns: u.unknown.map((c) => ({
           text: `${c.path}: exact code not confirmed as landed`,
           reason: c.unknownReason || "unconfirmed",
         })),
       },
-    });
-  }
+    };
+  });
+  descriptors.push(...unitDescriptors);
 
-  // (c) verification steps: each receipt is its own step, anchored at the receipt's
-  // timeline slot (immediately after its originating Bash event), so a failed→fix→
-  // passed debugging arc renders in its true order (finding #1).
-  for (const rc of bundle.receipts) {
-    const anchorRef = refReceipt(rc);
+  // (c) verification steps: one per attested verification (receipt or bare Bash
+  // check), anchored at its timeline slot so a failed→fix→passed arc renders in
+  // true order (finding #1). Labels report the parsed pass/fail counts when the
+  // runner printed them.
+  for (const v of verifications) {
+    const countTxt = v.summary ? ` (${v.summary.pass}/${v.summary.total} passed${v.summary.fail ? `, ${v.summary.fail} failed` : ""})` : "";
     descriptors.push({
-      anchorRef,
-      anchorPos: posOf.get(`receipt:${rc.id}`),
+      kind: "verification",
+      anchorRef: v.anchorRef,
+      anchorPos: v.anchorPos,
+      verify: v,
       step: {
-        id: `step:${rc.id}`,
-        title: `${rc.status === "failed" ? "Failing" : rc.status === "succeeded" ? "Passing" : "Ran"} check: ${rc.command}`.slice(0, 90),
-        intent: { text: `Run \`${rc.command}\` to verify behavior.`, status: "inferred", evidence: [anchorRef] },
-        toolActivity: [
-          { toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [anchorRef] },
-        ],
+        id: `step:${v.idPart}`,
+        title: clip(`${v.status === "failed" ? "Failing" : v.status === "succeeded" ? "Passing" : "Ran"} check: ${v.command}${countTxt}`, 90),
+        intent: { text: `Run \`${v.command}\` to verify behavior.`, status: "inferred", evidence: [v.anchorRef] },
+        toolActivity: v.toolActivity,
         verification: [
           {
-            command: rc.command,
-            status: rc.status,
-            ...(rc.exitCode !== undefined ? { exitCode: rc.exitCode } : {}),
-            outputExcerpt: (rc.content || "").slice(0, 300),
-            evidence: [anchorRef],
+            command: v.command,
+            status: v.status,
+            ...(v.exitCode !== undefined ? { exitCode: v.exitCode } : {}),
+            outputExcerpt: v.output,
+            evidence: [v.anchorRef],
           },
         ],
         outcome: {
-          text: rc.status === "failed" ? "Verification failed — a fix follows." : rc.status === "succeeded" ? "Verification passed." : "Verification outcome masked.",
-          evidence: [anchorRef],
+          text: v.status === "failed"
+            ? `Verification failed${v.summary ? ` — ${v.summary.fail} of ${v.summary.total} test(s) failing` : ""}.`
+            : v.status === "succeeded"
+              ? `Verification passed${v.summary ? ` — ${v.summary.pass}/${v.summary.total} test(s)` : ""}.`
+              : "Verification outcome masked.",
+          evidence: [v.anchorRef],
         },
         unknowns: [],
       },
@@ -263,6 +621,14 @@ export function buildChangeStory(bundle) {
   // anchorPos would mean a step is not grounded in the observed order — treat as
   // last and let assertChangeStory catch the resulting unprovable edge.
   descriptors.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
+
+  // (d) CAP the overview at MAX_OVERVIEW_STEPS (gate 1). If more distinct change
+  // UNITS exist than the cap allows, fold the overflow change units into ONE
+  // aggregate change step that keeps every landed CodeExcerpt ref (evidence is
+  // never dropped — only visually grouped). Verification and diagnosis steps are
+  // never folded (they carry the arc), so the fold targets change units only.
+  capOverview(descriptors, MAX_OVERVIEW_STEPS, { refCode });
+
   const steps = descriptors.map((d) => d.step);
 
   // --- overview nodes + edges ---
@@ -313,7 +679,9 @@ export function buildChangeStory(bundle) {
     nodes.push({ id: "n:risk", kind: "unknown", label: "Recorded error / risk", evidence: [refExcerpt(errorExcerpt)] });
   }
 
-  const viewType = chooseViewType(bundle);
+  // viewType reflects the UNIFIED verification shape (receipts + bare Bash checks):
+  // a failed→passed arc reads as a debugging "sequence", otherwise a "workflow".
+  const viewType = failCount > 0 && passCount > 0 ? "sequence" : "workflow";
   const overview = { viewType, renderHint: "sequential", nodes, edges };
 
   // --- evidence drawer: quotes subordinate to the story ---
