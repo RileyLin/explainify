@@ -608,3 +608,175 @@ test("1F: the debugging-arc diagnosis is still promoted when a failure precedes 
   assert.ok(diag, "the diagnosis remains a step in a debugging arc");
   assert.equal(validateChangeStory(story, bundle).ok, true);
 });
+
+// --- task #40 REVISE: four integrity attacks that PASSED at 08ccdc8 and must now
+// fail closed (blind non-owner review by @codex-builder). Each test reproduces the
+// exact executable attack the review surfaced.
+
+// A session whose ONLY "check" is a shell command that is NOT a test runner but
+// whose output happens to contain node-test-style "pass/fail" lines — the exact
+// laundering probe for finding #1.
+function launderingBundle() {
+  const slugFinal = SLUG_AFTER + "\n";
+  const FAKE = "✔ slugify truncates\nℹ tests 9\nℹ pass 9\nℹ fail 0"; // attacker-controlled file content
+  return bundleFrom({
+    records: [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Add an optional maxLength option to slugify." }] } },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/repo/slugify.js", old_string: SLUG_BEFORE, new_string: SLUG_AFTER } }] } },
+      { type: "user", uuid: "r1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "updated" }] } },
+      // NOT a test runner — just prints a stale/forged log that LOOKS like a pass.
+      { type: "assistant", uuid: "a4", message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "cat build/last-test-output.txt" } }] } },
+      { type: "user", uuid: "r3", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", is_error: false, content: FAKE }] } },
+      { type: "assistant", uuid: "a5", message: { role: "assistant", content: [{ type: "text", text: "Done." }] } },
+    ],
+    changedFiles: [{ path: "slugify.js", status: "modified", sha256: sha256(slugFinal) }],
+    finalContent: { "slugify.js": slugFinal },
+  });
+}
+
+test("1F: a non-test command whose output prints pass/fail lines is NOT promoted to a verification (finding #1 laundering)", () => {
+  const bundle = launderingBundle();
+  const story = buildChangeStory(bundle);
+  // No verification step may be minted from `cat …`.
+  const verifSteps = story.steps.filter((s) => (s.verification || []).length);
+  assert.equal(verifSteps.length, 0, "a `cat` of a log is not a verification");
+  // The outcome must not claim a passing test run off laundered output.
+  assert.ok(!/test run reported|passing verification/.test(story.outcome.text), `outcome laundered a fake pass: ${story.outcome.text}`);
+  const outcomeRefs = story.outcome.evidence.map((r) => `${r.type}:${r.ref}`);
+  assert.ok(!outcomeRefs.some((r) => r.startsWith("tool_input:")), "outcome must not bind the laundered command");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("1F: relabeling a verification's status (failed→succeeded) fails closed against the source (finding #2)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const failStep = story.steps.find((s) => (s.verification || []).some((v) => v.status === "failed"));
+  assert.ok(failStep, "S2 has a failing verification step to relabel");
+  failStep.verification[0].status = "succeeded"; // lie about the outcome, keep the real ref
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /does not match the cited/.test(e)), `expected a semantics mismatch, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: a verification whose displayed output is not a prefix of the cited source fails closed (finding #2)", () => {
+  const bundle = s2Bundle();
+  const story = buildChangeStory(bundle);
+  const vStep = story.steps.find((s) => (s.verification || []).length);
+  assert.ok(vStep);
+  vStep.verification[0].outputExcerpt = "ALL 999 TESTS PASSED — nothing to see here";
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /is not a prefix of the cited/.test(e)), `expected an output-prefix mismatch, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: an outcome binding a verification ref that no step carries fails closed (finding #2 outcome)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Point the outcome's verification binding at a real tool_input ref that is NOT a
+  // verification step's ref (the first change unit's Edit anchor), then rehash.
+  const changeStep = story.steps.find((s) => (s.codeChange || []).length);
+  const forgedRef = changeStep.intent.evidence[0]; // a tool_input ref for an Edit
+  assert.equal(forgedRef.type, "tool_input");
+  story.outcome.evidence = [forgedRef];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /no verification step carries|bind at least one attested verification/.test(e)),
+    `expected an outcome-binding error, got ${JSON.stringify(errors)}`);
+});
+
+// Two landed edits to the SAME file — the builder groups them into one step; the
+// attacks below split/mis-anchor that grouping (finding #3).
+const UTIL_BEFORE = "export function add(a, b) {\n  return a + b;\n}";
+const UTIL_MID = "export function add(a, b) {\n  return a + b;\n}\nexport function sub(a, b) {\n  return a - b;\n}";
+const UTIL_AFTER = "export function add(a, b) {\n  return a + b;\n}\nexport function sub(a, b) {\n  return a - b;\n}\nexport function mul(a, b) {\n  return a * b;\n}";
+function twoEditsSameFileBundle() {
+  const utilF = UTIL_AFTER + "\n";
+  return bundleFrom({
+    records: [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Add sub and mul to util." }] } },
+      { type: "assistant", uuid: "e1", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/repo/util.js", old_string: UTIL_BEFORE, new_string: UTIL_MID } }] } },
+      { type: "user", uuid: "r1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "updated" }] } },
+      { type: "assistant", uuid: "e2", message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Edit", input: { file_path: "/repo/util.js", old_string: UTIL_MID, new_string: UTIL_AFTER } }] } },
+      { type: "user", uuid: "r2", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: "updated" }] } },
+      { type: "assistant", uuid: "b1", message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "node --test 2>&1" } }] } },
+      { type: "user", uuid: "rb1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", is_error: false, content: "ℹ tests 1\nℹ pass 1\nℹ fail 0" }] } },
+    ],
+    changedFiles: [{ path: "util.js", status: "modified", sha256: sha256(utilF) }],
+    finalContent: { "util.js": utilF },
+  });
+}
+
+test("1F: the builder groups two edits to the SAME file into one step (finding #3 baseline)", () => {
+  const bundle = twoEditsSameFileBundle();
+  const story = buildChangeStory(bundle);
+  const stepsWithUtil = story.steps.filter((s) => (s.codeChange || []).some((c) => c.path === "util.js"));
+  assert.equal(stepsWithUtil.length, 1, "both util.js edits live in one step");
+  assert.ok(stepsWithUtil[0].codeChange.length >= 2, "the step carries both landed excerpts");
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("1F: splitting one file's landed changes across two steps fails closed (finding #3 split)", () => {
+  const bundle = twoEditsSameFileBundle();
+  const story = buildChangeStory(bundle);
+  const changeStep = story.steps.find((s) => (s.codeChange || []).length >= 2);
+  assert.ok(changeStep, "the grouped util step has ≥2 code changes");
+  const verifStep = story.steps.find((s) => (s.verification || []).length);
+  assert.ok(verifStep);
+  // Move the second landed excerpt out of its file's step into the verification step.
+  const moved = changeStep.codeChange.pop();
+  verifStep.codeChange = [...(verifStep.codeChange || []), moved];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /split across|must anchor at its earliest attested/.test(e)),
+    `expected a split/anchor error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: anchoring a step after one of its own code members fails closed (finding #3 swap)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Move the FIRST file's landed change (earliest anchor) into a LATER-anchored
+  // step; that step is now anchored after one of its own members.
+  const steps = story.steps.filter((s) => (s.codeChange || []).length);
+  assert.ok(steps.length >= 2);
+  const early = steps[0];
+  const later = steps[steps.length - 1];
+  const moved = early.codeChange.pop();
+  later.codeChange = [...later.codeChange, moved];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must anchor at its earliest attested|split across/.test(e)),
+    `expected an anchor/split error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: a derived edge between two step nodes fails closed (finding #4 causality)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const stepNodes = story.overview.nodes.filter((n) => n.stepId);
+  assert.ok(stepNodes.length >= 2);
+  // Add an inferred "derived" link between two implementation steps — a smuggled
+  // cross-file relationship the contract forbids.
+  story.overview.edges.push({ from: stepNodes[0].id, to: stepNodes[1].id, kind: "derived", relationshipStatus: "inferred", evidence: [] });
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /derived edge may not connect two step nodes|framing-only/.test(e)),
+    `expected a framing-only edge error, got ${JSON.stringify(errors)}`);
+});
+
+test("1F: caused_by/architecture/dataflow are no longer valid edge kinds (finding #4)", () => {
+  const bundle = multiFileBundle();
+  for (const kind of ["caused_by", "architecture", "dataflow"]) {
+    const story = buildChangeStory(bundle);
+    const stepNodes = story.overview.nodes.filter((n) => n.stepId);
+    story.overview.edges.push({ from: stepNodes[0].id, to: stepNodes[1].id, kind, relationshipStatus: "inferred", evidence: [] });
+    story.provenance.changeStorySha256 = hashChangeStory(story);
+    const { ok, errors } = validateChangeStory(story, bundle);
+    assert.equal(ok, false, `${kind} must be rejected`);
+    assert.ok(errors.some((e) => /overview\.edges\[\d+\]\.kind/.test(e)), `expected an edge-kind error for ${kind}, got ${JSON.stringify(errors)}`);
+  }
+});

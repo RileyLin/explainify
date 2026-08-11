@@ -42,9 +42,13 @@ export const NODE_KINDS = ["objective", "step", "verification", "outcome", "unkn
 // asserts that two step nodes are adjacent in the bundle's attested observedOrder.
 // "derived" connects the objective/outcome framing nodes to the observed steps —
 // those are synthesis framing, NOT a proven transition, so they are always
-// inferred, never observed. caused_by/architecture/dataflow are declared so a
-// tampered story naming them without direct evidence fails closed.
-export const EDGE_KINDS = ["observed_sequence", "derived", "caused_by", "architecture", "dataflow"];
+// inferred, never observed. Under the Phase 1F contract (task #39 gate 5, task #40
+// REVISE finding #4) the inferred cross-file causal kinds caused_by/architecture/
+// dataflow are NOT permitted at all: this builder never infers a cross-file
+// relationship, so those kinds are dropped from the enum and any story naming one
+// fails closed at the kind check. Only two kinds survive: the provable
+// observed_sequence (step↔step) and the framing-only derived edge.
+export const EDGE_KINDS = ["observed_sequence", "derived"];
 export const RELATIONSHIP_STATUSES = ["observed", "inferred", "unknown"];
 export const INTENT_STATUSES = ["observed", "inferred"];
 
@@ -196,9 +200,33 @@ export function validateChangeStory(story, bundle) {
     resolvers.tool_input.set(t.id, hashToolInput(t));
     if (nonEmpty(t.outputLocator) || (isStr(t.outputSummary) && t.outputSummary.length > 0)) resolvers.tool_output.set(t.id, hashToolOutput(t));
   }
-  for (const rc of bundle.receipts ?? []) if (isObj(rc) && nonEmpty(rc.id)) resolvers.receipt.set(rc.id, hashReceipt(rc));
+  const receiptById = new Map();
+  for (const rc of bundle.receipts ?? []) if (isObj(rc) && nonEmpty(rc.id)) { resolvers.receipt.set(rc.id, hashReceipt(rc)); receiptById.set(rc.id, rc); }
+  const toolEventById = new Map();
+  for (const t of bundle.toolEvents ?? []) if (isObj(t) && nonEmpty(t.id)) toolEventById.set(t.id, t);
   const codeById = new Map();
   for (const c of bundle.codeEvidence ?? []) if (isObj(c) && nonEmpty(c.id)) { resolvers.code_excerpt.set(c.id, hashCodeExcerpt(c)); codeById.set(c.id, c); }
+  // Authoritative command derived from a tool event's attested input (mirrors the
+  // synthesis toolTarget: the friendly command/path field of the input JSON). Used
+  // to re-resolve a verification's displayed command against the immutable source.
+  const commandOfToolEvent = (t) => {
+    try {
+      const parsed = JSON.parse(t?.inputSummary ?? "");
+      return parsed.file_path || parsed.path || parsed.notebook_path || parsed.command || "";
+    } catch { return ""; }
+  };
+  const stripEllipsis = (s) => (isStr(s) && s.endsWith("…") ? s.slice(0, -1) : (isStr(s) ? s : ""));
+  // A verification's displayed excerpt must be a genuine prefix of the attested
+  // source output (the builder slices a bounded prefix); "" is trivially a prefix.
+  const isPrefixOfSource = (excerpt, source) => String(source ?? "").startsWith(stripEllipsis(excerpt));
+  // A verification's displayed command must equal the source command (builder copies
+  // it whole) or, when the builder clipped a long command with an ellipsis, be that
+  // exact clipped prefix — never an arbitrary shorter substring.
+  const commandMatchesSource = (cmd, source) => {
+    const src = String(source ?? "");
+    if (cmd === src) return true;
+    return isStr(cmd) && cmd.endsWith("…") && src.startsWith(cmd.slice(0, -1));
+  };
   const excerptTextById = new Map();
   for (const e of bundle.excerpts ?? []) if (isObj(e) && nonEmpty(e.id)) excerptTextById.set(e.id, e.text ?? "");
 
@@ -310,6 +338,31 @@ export function validateChangeStory(story, bundle) {
         if (!nodeIds.has(e.to)) err(`${p}.to`, `unknown node "${e.to}"`);
         if (e.from === e.to) err(`${p}`, "an edge must connect two distinct nodes");
         checkRefs(e.evidence, `${p}.evidence`);
+        // Phase 1F gate 5 / finding #4: a "derived" edge is FRAMING ONLY — it may
+        // only bracket the observed steps (objective→step, step→outcome, or
+        // objective→outcome when there are no steps). It may never connect two step
+        // nodes: a step↔step relationship is a transition, and the only provable
+        // transition is observed_sequence. This blocks smuggling an inferred
+        // cross-file "derived" link between two implementation steps.
+        if (nodeIds.has(e.from) && nodeIds.has(e.to)) {
+          const fromIsStep = nonEmpty(nodeById.get(e.from)?.stepId);
+          const toIsStep = nonEmpty(nodeById.get(e.to)?.stepId);
+          if (e.kind === "derived") {
+            const fromKind = nodeById.get(e.from)?.kind;
+            const toKind = nodeById.get(e.to)?.kind;
+            const framesStart = fromKind === "objective";
+            const framesEnd = toKind === "outcome";
+            if (!(framesStart || framesEnd)) {
+              err(`${p}`, `a derived edge is framing-only — it must touch the objective or outcome node, never link two steps (task #39 gate 5)`);
+            }
+            if (fromIsStep && toIsStep) {
+              err(`${p}`, `a derived edge may not connect two step nodes; a step→step relationship must be observed_sequence (task #39 gate 5 / finding #4)`);
+            }
+          }
+          if (fromIsStep && toIsStep && e.kind !== "observed_sequence") {
+            err(`${p}`, `an edge between two step nodes must be observed_sequence, not "${e.kind}" (finding #4)`);
+          }
+        }
         // An observed_sequence edge is a PROVEN transition: both endpoints must be
         // step/verification nodes anchored in the observedOrder timeline, it must
         // carry evidence for BOTH endpoints, and the from-anchor MUST precede the
@@ -406,6 +459,36 @@ export function validateChangeStory(story, bundle) {
           if (!nonEmpty(v.command)) err(`${vp}.command`, "required");
           if (!inSet(v.status, ["succeeded", "failed", "unknown"])) err(`${vp}.status`, "one of succeeded|failed|unknown");
           checkRefs(v.evidence, `${vp}.evidence`);
+          // BYTE-BOUND VERIFICATION SEMANTICS (finding #2): a verification block does
+          // not just have to point at SOME resolvable ref — its displayed command,
+          // status, exitCode and output must actually MATCH the receipt / Bash tool
+          // event it cites. Without this, a story could relabel a failed run as
+          // "succeeded" (or fabricate the command/output) while still citing a real,
+          // hash-valid ref. Resolve the FIRST cited ref to its attested source and
+          // re-check every surfaced field against it.
+          const vref = Array.isArray(v.evidence) ? v.evidence.find((r) => isObj(r) && (r.type === "receipt" || r.type === "tool_input" || r.type === "tool_output")) : null;
+          if (!vref) {
+            err(`${vp}.evidence`, "a verification must cite the receipt or Bash tool event it reports (finding #2)");
+          } else if (vref.type === "receipt") {
+            const rc = receiptById.get(vref.ref);
+            if (!rc) err(vp, `cites receipt "${vref.ref}" absent from the bundle (finding #2)`);
+            else {
+              if (!commandMatchesSource(v.command, rc.command)) err(`${vp}.command`, `does not match the cited receipt's command (finding #2)`);
+              if (v.status !== rc.status) err(`${vp}.status`, `"${v.status}" does not match the cited receipt's status "${rc.status}" (finding #2)`);
+              const wantExit = rc.exitCode;
+              if (v.exitCode !== undefined && wantExit !== undefined && v.exitCode !== wantExit) err(`${vp}.exitCode`, `does not match the cited receipt's exit code (finding #2)`);
+              if (!isPrefixOfSource(v.outputExcerpt, rc.content)) err(`${vp}.outputExcerpt`, `is not a prefix of the cited receipt output (finding #2)`);
+            }
+          } else {
+            const ev = toolEventById.get(vref.ref);
+            if (!ev) err(vp, `cites tool event "${vref.ref}" absent from the bundle (finding #2)`);
+            else {
+              if (ev.toolName !== "Bash") err(vp, `cites a ${ev.toolName} event as verification; only a Bash check is verification evidence (finding #2)`);
+              if (!commandMatchesSource(v.command, commandOfToolEvent(ev))) err(`${vp}.command`, `does not match the cited Bash event's command (finding #2)`);
+              if (v.status !== ev.status) err(`${vp}.status`, `"${v.status}" does not match the cited Bash event's status "${ev.status}" (finding #2)`);
+              if (!isPrefixOfSource(v.outputExcerpt, ev.outputSummary)) err(`${vp}.outputExcerpt`, `is not a prefix of the cited Bash event output (finding #2)`);
+            }
+          }
         });
       }
       checkClaim(s.outcome, `${p}.outcome`);
@@ -530,6 +613,80 @@ export function validateChangeStory(story, bundle) {
     // partition would otherwise silently ignore an id absent from landedIds).
     for (const [id, n] of seenCode) {
       if (!landedIds.has(id) && n > 0) err("steps", `step code change references CodeExcerpt "${id}" which is not a landed excerpt in the bundle (task #39 gate 3)`);
+    }
+  }
+
+  // GROUPING-KEY MEMBERSHIP (Phase 1F, task #39 gate 3, task #40 REVISE finding #3):
+  // the partition check above proves each landed excerpt appears in exactly one step
+  // BY ID — but not that it sits in the RIGHT step. Two extra invariants make the
+  // grouping tamper-evident so a swap/split (e.g. moving one file's landed edit into
+  // another file's step, or splitting one file across two steps) fails closed:
+  //   (a) all landed excerpts of a single file/unit (same path) must reside in ONE
+  //       step — a path split across steps is rejected;
+  //   (b) a step's anchor (its node's first evidence) must be the EARLIEST attested
+  //       change event among its members — a step anchored AFTER one of its own code
+  //       members (the tell-tale of a swapped-in foreign excerpt) is rejected.
+  if (Array.isArray(story.steps) && isObj(ov) && Array.isArray(ov.nodes)) {
+    const stepNodeByStepId = new Map();
+    for (const n of ov.nodes) if (isObj(n) && nonEmpty(n.stepId)) stepNodeByStepId.set(n.stepId, n);
+    // (a) same-file grouping: a path may not be split across steps.
+    const stepsByPath = new Map();
+    for (const s of story.steps) {
+      if (!isObj(s) || !Array.isArray(s.codeChange)) continue;
+      for (const c of s.codeChange) {
+        if (!isObj(c) || !nonEmpty(c.id)) continue;
+        const src = codeById.get(c.id);
+        if (!src || src.completeness !== "landed") continue;
+        const path = src.path ?? "";
+        if (!stepsByPath.has(path)) stepsByPath.set(path, new Set());
+        stepsByPath.get(path).add(s.id);
+      }
+    }
+    for (const [path, ids] of stepsByPath) {
+      if (ids.size > 1) err("steps", `landed changes to "${path}" are split across ${ids.size} steps — all edits to one file/unit must group into a single step (task #39 gate 3 / finding #3)`);
+    }
+    // (b) anchor is the earliest attested change event among the step's members.
+    for (const s of story.steps) {
+      if (!isObj(s) || !Array.isArray(s.codeChange) || !s.codeChange.length) continue;
+      const node = stepNodeByStepId.get(s.id);
+      const anchorPos = node ? anchorPosOfNode(node) : null;
+      if (anchorPos === null) continue; // absence is caught by the monotonic-order check
+      for (const c of s.codeChange) {
+        const src = isObj(c) ? codeById.get(c.id) : null;
+        if (!src || !nonEmpty(src.toolEventId)) continue;
+        const memberPos = posByKey.get(`tool_event:${src.toolEventId}`);
+        if (memberPos !== undefined && anchorPos > memberPos) {
+          err("steps", `step "${s.id}" is anchored at pos ${anchorPos}, after one of its own code members at pos ${memberPos} — a step must anchor at its earliest attested change event (task #39 gate 3 / finding #3)`);
+        }
+      }
+    }
+  }
+
+  // OUTCOME VERIFICATION CLAIM (finding #2, outcome part): gate 4 requires the
+  // derived outcome to BIND the attested verification. Make that binding honest:
+  // every verification-typed ref the outcome cites must equal a ref actually carried
+  // by some verification step (whose command/status/output are byte-bound to source
+  // above), and — when the story contains any verification step — the outcome MUST
+  // cite at least one such ref. So an outcome cannot spin a passing/failing claim off
+  // a phantom or relabeled verification, nor drop the binding to hide a failing run.
+  if (isObj(story.outcome) && Array.isArray(story.steps)) {
+    const stepVerifRefs = [];
+    for (const s of story.steps) {
+      if (!isObj(s) || !Array.isArray(s.verification)) continue;
+      for (const v of s.verification) {
+        if (isObj(v) && Array.isArray(v.evidence)) for (const r of v.evidence) if (isObj(r)) stepVerifRefs.push(r);
+      }
+    }
+    const hasVerifStep = stepVerifRefs.length > 0;
+    const outcomeEvidence = Array.isArray(story.outcome.evidence) ? story.outcome.evidence : [];
+    const outcomeVerifRefs = outcomeEvidence.filter((r) => isObj(r) && (r.type === "receipt" || r.type === "tool_input" || r.type === "tool_output"));
+    for (const r of outcomeVerifRefs) {
+      if (!stepVerifRefs.some((sr) => sameRef(sr, r))) {
+        err("outcome.evidence", `cites a verification ref (${r.type} "${r.ref}") that no verification step carries — the outcome may only bind verifications proven in a step (finding #2)`);
+      }
+    }
+    if (hasVerifStep && outcomeVerifRefs.length === 0) {
+      err("outcome.evidence", "the outcome must bind at least one attested verification when the story contains a verification step (gate 4 / finding #2)");
     }
   }
 

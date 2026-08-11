@@ -228,6 +228,32 @@ function parseTestSummary(output) {
   return { pass, fail, total };
 }
 
+// STRICT positive grammar for test-runner commands (finding #1, task #40 REVISE).
+// A bare Bash event is promoted to a VERIFICATION step only when its command
+// ACTUALLY invokes a known test runner. Without this, ANY shell command whose
+// output happened to print "pass N / fail N" lines — `cat previous-run.log`,
+// `echo "ℹ pass 5"`, `curl …` — would launder a fake green verification and bind
+// the outcome. Matched against the RAW command (leading env-var assignments
+// stripped); redirections/flags after the runner token are fine.
+const TEST_RUNNER_RES = [
+  // node's built-in runner: `node --test`, `node --experimental-test-... --test`
+  /^node\s+(?:--?\S+\s+)*--test\b/,
+  // node executing a *.test.<js|mjs|cjs|jsx|ts|tsx> file directly
+  /^node\s+(?:--?\S+\s+)*\S*\.test\.[mc]?[jt]sx?\b/,
+  // package-manager test scripts
+  /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+(?:--\s+)?)?test\b/,
+  // direct/binary runners, optionally via npx / pnpm dlx / yarn dlx
+  /^(?:npx\s+|pnpm\s+dlx\s+|yarn\s+dlx\s+)?(?:vitest|jest|mocha|ava|tap|c8|nyc)\b/,
+];
+function isTestCommand(command) {
+  let cmd = String(command || "").trim();
+  // Strip leading environment-variable assignments (e.g. `NODE_ENV=test node --test`).
+  while (/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/.test(cmd)) {
+    cmd = cmd.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/, "");
+  }
+  return TEST_RUNNER_RES.some((re) => re.test(cmd));
+}
+
 // A combined behavior-specific label for an AGGREGATE change step (several folded
 // implementation units). Lists the new declarations/exports/test additions across
 // all folded units; falls back to the file list. Bounded for the node/header.
@@ -422,12 +448,15 @@ export function buildChangeStory(bundle) {
     if (ev.status !== "succeeded" && ev.status !== "failed") continue;
     if (ev.inputLocator && receiptLocators.has(ev.inputLocator)) continue; // already a receipt
     const cmd = toolTarget(ev) || ev.toolName; // the command string
+    // A Bash event is verification ONLY when its command actually invokes a known
+    // test runner (finding #1). This is a positive allow-list over the COMMAND, so
+    // a `cat old-run.log` / `echo "ℹ pass 5"` whose output merely contains pass/fail
+    // lines can never launder a fake green verification into the story/outcome.
+    if (!isTestCommand(cmd)) continue;
     const output = ev.outputSummary || "";
     const summary = parseTestSummary(output);
-    // Only surface a Bash event as VERIFICATION when it looks like a check that
-    // reported a result (a parseable test/suite summary). A bare command with no
-    // result summary is not verification evidence — leave it out rather than call
-    // an arbitrary shell run a "verification".
+    // The runner must also have PRINTED a parseable result summary; a test command
+    // with no machine-readable totals is not usable verification evidence.
     if (!summary) continue;
     const anchorRef = refToolInput(ev);
     verifications.push({
