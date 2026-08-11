@@ -668,7 +668,7 @@ test("1F: a verification whose displayed output is not a prefix of the cited sou
   story.provenance.changeStorySha256 = hashChangeStory(story);
   const { ok, errors } = validateChangeStory(story, bundle);
   assert.equal(ok, false);
-  assert.ok(errors.some((e) => /is not a prefix of the cited/.test(e)), `expected an output-prefix mismatch, got ${JSON.stringify(errors)}`);
+  assert.ok(errors.some((e) => /must equal the exact canonical bounded slice/.test(e)), `expected an output-slice mismatch, got ${JSON.stringify(errors)}`);
 });
 
 test("1F: an outcome binding a verification ref that no step carries fails closed (finding #2 outcome)", () => {
@@ -779,4 +779,114 @@ test("1F: caused_by/architecture/dataflow are no longer valid edge kinds (findin
     assert.equal(ok, false, `${kind} must be rejected`);
     assert.ok(errors.some((e) => /overview\.edges\[\d+\]\.kind/.test(e)), `expected an edge-kind error for ${kind}, got ${JSON.stringify(errors)}`);
   }
+});
+
+// --- task #40 REVISE ROUND 2: three broader bypasses codex found on 9201a1b.
+// The builder-level laundering probes assert the fake verification is never built;
+// the schema-level probes craft a story that bypasses the builder and must still
+// fail validateChangeStory.
+
+import { isVerificationCommand } from "../change-story-schema.mjs";
+
+test("R2 #1: the shared shell grammar rejects status-masking compounds and info/no-run flags", () => {
+  // Positive: the exact real-evidence forms still count as verification.
+  for (const good of ["node --test 2>&1", "node --test", "node slugify.test.js", "node paginate.test.js",
+    "npm test", "pnpm test", "yarn lint", "bun test", "npx vitest", "vitest run", "NODE_ENV=test node --test"]) {
+    assert.equal(isVerificationCommand(good), true, `should accept: ${good}`);
+  }
+  // Negative: status-masking compounds, pipes, separators, backgrounding, subst/heredoc,
+  // comment-hidden separators, and info/no-run flags all disqualify.
+  for (const bad of [
+    "node --test missing.test.js || cat stale.log",   // codex's exact probe
+    "false && node --test",
+    "node --test | tee out.log",
+    "node --test ; echo done",
+    "node --test &",
+    "cat stale.log",
+    "echo 'ℹ pass 99'",
+    "node --test `printf x`",
+    "node --test $(echo x)",
+    "echo safe # && node --test",       // comment strips to `echo safe` (not a runner)
+    "npm test --help",
+    "node --version",
+    "node -e \"console.log('paginate.test.js')\"",
+    "npm test -- --listTests",
+    "vitest --dry-run",
+  ]) {
+    assert.equal(isVerificationCommand(bad), false, `should reject: ${bad}`);
+  }
+});
+
+function maskingCompoundBundle() {
+  // A single Bash event whose command is a status-masking compound but whose status
+  // is "succeeded" and whose output prints a stale "99/99 pass" — codex's finding #1.
+  const slugFinal = SLUG_AFTER + "\n";
+  const STALE = "ℹ tests 99\nℹ pass 99\nℹ fail 0";
+  return bundleFrom({
+    records: [
+      { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Add maxLength to slugify." }] } },
+      { type: "assistant", uuid: "a2", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "/repo/slugify.js", old_string: SLUG_BEFORE, new_string: SLUG_AFTER } }] } },
+      { type: "user", uuid: "r1", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "updated" }] } },
+      { type: "assistant", uuid: "a4", message: { role: "assistant", content: [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "node --test missing.test.js || cat stale.log" } }] } },
+      { type: "user", uuid: "r3", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t3", is_error: false, content: STALE }] } },
+      { type: "assistant", uuid: "a5", message: { role: "assistant", content: [{ type: "text", text: "Done." }] } },
+    ],
+    changedFiles: [{ path: "slugify.js", status: "modified", sha256: sha256(slugFinal) }],
+    finalContent: { "slugify.js": slugFinal },
+  });
+}
+
+test("R2 #1: a status-masking compound Bash command never becomes a verification (finding #1 compound)", () => {
+  const bundle = maskingCompoundBundle();
+  const story = buildChangeStory(bundle);
+  assert.equal(story.steps.filter((s) => (s.verification || []).length).length, 0, "the `|| cat` compound is not a verification");
+  assert.ok(!/test run reported 99|99\/99|passing verification/.test(story.outcome.text), `laundered a 99/99 pass: ${story.outcome.text}`);
+  assert.equal(validateChangeStory(story, bundle).ok, true);
+});
+
+test("R2 #2: collapsing a later file's members into an earlier step fails closed (finding #2 collapse)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  // Non-aggregate change steps, in order. Move ALL of a later file's codeChange into
+  // the earliest change step and empty the later step (keeping the node bijection),
+  // then rehash. The later PATH still lives in exactly one step, but the earliest
+  // step now binds two paths — the single-path invariant must reject it.
+  const changeSteps = story.steps.filter((s) => Array.isArray(s.codeChange) && s.codeChange.length && !s.id.startsWith("step:agg:"));
+  assert.ok(changeSteps.length >= 2);
+  const early = changeSteps[0];
+  const later = changeSteps[1];
+  early.codeChange = [...early.codeChange, ...later.codeChange];
+  later.codeChange = [];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /binds \d+ distinct file paths|split across/.test(e)),
+    `expected a single-path/split error, got ${JSON.stringify(errors)}`);
+});
+
+test("R2 #3: fabricating an exitCode on a Bash-event verification fails closed (finding #3 exit)", () => {
+  const bundle = multiFileBundle(); // its verification is a bare Bash event (no receipt/exitCode)
+  const story = buildChangeStory(bundle);
+  const vStep = story.steps.find((s) => (s.verification || []).some((v) => v.status === "succeeded"));
+  assert.ok(vStep);
+  assert.equal(vStep.verification[0].exitCode, undefined, "the Bash-event verification has no attested exit code");
+  vStep.verification[0].exitCode = 0; // fabricate a clean exit
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must not fabricate one|must equal the cited receipt's exit code/.test(e)),
+    `expected an exitCode-parity error, got ${JSON.stringify(errors)}`);
+});
+
+test("R2 #3: erasing a verification's output to empty fails closed (finding #3 output)", () => {
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const vStep = story.steps.find((s) => (s.verification || []).length);
+  assert.ok(vStep && vStep.verification[0].outputExcerpt.length > 0, "the verification has nonempty attested output");
+  vStep.verification[0].outputExcerpt = ""; // erase the evidence but keep the ref
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /must equal the exact canonical bounded slice/.test(e)),
+    `expected an output-slice mismatch, got ${JSON.stringify(errors)}`);
 });

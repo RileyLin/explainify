@@ -62,6 +62,188 @@ export const EVIDENCE_REF_TYPES = ["excerpt", "tool_input", "tool_output", "rece
 const sha256 = (value) => createHash("sha256").update(value, "utf8").digest("hex");
 const HEX64 = /^[0-9a-f]{64}$/;
 
+// The exact bounded output slice the builder surfaces for a verification block. A
+// verification's outputExcerpt must equal source.slice(0, VERIFY_OUTPUT_MAX)
+// byte-for-byte (task #40 REVISE finding #3): no empty-string, prefix, or truncated
+// substitute is accepted. The builder imports this constant so producer and
+// validator cannot disagree on the canonical slice.
+export const VERIFY_OUTPUT_MAX = 300;
+
+// --------------------------------------------------------------------------
+// Quote-aware TOP-LEVEL shell safety for verification promotion (task #40 REVISE
+// finding #1). A bare Bash event may be surfaced as a verification ONLY when its
+// command is a SINGLE, unconditional, foreground run of a recognized test runner.
+// An allowed-runner *prefix* is not enough: `node --test x.test.js || cat stale.log`
+// (status succeeded, stale "pass 99/99" output) would otherwise launder a fake
+// green. These helpers mirror the frozen Phase 1C adapter's quote-aware parser
+// (stripComments / segmentsWithSep / tokenizeSegment / ambiguous-form guard) so the
+// trust decision here matches the capture layer; replicated (not imported) to keep
+// the frozen capture boundary untouched.
+// --------------------------------------------------------------------------
+
+function stripShellComments(command) {
+  const src = String(command);
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") { out += c; if (c === "'") quote = null; continue; }
+    if (quote === '"') {
+      out += c;
+      if (c === "\\") { const n = src[i + 1]; if (n !== undefined) { out += n; i += 1; } continue; }
+      if (c === '"') quote = null;
+      continue;
+    }
+    if (c === "\\") { out += c; const n = src[i + 1]; if (n !== undefined) { out += n; i += 1; } continue; }
+    if (c === "'" || c === '"') { quote = c; out += c; continue; }
+    if (c === "#") {
+      const prev = src[i - 1];
+      const atWordStart = prev === undefined || prev === " " || prev === "\t"
+        || prev === "\n" || prev === ";" || prev === "&" || prev === "|" || prev === "(";
+      if (atWordStart) { while (i < src.length && src[i] !== "\n") i += 1; if (i < src.length) out += "\n"; continue; }
+    }
+    out += c;
+  }
+  return out;
+}
+
+function shellSegments(command) {
+  const src = String(command);
+  const parts = [];
+  let start = 0;
+  let prevSep = "";
+  let quote = null;
+  const push = (endIndex, nextSep, bg = false) => {
+    parts.push({ sep: prevSep, text: src.slice(start, endIndex).trim(), bg });
+    prevSep = nextSep;
+    start = endIndex;
+  };
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") { if (c === "'") quote = null; continue; }
+    if (quote === '"') { if (c === "\\") { i += 1; continue; } if (c === '"') quote = null; continue; }
+    if (c === "\\") { i += 1; continue; }
+    if (c === "'" || c === '"') { quote = c; continue; }
+    if (c === "&" && src[i + 1] === "&") { push(i, "&&"); start = i + 2; i += 1; continue; }
+    if (c === "|" && src[i + 1] === "|") { push(i, "||"); start = i + 2; i += 1; continue; }
+    if (c === "|") { push(i, "|"); start = i + 1; continue; }
+    if (c === ";") { push(i, ";"); start = i + 1; continue; }
+    if (c === "\n") { push(i, ";"); start = i + 1; continue; }
+    if (c === "&") {
+      const next = src[i + 1];
+      const prev = src[i - 1];
+      const isRedirection = next === ">" || prev === ">" || prev === "<";
+      if (!isRedirection) { push(i, "&", true); start = i + 1; continue; }
+    }
+  }
+  parts.push({ sep: prevSep, text: src.slice(start).trim(), bg: false });
+  return parts.filter((p) => p.text.length > 0);
+}
+
+function shellTokens(segment) {
+  const src = String(segment);
+  const tokens = [];
+  let cur = "";
+  let has = false;
+  let quote = null;
+  const flush = () => { if (has) tokens.push(cur); cur = ""; has = false; };
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (quote === "'") { if (c === "'") quote = null; else cur += c; has = true; continue; }
+    if (quote === '"') {
+      if (c === "\\") { const n = src[i + 1]; if (n !== undefined) { cur += n; i += 1; } has = true; continue; }
+      if (c === '"') quote = null; else cur += c;
+      has = true; continue;
+    }
+    if (c === "\\") { const n = src[i + 1]; if (n !== undefined) { cur += n; i += 1; has = true; } continue; }
+    if (c === "'" || c === '"') { quote = c; has = true; continue; }
+    if (c === " " || c === "\t") { flush(); continue; }
+    cur += c; has = true;
+  }
+  flush();
+  return tokens;
+}
+
+function hasAmbiguousShellForm(command) {
+  const s = String(command);
+  if (s.includes("`")) return true;      // backtick command substitution
+  if (/\$\(/.test(s)) return true;        // $(…) command substitution
+  if (/<<-?\s*['"]?[\w.-]+/.test(s)) return true; // heredoc
+  return false;
+}
+
+const shellBasename = (t) => String(t).split("/").pop();
+function shellOptName(token) {
+  const t = String(token);
+  if (!t.startsWith("-")) return null;
+  if (t === "-" || t === "--") return t;
+  if (t.startsWith("--")) { const eq = t.indexOf("="); return eq >= 0 ? t.slice(0, eq) : t; }
+  return t.slice(0, 2);
+}
+// Any info / no-run / non-executing flag that a laundering command could carry to
+// print a result without running tests. Rejected wherever it appears.
+const NO_RUN_FLAGS = new Set([
+  "-h", "--help", "-v", "--version", "--dry-run", "--dryrun",
+  "--list", "--list-tests", "--listtests", "-e", "--eval", "-p", "--print",
+  "--check", "-c", "--compile-only",
+]);
+const isNoRunFlag = (tok) => { const o = shellOptName(tok); return o ? NO_RUN_FLAGS.has(o.toLowerCase()) : false; };
+function isTestFileToken(token) {
+  const base = shellBasename(token);
+  return /^[\w@.-]*[._-](?:test|spec)\.(?:c|m)?[jt]sx?$/i.test(base)
+    || /^[\w@.-]*[._-](?:test|spec)\.(?:py|rb|go)$/i.test(base);
+}
+const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
+const PKG_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+const RUNNER_BINS = new Set(["vitest", "jest", "mocha", "ava", "tap", "c8", "nyc"]);
+const VERIFY_SCRIPTS = new Set(["test", "lint", "build", "typecheck", "compile"]);
+
+// Does a SINGLE recognized-runner segment's token stream actually invoke a test
+// runner (with no info/no-run flag or argument passthrough)?
+function isRunnerTokens(tokens0) {
+  let tokens = tokens0.slice();
+  // strip leading NAME=value env assignments
+  while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens = tokens.slice(1);
+  if (!tokens.length) return false;
+  // `--` passthrough carrying tokens can smuggle a no-run mode (`npm test -- --listTests`)
+  const dd = tokens.indexOf("--");
+  if (dd >= 0 && dd < tokens.length - 1) return false;
+  for (const t of tokens) if (isNoRunFlag(t)) return false;
+  let head = shellBasename(tokens[0]);
+  let rest = tokens.slice(1);
+  // launcher unwrap: `npx <tool>`, `pnpm dlx <tool>`, `yarn dlx <tool>`
+  if (head === "npx") { if (!rest.length) return false; head = shellBasename(rest[0]); rest = rest.slice(1); }
+  else if ((head === "pnpm" || head === "yarn") && rest[0] === "dlx") { if (rest.length < 2) return false; head = shellBasename(rest[1]); rest = rest.slice(2); }
+  if (NODE_RUNTIMES.has(head)) {
+    if (rest.some((t) => t === "--test")) return true;             // node built-in runner
+    return rest.some((t) => !t.startsWith("-") && isTestFileToken(t)); // direct *.test.* run
+  }
+  if (PKG_MANAGERS.has(head)) {
+    const first = rest.find((t) => !t.startsWith("-"));
+    if (!first) return false;
+    if (first === "run") { const name = rest.slice(rest.indexOf("run") + 1).find((t) => !t.startsWith("-")); return VERIFY_SCRIPTS.has(name); }
+    return VERIFY_SCRIPTS.has(first); // `npm test`, `yarn lint`, `bun test`
+  }
+  if (RUNNER_BINS.has(head)) return true; // vitest / jest / mocha / … run by default
+  return false;
+}
+
+// A Bash command is verification evidence ONLY when it is a single, unconditional,
+// foreground run of a recognized test runner. Compounds/pipes/separators (`||`,
+// `&&`, `|`, `;`, newline), backgrounding (`&`), command substitution, heredocs,
+// comments hiding a separator, and info/no-run flags all disqualify it — so a
+// status-masking or laundered command can never mint or validate a verification.
+export function isVerificationCommand(rawCommand) {
+  const command = stripShellComments(String(rawCommand ?? ""));
+  if (!command.trim()) return false;
+  if (hasAmbiguousShellForm(command)) return false;
+  const segs = shellSegments(command);
+  if (segs.length !== 1) return false;     // any top-level separator/pipe/compound
+  const seg = segs[0];
+  if (seg.bg || seg.sep !== "") return false; // backgrounded or non-leading segment
+  return isRunnerTokens(shellTokens(seg.text));
+}
+
 // --- allowed key sets, for strict unknown-field rejection (Codex blocker #3) ---
 //
 // The ChangeStory hash (canonicalChangeStory) binds only KNOWN semantic fields.
@@ -215,10 +397,10 @@ export function validateChangeStory(story, bundle) {
       return parsed.file_path || parsed.path || parsed.notebook_path || parsed.command || "";
     } catch { return ""; }
   };
-  const stripEllipsis = (s) => (isStr(s) && s.endsWith("…") ? s.slice(0, -1) : (isStr(s) ? s : ""));
-  // A verification's displayed excerpt must be a genuine prefix of the attested
-  // source output (the builder slices a bounded prefix); "" is trivially a prefix.
-  const isPrefixOfSource = (excerpt, source) => String(source ?? "").startsWith(stripEllipsis(excerpt));
+  // The EXACT canonical bounded output slice the builder surfaces. A verification's
+  // outputExcerpt must equal this byte-for-byte (finding #3) — no empty string, no
+  // prefix, no truncated substitute passes.
+  const canonicalOutputSlice = (source) => String(source ?? "").slice(0, VERIFY_OUTPUT_MAX);
   // A verification's displayed command must equal the source command (builder copies
   // it whole) or, when the builder clipped a long command with an ellipsis, be that
   // exact clipped prefix — never an arbitrary shorter substring.
@@ -475,9 +657,13 @@ export function validateChangeStory(story, bundle) {
             else {
               if (!commandMatchesSource(v.command, rc.command)) err(`${vp}.command`, `does not match the cited receipt's command (finding #2)`);
               if (v.status !== rc.status) err(`${vp}.status`, `"${v.status}" does not match the cited receipt's status "${rc.status}" (finding #2)`);
-              const wantExit = rc.exitCode;
-              if (v.exitCode !== undefined && wantExit !== undefined && v.exitCode !== wantExit) err(`${vp}.exitCode`, `does not match the cited receipt's exit code (finding #2)`);
-              if (!isPrefixOfSource(v.outputExcerpt, rc.content)) err(`${vp}.outputExcerpt`, `is not a prefix of the cited receipt output (finding #2)`);
+              // EXACT exitCode presence + value parity (finding #3): a source with no
+              // exitCode must have none on the story; a fabricated exitCode:0 fails.
+              const rcExit = rc.exitCode === undefined ? undefined : rc.exitCode;
+              if (v.exitCode !== rcExit) err(`${vp}.exitCode`, `must equal the cited receipt's exit code exactly (finding #3): source ${rcExit === undefined ? "absent" : rcExit}, story ${v.exitCode === undefined ? "absent" : v.exitCode}`);
+              // outputExcerpt must equal the builder's exact canonical bounded slice
+              // (finding #3): erasing it to "" or substituting text fails closed.
+              if (v.outputExcerpt !== canonicalOutputSlice(rc.content)) err(`${vp}.outputExcerpt`, `must equal the exact canonical bounded slice of the cited receipt output (finding #3)`);
             }
           } else {
             const ev = toolEventById.get(vref.ref);
@@ -486,7 +672,14 @@ export function validateChangeStory(story, bundle) {
               if (ev.toolName !== "Bash") err(vp, `cites a ${ev.toolName} event as verification; only a Bash check is verification evidence (finding #2)`);
               if (!commandMatchesSource(v.command, commandOfToolEvent(ev))) err(`${vp}.command`, `does not match the cited Bash event's command (finding #2)`);
               if (v.status !== ev.status) err(`${vp}.status`, `"${v.status}" does not match the cited Bash event's status "${ev.status}" (finding #2)`);
-              if (!isPrefixOfSource(v.outputExcerpt, ev.outputSummary)) err(`${vp}.outputExcerpt`, `is not a prefix of the cited Bash event output (finding #2)`);
+              // A bare Bash event carries no exitCode, so the story must not claim one
+              // (finding #3): a fabricated exitCode:0 fails closed.
+              if (v.exitCode !== undefined) err(`${vp}.exitCode`, `a Bash-event verification has no attested exit code; the story must not fabricate one (finding #3)`);
+              if (v.outputExcerpt !== canonicalOutputSlice(ev.outputSummary)) err(`${vp}.outputExcerpt`, `must equal the exact canonical bounded slice of the cited Bash event output (finding #3)`);
+              // The cited command must itself be a recognized single-runner command
+              // (finding #1): binds the validator to the same quote-aware grammar the
+              // builder uses, so a laundering compound cannot validate even if crafted.
+              if (!isVerificationCommand(commandOfToolEvent(ev))) err(`${vp}`, `the cited Bash command is not a recognized single test-runner run; a compound/masked command is not verification (finding #1)`);
             }
           }
         });
@@ -629,6 +822,10 @@ export function validateChangeStory(story, bundle) {
   if (Array.isArray(story.steps) && isObj(ov) && Array.isArray(ov.nodes)) {
     const stepNodeByStepId = new Map();
     for (const n of ov.nodes) if (isObj(n) && nonEmpty(n.stepId)) stepNodeByStepId.set(n.stepId, n);
+    // A canonical cap-produced aggregate step (and ONLY it) may span multiple paths;
+    // it is the sole multi-path form the builder emits (capOverview → `step:agg:*`).
+    const isAggregateStep = (s) => isObj(s) && isStr(s.id) && s.id.startsWith("step:agg:");
+
     // (a) same-file grouping: a path may not be split across steps.
     const stepsByPath = new Map();
     for (const s of story.steps) {
@@ -645,7 +842,27 @@ export function validateChangeStory(story, bundle) {
     for (const [path, ids] of stepsByPath) {
       if (ids.size > 1) err("steps", `landed changes to "${path}" are split across ${ids.size} steps — all edits to one file/unit must group into a single step (task #39 gate 3 / finding #3)`);
     }
-    // (b) anchor is the earliest attested change event among the step's members.
+
+    // (b) SINGLE PATH per non-aggregate step (finding #3 round 2): only a canonical
+    // `step:agg:*` may carry landed changes for more than one path. This closes the
+    // collapse attack — moving all of a later file's codeChange into an earlier
+    // step (and emptying the later step) leaves the later PATH in exactly one step
+    // (so the split check above passes) but makes the earlier NON-aggregate step
+    // bind two paths, which is rejected here. So a non-aggregate step's title/tool
+    // activity/outcome can no longer contradict a foreign file's members.
+    for (const s of story.steps) {
+      if (!isObj(s) || !Array.isArray(s.codeChange) || !s.codeChange.length) continue;
+      const paths = new Set();
+      for (const c of s.codeChange) {
+        const src = isObj(c) ? codeById.get(c.id) : null;
+        if (src && src.completeness === "landed") paths.add(src.path ?? "");
+      }
+      if (paths.size > 1 && !isAggregateStep(s)) {
+        err("steps", `non-aggregate step "${s.id}" binds ${paths.size} distinct file paths (${[...paths].join(", ")}); only a canonical cap-produced aggregate (step:agg:*) may span files (task #39 gate 3 / finding #3)`);
+      }
+    }
+
+    // (c) anchor is the earliest attested change event among the step's members.
     for (const s of story.steps) {
       if (!isObj(s) || !Array.isArray(s.codeChange) || !s.codeChange.length) continue;
       const node = stepNodeByStepId.get(s.id);

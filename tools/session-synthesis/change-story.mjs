@@ -24,6 +24,8 @@ import {
   hashChangeStory,
   CHANGE_STORY_SCHEMA_VERSION,
   MAX_OVERVIEW_STEPS,
+  VERIFY_OUTPUT_MAX,
+  isVerificationCommand,
 } from "../session/change-story-schema.mjs";
 import { sha256, stableStringify } from "../comprehension/util.mjs";
 
@@ -228,31 +230,14 @@ function parseTestSummary(output) {
   return { pass, fail, total };
 }
 
-// STRICT positive grammar for test-runner commands (finding #1, task #40 REVISE).
-// A bare Bash event is promoted to a VERIFICATION step only when its command
-// ACTUALLY invokes a known test runner. Without this, ANY shell command whose
-// output happened to print "pass N / fail N" lines — `cat previous-run.log`,
-// `echo "ℹ pass 5"`, `curl …` — would launder a fake green verification and bind
-// the outcome. Matched against the RAW command (leading env-var assignments
-// stripped); redirections/flags after the runner token are fine.
-const TEST_RUNNER_RES = [
-  // node's built-in runner: `node --test`, `node --experimental-test-... --test`
-  /^node\s+(?:--?\S+\s+)*--test\b/,
-  // node executing a *.test.<js|mjs|cjs|jsx|ts|tsx> file directly
-  /^node\s+(?:--?\S+\s+)*\S*\.test\.[mc]?[jt]sx?\b/,
-  // package-manager test scripts
-  /^(?:npm|pnpm|yarn|bun)\s+(?:run\s+(?:--\s+)?)?test\b/,
-  // direct/binary runners, optionally via npx / pnpm dlx / yarn dlx
-  /^(?:npx\s+|pnpm\s+dlx\s+|yarn\s+dlx\s+)?(?:vitest|jest|mocha|ava|tap|c8|nyc)\b/,
-];
-function isTestCommand(command) {
-  let cmd = String(command || "").trim();
-  // Strip leading environment-variable assignments (e.g. `NODE_ENV=test node --test`).
-  while (/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/.test(cmd)) {
-    cmd = cmd.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/, "");
-  }
-  return TEST_RUNNER_RES.some((re) => re.test(cmd));
-}
+// A bare Bash event is promoted to a VERIFICATION step only when its command is a
+// single, unconditional, foreground run of a recognized test runner — decided by
+// the SHARED quote-aware top-level shell parser `isVerificationCommand` (finding
+// #1, task #40 REVISE round 2). A prefix match is not enough: a compound like
+// `node --test x || cat stale.log` masks its status and would launder a fake green,
+// so the parser rejects any separator/pipe/compound, backgrounding, command
+// substitution, heredoc, comment-hidden separator, and info/no-run flag. Builder
+// and validator import the SAME function so producer and tamper-check agree.
 
 // A combined behavior-specific label for an AGGREGATE change step (several folded
 // implementation units). Lists the new declarations/exports/test additions across
@@ -438,7 +423,7 @@ export function buildChangeStory(bundle) {
       command: rc.command,
       status: rc.status,
       exitCode: rc.exitCode,
-      output: (rc.content || "").slice(0, 300),
+      output: (rc.content || "").slice(0, VERIFY_OUTPUT_MAX),
       summary,
       toolActivity: [{ toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [refReceipt(rc)] }],
     });
@@ -448,11 +433,12 @@ export function buildChangeStory(bundle) {
     if (ev.status !== "succeeded" && ev.status !== "failed") continue;
     if (ev.inputLocator && receiptLocators.has(ev.inputLocator)) continue; // already a receipt
     const cmd = toolTarget(ev) || ev.toolName; // the command string
-    // A Bash event is verification ONLY when its command actually invokes a known
-    // test runner (finding #1). This is a positive allow-list over the COMMAND, so
-    // a `cat old-run.log` / `echo "ℹ pass 5"` whose output merely contains pass/fail
-    // lines can never launder a fake green verification into the story/outcome.
-    if (!isTestCommand(cmd)) continue;
+    // A Bash event is verification ONLY when its command is a single, unconditional,
+    // foreground run of a recognized test runner (finding #1). The shared quote-aware
+    // parser rejects compounds/pipes/substitutions/heredocs/no-run flags, so a
+    // status-masking `node --test x || cat stale.log` — or a `cat old-run.log` whose
+    // output merely contains pass/fail lines — can never launder a fake green.
+    if (!isVerificationCommand(cmd)) continue;
     const output = ev.outputSummary || "";
     const summary = parseTestSummary(output);
     // The runner must also have PRINTED a parseable result summary; a test command
@@ -467,7 +453,7 @@ export function buildChangeStory(bundle) {
       command: cmd,
       status: ev.status,
       exitCode: undefined,
-      output: output.slice(0, 300),
+      output: output.slice(0, VERIFY_OUTPUT_MAX),
       summary,
       toolActivity: [{ toolName: "Bash", status: ev.status, summary: cmd, evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)] }],
     });
