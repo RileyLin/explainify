@@ -137,7 +137,12 @@ function shellSegments(command) {
     }
   }
   parts.push({ sep: prevSep, text: src.slice(start).trim(), bg: false });
-  return parts.filter((p) => p.text.length > 0);
+  // NOTE: raw parts are returned UNFILTERED (empty segments kept). A dangling
+  // top-level separator (`node --test &&`, `node --test ;`, `node --test |`,
+  // trailing newline) produces a trailing empty segment; the verification-grammar
+  // caller must see it and reject, so it must not be silently filtered away here
+  // (task #39 / task #43 finding: dangling separators before empty filtering).
+  return parts;
 }
 
 function shellTokens(segment) {
@@ -180,66 +185,131 @@ function shellOptName(token) {
   if (t.startsWith("--")) { const eq = t.indexOf("="); return eq >= 0 ? t.slice(0, eq) : t; }
   return t.slice(0, 2);
 }
-// Any info / no-run / non-executing flag that a laundering command could carry to
-// print a result without running tests. Rejected wherever it appears.
-const NO_RUN_FLAGS = new Set([
-  "-h", "--help", "-v", "--version", "--dry-run", "--dryrun",
-  "--list", "--list-tests", "--listtests", "-e", "--eval", "-p", "--print",
-  "--check", "-c", "--compile-only",
+// NARROW VERIFICATION GRAMMAR (task #43 REVISE, PM msg ba024d69). The earlier
+// per-family grammar kept leaking edge cases (wrapper binaries `c8`/`nyc` that
+// launch an arbitrary command, `vitest list`/`npx vitest list` no-run subcommands,
+// dangling `node --test &&`). The directive: STOP expanding runner support. Mirror
+// ONLY the two already-audited Phase 1C direct forms the real dogfood evidence
+// uses — a direct `*.test.*` file run by a node runtime, and an `npm`/`pnpm`/`yarn`
+// verification SCRIPT — plus the literal-head single-segment `node --test` this
+// session needs. Everything else (bare runners incl. vitest/jest/mocha/ava/tap,
+// wrappers c8/nyc, npx/dlx launchers, slash/path heads, positional runner
+// subcommands, env-assignment prefixes) is intentionally UNSUPPORTED and can never
+// mint or validate a verification. False negatives are preferred over any laundered
+// verification. This mirrors tools/session/claude-adapter.mjs (frozen capture
+// boundary) rather than importing it, to keep that module pristine.
+const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
+// The ONLY node runtime flags a real direct test-file / `--test` run legitimately
+// carries. A flag NOT here — -e/--eval/-p/--print/--check/-c, --version/--help,
+// --dry-run, --list*, any unknown flag — makes the invocation unrecognized.
+const NODE_RUN_SAFE = new Set([
+  "-r", "--require", "--import", "--loader", "--experimental-loader",
+  "--experimental-vm-modules", "--conditions", "-C", "--test",
 ]);
-const isNoRunFlag = (tok) => { const o = shellOptName(tok); return o ? NO_RUN_FLAGS.has(o.toLowerCase()) : false; };
+// node run-flags consuming a SEPARATE value token (so the value is not mistaken for
+// the executed script). An attached form (`--require=x`, `-Cdir`) consumes nothing.
+const NODE_VALUE_FLAGS = new Set(["-r", "--require", "--import", "--loader", "--experimental-loader", "--conditions", "-C"]);
+const VERIFY_SCRIPTS = new Set(["test", "lint", "build", "typecheck", "compile"]);
 function isTestFileToken(token) {
   const base = shellBasename(token);
   return /^[\w@.-]*[._-](?:test|spec)\.(?:c|m)?[jt]sx?$/i.test(base)
     || /^[\w@.-]*[._-](?:test|spec)\.(?:py|rb|go)$/i.test(base);
 }
-const NODE_RUNTIMES = new Set(["node", "ts-node", "tsx", "babel-node"]);
-const PKG_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
-const RUNNER_BINS = new Set(["vitest", "jest", "mocha", "ava", "tap", "c8", "nyc"]);
-const VERIFY_SCRIPTS = new Set(["test", "lint", "build", "typecheck", "compile"]);
+const hasPassthroughTokens = (args) => { const i = args.indexOf("--"); return i >= 0 && i < args.length - 1; };
+const firstNonFlag = (tokens) => { for (const t of tokens) if (!t.startsWith("-")) return t; return null; };
+// Redirection operators are not script positionals. `node --test 2>&1` (the real
+// dogfood verification) carries `2>&1`; without stripping it the positional walk
+// would misread it as the executed target. Attached form (`2>&1`, `>out`, `&>log`)
+// is one token; a bare operator (`2>`, `>`, `>>`, `<`, `&>`) consumes the next token
+// as its target. Redirections never change WHICH runner executes, so dropping them
+// is safe and keeps the grammar anchored on the real head + script target.
+const REDIR_ATTACHED = /^(?:&|\d*)(?:>>|>|<).+/;   // operator with attached target
+const REDIR_BARE = /^(?:&|\d*)(?:>>|>|<)$/;         // bare operator; target is next token
+function stripRedirections(tokens) {
+  const out = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const t = tokens[i];
+    if (REDIR_BARE.test(t)) { i += 1; continue; }  // skip operator + its separate target
+    if (REDIR_ATTACHED.test(t)) continue;           // operator with attached target
+    out.push(t);
+  }
+  return out;
+}
 
-// Does a SINGLE recognized-runner segment's token stream actually invoke a test
-// runner (with no info/no-run flag or argument passthrough)?
+// A direct test-file run OR `node --test` by a node runtime. Mints ONLY when every
+// flag is NODE_RUN_SAFE, there is no `--` passthrough carrying tokens, and either
+// `--test` is present or the first positional is a test file. Rejects eval/print/
+// check/version/help/list modes, unknown flags, and a run with no test target.
+function nodeRun(args) {
+  if (hasPassthroughTokens(args)) return false;
+  let sawTest = false;
+  let k = 0;
+  while (k < args.length) {
+    const t = args[k];
+    if (t === "--") break;
+    if (t.startsWith("-")) {
+      const opt = shellOptName(t);
+      if (!NODE_RUN_SAFE.has(opt)) return false; // eval/print/check/version/list/unknown
+      if (opt === "--test") sawTest = true;
+      const attached = t.includes("=") || (!t.startsWith("--") && t.length > 2);
+      if (NODE_VALUE_FLAGS.has(opt) && !attached) k += 1; // skip its separate value
+      k += 1;
+      continue;
+    }
+    // First positional: the executed test file, or nothing mints.
+    return isTestFileToken(t);
+  }
+  return sawTest; // `node --test` with no positional is the built-in runner
+}
+
+// An `npm`/`pnpm`/`yarn` verification SCRIPT. Mints ONLY for `<pm> <verify-script>`
+// or `<pm> run <verify-script>` with NO flags, NO `--` passthrough, NO `dlx`. Any
+// flag (`npm test --help`/`--coverage`/`--version`), passthrough, or `pnpm dlx`
+// yields nothing. `bun` is NOT accepted (Phase 1C supports only npm/pnpm/yarn).
+function pkgScriptKind(args) {
+  if (args[0] === "dlx") return false; // pnpm/yarn dlx launches an arbitrary tool
+  if (hasPassthroughTokens(args)) return false;
+  for (const t of args) { if (t === "--") break; if (t.startsWith("-")) return false; }
+  const sub = firstNonFlag(args);
+  if (!sub) return false;
+  const name = sub === "run" ? firstNonFlag(args.slice(args.indexOf("run") + 1)) : sub;
+  return VERIFY_SCRIPTS.has(name);
+}
+
+// Classify a SINGLE executed segment's tokens. Anchors on the EXACT executable
+// basename (literal head token — NO wrapper/env-prefix stripping, NO launcher
+// unwrap) and accepts ONLY the two supported evidence forms.
 function isRunnerTokens(tokens0) {
-  let tokens = tokens0.slice();
-  // strip leading NAME=value env assignments
-  while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens = tokens.slice(1);
+  const tokens = stripRedirections(tokens0);
   if (!tokens.length) return false;
-  // `--` passthrough carrying tokens can smuggle a no-run mode (`npm test -- --listTests`)
-  const dd = tokens.indexOf("--");
-  if (dd >= 0 && dd < tokens.length - 1) return false;
-  for (const t of tokens) if (isNoRunFlag(t)) return false;
-  let head = shellBasename(tokens[0]);
-  let rest = tokens.slice(1);
-  // launcher unwrap: `npx <tool>`, `pnpm dlx <tool>`, `yarn dlx <tool>`
-  if (head === "npx") { if (!rest.length) return false; head = shellBasename(rest[0]); rest = rest.slice(1); }
-  else if ((head === "pnpm" || head === "yarn") && rest[0] === "dlx") { if (rest.length < 2) return false; head = shellBasename(rest[1]); rest = rest.slice(2); }
-  if (NODE_RUNTIMES.has(head)) {
-    if (rest.some((t) => t === "--test")) return true;             // node built-in runner
-    return rest.some((t) => !t.startsWith("-") && isTestFileToken(t)); // direct *.test.* run
-  }
-  if (PKG_MANAGERS.has(head)) {
-    const first = rest.find((t) => !t.startsWith("-"));
-    if (!first) return false;
-    if (first === "run") { const name = rest.slice(rest.indexOf("run") + 1).find((t) => !t.startsWith("-")); return VERIFY_SCRIPTS.has(name); }
-    return VERIFY_SCRIPTS.has(first); // `npm test`, `yarn lint`, `bun test`
-  }
-  if (RUNNER_BINS.has(head)) return true; // vitest / jest / mocha / … run by default
-  return false;
+  // Literal head only: a slash/path head (`/tmp/node --test`, `./node`) is an
+  // arbitrary binary that merely shares a runner's basename — reject it (task #43).
+  if (tokens[0].includes("/")) return false;
+  const exe = tokens[0];
+  const args = tokens.slice(1);
+  if (!exe) return false;
+  if (NODE_RUNTIMES.has(exe)) return nodeRun(args);
+  if (exe === "npm" || exe === "pnpm" || exe === "yarn") return pkgScriptKind(args);
+  return false; // every other head (vitest/jest/c8/nyc/npx/slash-path/…): unsupported
 }
 
 // A Bash command is verification evidence ONLY when it is a single, unconditional,
-// foreground run of a recognized test runner. Compounds/pipes/separators (`||`,
-// `&&`, `|`, `;`, newline), backgrounding (`&`), command substitution, heredocs,
-// comments hiding a separator, and info/no-run flags all disqualify it — so a
+// foreground run of one of the two audited runner forms. Compounds/pipes/separators
+// (`||`, `&&`, `|`, `;`, newline) — INCLUDING a dangling trailing separator —
+// backgrounding (`&`), command substitution, heredocs, comments hiding a separator,
+// info/no-run flags, and wrapper/launcher heads all disqualify it, so a
 // status-masking or laundered command can never mint or validate a verification.
 export function isVerificationCommand(rawCommand) {
   const command = stripShellComments(String(rawCommand ?? ""));
   if (!command.trim()) return false;
   if (hasAmbiguousShellForm(command)) return false;
-  const segs = shellSegments(command);
-  if (segs.length !== 1) return false;     // any top-level separator/pipe/compound
+  const segs = shellSegments(command); // UNFILTERED: dangling separators stay visible
+  // Exactly one segment total, and it must be non-empty. A dangling top-level
+  // separator (`node --test &&`, `node --test ;`, `node --test |`, trailing
+  // newline) yields >1 raw segment (one empty), so it is rejected here.
+  if (segs.length !== 1) return false;
   const seg = segs[0];
+  if (!seg || !seg.text) return false;
   if (seg.bg || seg.sep !== "") return false; // backgrounded or non-leading segment
   return isRunnerTokens(shellTokens(seg.text));
 }
@@ -822,9 +892,84 @@ export function validateChangeStory(story, bundle) {
   if (Array.isArray(story.steps) && isObj(ov) && Array.isArray(ov.nodes)) {
     const stepNodeByStepId = new Map();
     for (const n of ov.nodes) if (isObj(n) && nonEmpty(n.stepId)) stepNodeByStepId.set(n.stepId, n);
-    // A canonical cap-produced aggregate step (and ONLY it) may span multiple paths;
-    // it is the sole multi-path form the builder emits (capOverview → `step:agg:*`).
-    const isAggregateStep = (s) => isObj(s) && isStr(s.id) && s.id.startsWith("step:agg:");
+
+    // CANONICAL AGGREGATION (task #43 REVISE finding #2). An attacker-controlled
+    // `step:agg:` id prefix grants NOTHING. Reconstruct the full expected change-unit
+    // partition from the bundle and derive — from cap necessity — whether the builder
+    // would produce an aggregate at all, and if so its EXACT folded path set + derived
+    // id. Only a step matching that reconstruction may span multiple paths; a forged
+    // `step:agg:*` on a small story (no fold needed) is rejected, closing the
+    // later-unit→earliest collapse + aggregate-ID rename attack.
+    //
+    // Canonical units: landed code evidence grouped by file path, ordered by earliest
+    // attested change position; each unit's derived step id is `step:${earliestEvId}`
+    // (mirrors the builder). This is bundle-derived and NOT attacker-controllable.
+    const unitByPath = new Map();
+    for (const c of bundle.codeEvidence ?? []) {
+      if (!(isObj(c) && c.completeness === "landed" && nonEmpty(c.id))) continue;
+      const path = c.path ?? "";
+      const pos = nonEmpty(c.toolEventId) ? posByKey.get(`tool_event:${c.toolEventId}`) : undefined;
+      if (!unitByPath.has(path)) unitByPath.set(path, { path, members: new Set(), earliestPos: Infinity, earliestEvId: null });
+      const u = unitByPath.get(path);
+      u.members.add(c.id);
+      if (pos !== undefined && pos < u.earliestPos) { u.earliestPos = pos; u.earliestEvId = c.toolEventId; }
+    }
+    const canonUnits = [...unitByPath.values()].sort((a, b) => (a.earliestPos ?? Infinity) - (b.earliestPos ?? Infinity));
+    const U = canonUnits.length;
+    // Non-change steps (verification / diagnosis) consume overview slots. After the
+    // verification-evidence and diagnosis-intent checks above, a step carrying NO
+    // landed code change is a trustworthy non-change step; count them to mirror
+    // capOverview's `nonChange` arithmetic exactly.
+    const stepHasLanded = (s) => Array.isArray(s.codeChange) && s.codeChange.some((c) => {
+      const src = isObj(c) ? codeById.get(c.id) : null;
+      return src && src.completeness === "landed";
+    });
+    const nonChange = story.steps.filter((s) => isObj(s) && !stepHasLanded(s)).length;
+    // Mirror capOverview: fold happens iff the un-aggregated overview exceeds the cap
+    // AND change units exceed the individual slots AND at least two units fold.
+    const slots = MAX_OVERVIEW_STEPS - nonChange;
+    const keepIndividual = Math.max(0, slots - 1);
+    const foldNeeded = (U + nonChange) > MAX_OVERVIEW_STEPS && slots >= 1 && U > slots && (U - keepIndividual) >= 2;
+    const foldedUnits = foldNeeded ? canonUnits.slice(keepIndividual) : [];
+    const expectedFoldedPaths = new Set(foldedUnits.map((u) => u.path));
+    const foldAnchor = foldedUnits.reduce((a, b) => (a && (a.earliestPos ?? Infinity) <= (b.earliestPos ?? Infinity) ? a : b), foldedUnits[0] ?? null);
+    const expectedAggId = foldNeeded && foldAnchor ? `step:agg:${foldAnchor.earliestEvId}` : null;
+
+    // A step is a LEGITIMATE aggregate ONLY when a fold is canonically necessary AND
+    // its id equals the derived aggregate id AND it binds exactly the expected folded
+    // path set. Everything else — including any `step:agg:*`-prefixed id that is not
+    // the canonical one — is rejected below.
+    const stepPaths = (s) => {
+      const paths = new Set();
+      if (isObj(s) && Array.isArray(s.codeChange)) {
+        for (const c of s.codeChange) {
+          const src = isObj(c) ? codeById.get(c.id) : null;
+          if (src && src.completeness === "landed") paths.add(src.path ?? "");
+        }
+      }
+      return paths;
+    };
+    const isAggregateStep = (s) => {
+      if (!(isObj(s) && isStr(s.id))) return false;
+      if (!foldNeeded || s.id !== expectedAggId) return false;
+      const paths = stepPaths(s);
+      if (paths.size !== expectedFoldedPaths.size) return false;
+      for (const p of paths) if (!expectedFoldedPaths.has(p)) return false;
+      return true;
+    };
+    // Reject any forged aggregate id: a `step:agg:*` step that is not the canonical
+    // aggregate (wrong id, wrong folded set, or no fold needed at all).
+    for (const s of story.steps) {
+      if (isObj(s) && isStr(s.id) && s.id.startsWith("step:agg:") && !isAggregateStep(s)) {
+        err("steps", foldNeeded
+          ? `step "${s.id}" claims to be a canonical aggregate but does not match the expected aggregate (id ${expectedAggId}, paths [${[...expectedFoldedPaths].join(", ")}]) recomputed from the bundle (task #39 gate 3 / finding #2)`
+          : `step "${s.id}" is an aggregate but the ${U} canonical change unit(s) plus ${nonChange} non-change step(s) fit within the ${MAX_OVERVIEW_STEPS}-step cap, so no aggregation is permitted (task #39 gate 3 / finding #2)`);
+      }
+    }
+    // If a fold IS canonically necessary, the aggregate must actually be present.
+    if (foldNeeded && !story.steps.some((s) => isAggregateStep(s))) {
+      err("steps", `the bundle's ${U} canonical change unit(s) plus ${nonChange} non-change step(s) exceed the ${MAX_OVERVIEW_STEPS}-step cap, so a canonical aggregate (${expectedAggId}) spanning [${[...expectedFoldedPaths].join(", ")}] is required but absent (task #39 gate 3 / finding #2)`);
+    }
 
     // (a) same-file grouping: a path may not be split across steps.
     const stepsByPath = new Map();

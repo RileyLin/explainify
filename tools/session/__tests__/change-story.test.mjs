@@ -788,25 +788,48 @@ test("1F: caused_by/architecture/dataflow are no longer valid edge kinds (findin
 
 import { isVerificationCommand } from "../change-story-schema.mjs";
 
-test("R2 #1: the shared shell grammar rejects status-masking compounds and info/no-run flags", () => {
-  // Positive: the exact real-evidence forms still count as verification.
+test("R3: the NARROW shell grammar accepts only the two audited Phase 1C forms", () => {
+  // Positive: ONLY the audited direct node test-file / `node --test` forms and the
+  // npm/pnpm/yarn verification SCRIPTS this dogfood's evidence uses.
   for (const good of ["node --test 2>&1", "node --test", "node slugify.test.js", "node paginate.test.js",
-    "npm test", "pnpm test", "yarn lint", "bun test", "npx vitest", "vitest run", "NODE_ENV=test node --test"]) {
+    "node ./test/orders.test.js", "npm test", "npm run test", "pnpm test", "pnpm lint", "yarn build"]) {
     assert.equal(isVerificationCommand(good), true, `should accept: ${good}`);
   }
-  // Negative: status-masking compounds, pipes, separators, backgrounding, subst/heredoc,
-  // comment-hidden separators, and info/no-run flags all disqualify.
+  // Negative: task #43 REVISE — STOP expanding runner support. Bare runners, wrapper
+  // binaries (c8/nyc), npx/dlx launchers, positional runner subcommands, env-assignment
+  // prefixes, slash/path heads, dangling separators, and every prior laundering form
+  // are all unsupported.
   for (const bad of [
-    "node --test missing.test.js || cat stale.log",   // codex's exact probe
+    // --- task #43 finding #1 exact probes ---
+    "c8",                                  // wrapper binary, no wrapped runner
+    "c8 cat stale.log",                    // wrapper launders arbitrary command
+    "nyc npm test",                        // wrapper binary
+    "vitest list",                         // positional no-run subcommand
+    "npx vitest list",                     // launcher + no-run subcommand
+    "vitest",                              // bare runner: unsupported this phase
+    "npx vitest",                          // launcher: unsupported this phase
+    "vitest run",                          // bare runner subcommand
+    "jest",
+    "bun test",                            // bun not in the audited pm set
+    "NODE_ENV=test node --test",           // env-assignment prefix: unsupported
+    "/tmp/node --test",                    // slash/path head, not literal `node`
+    "./node --test",
+    "node --test &&",                      // dangling separators (before empty filter)
+    "node --test ||",
+    "node --test |",
+    "node --test ;",
+    "node --test &",
+    "node --test\n",
+    // --- prior round laundering forms still rejected ---
+    "node --test missing.test.js || cat stale.log",
     "false && node --test",
     "node --test | tee out.log",
     "node --test ; echo done",
-    "node --test &",
     "cat stale.log",
     "echo 'ℹ pass 99'",
     "node --test `printf x`",
     "node --test $(echo x)",
-    "echo safe # && node --test",       // comment strips to `echo safe` (not a runner)
+    "echo safe # && node --test",          // comment strips to `echo safe`
     "npm test --help",
     "node --version",
     "node -e \"console.log('paginate.test.js')\"",
@@ -862,6 +885,34 @@ test("R2 #2: collapsing a later file's members into an earlier step fails closed
   assert.equal(ok, false);
   assert.ok(errors.some((e) => /binds \d+ distinct file paths|split across/.test(e)),
     `expected a single-path/split error, got ${JSON.stringify(errors)}`);
+});
+
+test("R3 #2: forging a `step:agg:` id to collapse a later file into an earlier step fails closed", () => {
+  // task #43 finding #2: aggregate authorization must be recomputed from cap
+  // necessity, not granted by an attacker-controlled `step:agg:` id prefix. This
+  // 4-unit dogfood needs NO fold, so renaming an early step to `step:agg:*`,
+  // collapsing a later file's members into it, and emptying the later step must
+  // still be rejected (both as a forged aggregate AND as a two-path non-aggregate).
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const changeSteps = story.steps.filter((s) => Array.isArray(s.codeChange) && s.codeChange.length && !s.id.startsWith("step:agg:"));
+  assert.ok(changeSteps.length >= 2);
+  const early = changeSteps[0];
+  const later = changeSteps[1];
+  const forgedId = `step:agg:${early.id.replace(/^step:/, "")}`;
+  // Rename the early step to a forged aggregate id and update its overview node's
+  // stepId so the node↔step bijection still holds (the attacker keeps the story
+  // otherwise well-formed).
+  const node = story.overview.nodes.find((n) => n.stepId === early.id);
+  early.id = forgedId;
+  if (node) node.stepId = forgedId;
+  early.codeChange = [...early.codeChange, ...later.codeChange];
+  later.codeChange = [];
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /no aggregation is permitted|does not match the expected aggregate|binds \d+ distinct file paths/.test(e)),
+    `expected a forged-aggregate/partition error, got ${JSON.stringify(errors)}`);
 });
 
 test("R2 #3: fabricating an exitCode on a Bash-event verification fails closed (finding #3 exit)", () => {
