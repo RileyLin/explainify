@@ -915,6 +915,104 @@ test("R3 #2: forging a `step:agg:` id to collapse a later file into an earlier s
     `expected a forged-aggregate/partition error, got ${JSON.stringify(errors)}`);
 });
 
+// --- R4 fold-triggering bundle: 6 change units + 1 passing check force a real
+// cap-produced aggregate (step:agg:*). multiFileBundle has only 4 units and folds
+// nothing, so the two round-4 probes need a bundle that actually exceeds the cap. ---
+const R4_FILES = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
+const r4Before = (n) => `export function base_${n}(x) {\n  return x;\n}`;
+const r4After = (n) => `export function base_${n}(x) {\n  return x;\n}\nexport function feat_${n}(x) {\n  return x + ${R4_FILES.indexOf(n)};\n}`;
+const R4_TEST_OUTPUT = "ℹ tests 6\nℹ pass 6\nℹ fail 0";
+
+function foldingBundle() {
+  const root = "/repo";
+  const records = [
+    { type: "user", uuid: "u1", message: { role: "user", content: [{ type: "text", text: "Add a feat_ helper to each of the six modules and run the tests." }] } },
+    { type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "text", text: "I'll add one helper per module, then run the suite." }] } },
+  ];
+  R4_FILES.forEach((n, i) => {
+    records.push({ type: "assistant", uuid: `e${i}`, message: { role: "assistant", content: [{ type: "tool_use", id: `t${i}`, name: "Edit", input: { file_path: `/repo/src/${n}.js`, old_string: r4Before(n), new_string: r4After(n) } }] } });
+    records.push({ type: "user", uuid: `r${i}`, message: { role: "user", content: [{ type: "tool_result", tool_use_id: `t${i}`, content: "updated" }] } });
+  });
+  records.push({ type: "assistant", uuid: "b1", message: { role: "assistant", content: [{ type: "tool_use", id: "tb", name: "Bash", input: { command: "node --test 2>&1" } }] } });
+  records.push({ type: "user", uuid: "rb", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tb", is_error: false, content: R4_TEST_OUTPUT }] } });
+  records.push({ type: "assistant", uuid: "a9", message: { role: "assistant", content: [{ type: "text", text: "All six modules updated and 6 tests pass." }] } });
+  const changedFiles = R4_FILES.map((n) => ({ path: `src/${n}.js`, status: "modified", sha256: sha256(r4After(n) + "\n") }));
+  const finalContent = Object.fromEntries(R4_FILES.map((n) => [`src/${n}.js`, r4After(n) + "\n"]));
+  return bundleFrom({ root, records, changedFiles, finalContent });
+}
+
+test("R4 sanity: a 6-unit session folds overflow into exactly one canonical aggregate step (gate 1)", () => {
+  const bundle = foldingBundle();
+  const story = buildChangeStory(bundle);
+  const aggs = story.steps.filter((s) => typeof s.id === "string" && s.id.startsWith("step:agg:"));
+  assert.equal(aggs.length, 1, `expected exactly one cap-produced aggregate, got ${JSON.stringify(story.steps.map((s) => s.id))}`);
+  assert.ok(story.steps.length <= 5, `overview capped at 5 (got ${story.steps.length})`);
+  assert.equal(validateChangeStory(story, bundle).ok, true, "the honest folding story validates");
+});
+
+test("R4 #1: removing a non-change step to flip fold necessity fails closed (task #44 finding #1)", () => {
+  // Round 3 derived fold necessity (the non-change slot count) from the mutable
+  // story.steps, so dropping the verification step changed how many change units
+  // the validator expected to fold — an attacker could un-fold the aggregate by
+  // deleting a bundle-attested non-change step. Round 4 reconstructs the WHOLE
+  // ordered partition from bundle-required evidence, so removing the verification
+  // step (and its overview node + orphaned edges, keeping the story otherwise
+  // well-formed) must be rejected: the bundle still yields that step.
+  const bundle = foldingBundle();
+  const story = buildChangeStory(bundle);
+  const vStep = story.steps.find((s) => (s.verification || []).length);
+  assert.ok(vStep, "the folding story has a verification step");
+  const vId = vStep.id;
+  story.steps = story.steps.filter((s) => s.id !== vId);
+  const vNode = story.overview.nodes.find((n) => n.stepId === vId);
+  const vNodeId = vNode ? vNode.id : null;
+  story.overview.nodes = story.overview.nodes.filter((n) => n.stepId !== vId);
+  if (vNodeId) story.overview.edges = story.overview.edges.filter((e) => e.from !== vNodeId && e.to !== vNodeId);
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /the bundle deterministically yields|bundle-derived partition/.test(e)),
+    `expected a full-partition mismatch (finding #1), got ${JSON.stringify(errors)}`);
+});
+
+test("R4 #2: relabeling or emptying the aggregate's semantic fields fails closed (task #44 finding #2)", () => {
+  // Round 3 bound only the aggregate's cap-necessity, derived id, and folded path
+  // set — never its exact title/intent/tool-activity/outcome text or evidence. So
+  // an attacker could keep the right id and path set but rewrite the aggregate's
+  // human-readable meaning. Round 4 asserts every present step is canonically
+  // identical to its bundle-derived twin, so relabeling the aggregate title OR
+  // erasing its tool-activity refs must both be rejected.
+  const bundle = foldingBundle();
+
+  // (a) relabel the aggregate's title.
+  {
+    const story = buildChangeStory(bundle);
+    const agg = story.steps.find((s) => typeof s.id === "string" && s.id.startsWith("step:agg:"));
+    assert.ok(agg, "the folding story has a cap-produced aggregate");
+    const aggNode = story.overview.nodes.find((n) => n.stepId === agg.id);
+    agg.title = "Refactor shared utilities";
+    if (aggNode) aggNode.label = "Refactor shared utilities";
+    story.provenance.changeStorySha256 = hashChangeStory(story);
+    const { ok, errors } = validateChangeStory(story, bundle);
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => /does not match the deterministic builder result/.test(e)),
+      `expected a canonical-equality mismatch on relabel (finding #2), got ${JSON.stringify(errors)}`);
+  }
+
+  // (b) empty the aggregate's tool-activity evidence while keeping id + path set.
+  {
+    const story = buildChangeStory(bundle);
+    const agg = story.steps.find((s) => typeof s.id === "string" && s.id.startsWith("step:agg:"));
+    assert.ok(Array.isArray(agg.toolActivity) && agg.toolActivity.length > 0, "the aggregate carries tool activity");
+    agg.toolActivity = [];
+    story.provenance.changeStorySha256 = hashChangeStory(story);
+    const { ok, errors } = validateChangeStory(story, bundle);
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => /does not match the deterministic builder result/.test(e)),
+      `expected a canonical-equality mismatch on emptied tool activity (finding #2), got ${JSON.stringify(errors)}`);
+  }
+});
+
 test("R2 #3: fabricating an exitCode on a Bash-event verification fails closed (finding #3 exit)", () => {
   const bundle = multiFileBundle(); // its verification is a bare Bash event (no receipt/exitCode)
   const story = buildChangeStory(bundle);

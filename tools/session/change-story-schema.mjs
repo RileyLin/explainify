@@ -411,6 +411,447 @@ export function canonicalChangeStory(story) {
 }
 export const hashChangeStory = (story) => sha256(canonicalChangeStory(story));
 
+// ==========================================================================
+// SHARED CANONICAL DERIVATION (task #39 REVISE round 4).
+//
+// The Phase 1F step partition is a PURE, DETERMINISTIC function of the validated
+// bundle. Round 3 duplicated a SUBSET of that function in the validator (it
+// re-derived fold necessity from the mutable `story.steps` and bound only an
+// aggregate's id + path set), so a rehashed story could still drift from what the
+// builder would deterministically produce (task #44 findings #1/#2).
+//
+// This section is the SINGLE source of truth. `deriveChangeDescriptors(bundle)`
+// reconstructs the entire ordered descriptor partition — diagnosis, per-file change
+// units, verifications, and any cap-produced aggregate — from BUNDLE-REQUIRED
+// evidence alone. The builder (synthesis) maps its `descriptors` into `story.steps`
+// and its `verifications` into the outcome; the validator re-runs the SAME function
+// and asserts the story's complete ordered step partition is canonically identical.
+// Producer and tamper-check therefore cannot disagree by construction: fold
+// necessity, aggregate id, members, earliest anchor, title/intent, tool-activity
+// refs, and outcome text + evidence are all bound to this one derivation.
+//
+// It lives in this (lower) schema module — which the builder already imports — so
+// there is no circular dependency and no drift-prone second implementation.
+// ==========================================================================
+
+// EvidenceRef helpers — bind a bundle item by id + its canonical hash. Exported so
+// the builder shares the exact binding (a ref's sha256 is the bundle hash).
+export const refExcerpt = (e) => ({ type: "excerpt", ref: e.id, sha256: hashExcerpt(e) });
+export const refToolInput = (t) => ({ type: "tool_input", ref: t.id, sha256: hashToolInput(t) });
+export const refToolOutput = (t) => ({ type: "tool_output", ref: t.id, sha256: hashToolOutput(t) });
+export const refReceipt = (rc) => ({ type: "receipt", ref: rc.id, sha256: hashReceipt(rc) });
+export const refCode = (c) => ({ type: "code_excerpt", ref: c.id, sha256: hashCodeExcerpt(c) });
+
+// Short, human label for a tool event's input (never the raw JSON blob).
+function toolLabel(ev) {
+  const name = ev.toolName;
+  let detail = "";
+  try {
+    const parsed = JSON.parse(ev.inputSummary);
+    detail = parsed.file_path || parsed.path || parsed.notebook_path || parsed.command || "";
+  } catch { detail = ""; }
+  if (detail && detail.length > 80) detail = detail.slice(0, 77) + "…";
+  return detail ? `${name} ${detail}` : name;
+}
+// Just the friendly target (path/command) of a tool event, without the tool-name prefix.
+function toolTarget(ev) {
+  const full = toolLabel(ev);
+  const stripped = full.replace(/^\w+\s/, "");
+  return stripped && stripped !== ev.toolName ? stripped : "";
+}
+
+// --- behavior-specific label derivation from the exact landed code ---
+const DECL_RE = /^(?:export\s+(?:default\s+)?)?(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/;
+const JS_LIKE_EXT = /\.(mjs|cjs|jsx?|tsx?)$/i;
+// Blank the CONTENT of comments and string/template literals (newlines preserved)
+// so a declaration-looking token inside them is never mistaken for real code.
+function stripNonCodeLocal(src) {
+  let out = "";
+  let state = "code";
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    const n = src[i + 1];
+    switch (state) {
+      case "code":
+        if (c === "/" && n === "/") { state = "line"; out += "  "; i += 1; }
+        else if (c === "/" && n === "*") { state = "block"; out += "  "; i += 1; }
+        else if (c === "'") { state = "sq"; out += " "; }
+        else if (c === '"') { state = "dq"; out += " "; }
+        else if (c === "`") { state = "tpl"; out += " "; }
+        else out += c;
+        break;
+      case "line":
+        if (c === "\n") { state = "code"; out += "\n"; } else out += " ";
+        break;
+      case "block":
+        if (c === "*" && n === "/") { state = "code"; out += "  "; i += 1; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "sq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "'") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "dq":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === '"') { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      case "tpl":
+        if (c === "\\") { out += "  "; i += 1; }
+        else if (c === "`") { state = "code"; out += " "; }
+        else out += c === "\n" ? "\n" : " ";
+        break;
+      default:
+        out += c;
+    }
+  }
+  return out;
+}
+function topLevelDecls(text) {
+  const names = new Set();
+  for (const line of stripNonCodeLocal(text || "").split("\n")) {
+    const m = DECL_RE.exec(line);
+    if (m) names.add(m[1]);
+  }
+  return names;
+}
+function exportedNames(text) {
+  const names = new Set();
+  const re = /export\s*\{([^}]*)\}/g;
+  const stripped = stripNonCodeLocal(text || "");
+  let m;
+  while ((m = re.exec(stripped))) {
+    for (const part of m[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/)[0].trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+  return names;
+}
+function testNames(text) {
+  const names = [];
+  const re = /\b(?:test|it)\s*\(\s*(['"`])((?:\\.|(?!\1).)*)\1/g;
+  let m;
+  while ((m = re.exec(text || ""))) names.push(m[2]);
+  return names;
+}
+const setDiff = (after, before) => [...after].filter((x) => !before.has(x));
+function clip(s, n = 72) {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+function newDecls(before, after) {
+  const b = topLevelDecls(before || "");
+  return setDiff(topLevelDecls(after || ""), b);
+}
+function deriveChangeLabel(path, landed) {
+  const isJsLike = JS_LIKE_EXT.test(path || "");
+  const decls = [];
+  const exportsAdded = [];
+  const tests = [];
+  const modifiedSymbols = [];
+  for (const c of landed) {
+    if (isJsLike) {
+      for (const d of newDecls(c.before, c.after)) if (!decls.includes(d)) decls.push(d);
+      const be = exportedNames(c.before);
+      for (const e of setDiff(exportedNames(c.after), be)) if (!exportsAdded.includes(e)) exportsAdded.push(e);
+      if (c.symbol && (c.before || "").length && topLevelDecls(c.before).has(c.symbol)) {
+        if (!modifiedSymbols.includes(c.symbol)) modifiedSymbols.push(c.symbol);
+      }
+    }
+    const bt = new Set(testNames(c.before));
+    for (const t of testNames(c.after)) if (!bt.has(t) && !tests.includes(t)) tests.push(t);
+  }
+  if (decls.length) return { title: clip(`Add ${decls.join(", ")}`), intent: `Add ${decls.join(", ")} in ${path}.` };
+  if (exportsAdded.length) return { title: clip(`Expose ${exportsAdded.join(", ")}`), intent: `Export ${exportsAdded.join(", ")} from ${path}.` };
+  if (tests.length) {
+    const head = tests.length === 1 ? tests[0] : `${tests.length} tests: ${tests.join("; ")}`;
+    return { title: clip(`Add ${head}`), intent: `Add ${tests.length} test(s) in ${path}: ${tests.join("; ")}.` };
+  }
+  if (modifiedSymbols.length) return { title: clip(`Update ${modifiedSymbols.join(", ")}`), intent: `Update ${modifiedSymbols.join(", ")} in ${path}.` };
+  const rel = path || "a file";
+  return { title: clip(`Edit ${rel}`), intent: `Edit ${rel}.` };
+}
+function deriveAggregateLabel(units) {
+  const decls = [];
+  const exportsAdded = [];
+  let testCount = 0;
+  const files = [];
+  for (const u of units) {
+    if (!files.includes(u.path)) files.push(u.path);
+    const isJsLike = JS_LIKE_EXT.test(u.path || "");
+    for (const c of u.landed) {
+      if (isJsLike) {
+        for (const d of newDecls(c.before, c.after)) if (!decls.includes(d)) decls.push(d);
+        for (const e of setDiff(exportedNames(c.after), exportedNames(c.before))) if (!exportsAdded.includes(e)) exportsAdded.push(e);
+      }
+      const bt = new Set(testNames(c.before));
+      testCount += testNames(c.after).filter((t) => !bt.has(t)).length;
+    }
+  }
+  const bits = [];
+  if (decls.length) bits.push(`add ${decls.join(", ")}`);
+  if (exportsAdded.length) bits.push(`export ${exportsAdded.join(", ")}`);
+  if (testCount) bits.push(`${testCount} test(s)`);
+  const detail = bits.length ? bits.join("; ") : files.join(", ");
+  return {
+    title: clip(`Implement across ${files.length} file(s): ${detail}`, 80),
+    intent: clip(`Implementation across ${files.join(", ")} — ${detail}.`, 240),
+  };
+}
+// Deterministic parse of a test-runner RESULT summary from attested output.
+function parseTestSummary(output) {
+  const s = String(output || "");
+  const grab = (re) => { const m = re.exec(s); return m ? Number(m[1]) : null; };
+  let pass = grab(/(?:^|\n)\s*(?:ℹ|#)\s*pass\s+(\d+)/i);
+  let fail = grab(/(?:^|\n)\s*(?:ℹ|#)\s*fail\s+(\d+)/i);
+  let total = grab(/(?:^|\n)\s*(?:ℹ|#)\s*tests?\s+(\d+)/i);
+  if (pass === null && fail === null && total === null) return null;
+  if (fail === null) fail = 0;
+  if (pass === null) pass = total !== null ? Math.max(0, total - fail) : 0;
+  if (total === null) total = pass + fail;
+  return { pass, fail, total };
+}
+
+// Cap the overview at `max` steps (gate 1). Diagnosis + verification descriptors are
+// never folded; the fold targets CHANGE units only, collapsing the overflow into ONE
+// aggregate change step that retains EVERY landed CodeExcerpt ref (evidence grouped,
+// never dropped). Mutates `descriptors` in place, preserving attested order.
+function capOverview(descriptors, max) {
+  if (descriptors.length <= max) return;
+  const changes = descriptors.filter((d) => d.kind === "change");
+  const nonChange = descriptors.length - changes.length;
+  const slots = max - nonChange;
+  if (slots < 1) return;
+  const keepIndividual = Math.max(0, slots - 1);
+  if (changes.length <= slots) return;
+  const folded = changes.slice(keepIndividual);
+  if (folded.length <= 1) return;
+  const units = folded.map((d) => d.unit);
+  const allLanded = units.flatMap((u) => u.landed);
+  const allUnknown = units.flatMap((u) => u.unknown);
+  const allToolActivity = units.flatMap((u) => u.toolActivity);
+  const earliest = folded.reduce((a, b) => ((a.anchorPos ?? Infinity) <= (b.anchorPos ?? Infinity) ? a : b));
+  const label = deriveAggregateLabel(units);
+  const aggregate = {
+    kind: "change",
+    anchorRef: earliest.anchorRef,
+    anchorPos: earliest.anchorPos,
+    unit: { path: units.map((u) => u.path).join(", "), landed: allLanded, unknown: allUnknown },
+    step: {
+      id: `step:agg:${earliest.step.id.replace(/^step:/, "")}`,
+      title: label.title,
+      intent: { text: label.intent, status: "inferred", evidence: [earliest.anchorRef] },
+      toolActivity: allToolActivity,
+      ...(allLanded.length ? { codeChange: allLanded.map((c) => ({ ...c })) } : {}),
+      outcome: {
+        text: `${allLanded.length} landed change(s) across ${units.length} file(s).`,
+        evidence: allLanded.length ? allLanded.map(refCode) : [earliest.anchorRef],
+      },
+      unknowns: allUnknown.map((c) => ({ text: `${c.path}: exact code not confirmed as landed`, reason: c.unknownReason || "unconfirmed" })),
+    },
+  };
+  const foldedIds = new Set(folded.map((d) => d.step.id));
+  const remaining = descriptors.filter((d) => !foldedIds.has(d.step.id));
+  remaining.push(aggregate);
+  remaining.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
+  descriptors.length = 0;
+  descriptors.push(...remaining);
+}
+
+// The single deterministic derivation. Returns the ordered descriptor partition
+// (each { kind, step, anchorRef, anchorPos }) and the unified verification set,
+// both computed from BUNDLE-REQUIRED evidence only — never from a caller-supplied
+// story. The builder maps these into story.steps/outcome; the validator re-runs it
+// and asserts the story's steps are canonically identical.
+export function deriveChangeDescriptors(bundle) {
+  const codeByToolEvent = new Map();
+  for (const c of bundle.codeEvidence ?? []) {
+    if (!codeByToolEvent.has(c.toolEventId)) codeByToolEvent.set(c.toolEventId, []);
+    codeByToolEvent.get(c.toolEventId).push(c);
+  }
+  const posOf = new Map();
+  (bundle.observedOrder || []).forEach((o, i) => posOf.set(`${o.kind}:${o.id}`, i));
+
+  const objectiveSourceId = bundle.objective ? bundle.objective.sourceId : null;
+  const finalExplanation = [...(bundle.excerpts ?? [])].reverse().find((e) => e.kind === "agent_explanation");
+  const finalExplanationId = finalExplanation ? finalExplanation.id : null;
+  const CHANGE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+  const REASONING_KINDS = new Set(["agent_decision", "agent_explanation", "error", "unresolved"]);
+  const descriptors = [];
+
+  // Attested verifications, unified across receipts and un-promoted Bash events.
+  const receiptLocators = new Set((bundle.receipts ?? []).map((rc) => rc.commandLocator).filter(Boolean));
+  const VERIFY_TOOLS = new Set(["Bash"]);
+  const verifications = [];
+  for (const rc of bundle.receipts ?? []) {
+    const summary = parseTestSummary(rc.content);
+    verifications.push({
+      kind: "receipt",
+      anchorRef: refReceipt(rc),
+      anchorPos: posOf.get(`receipt:${rc.id}`),
+      idPart: rc.id,
+      command: rc.command,
+      status: rc.status,
+      exitCode: rc.exitCode,
+      output: (rc.content || "").slice(0, VERIFY_OUTPUT_MAX),
+      summary,
+      toolActivity: [{ toolName: "Bash", status: rc.status === "unknown" ? "unknown" : rc.status, summary: rc.command, evidence: [refReceipt(rc)] }],
+    });
+  }
+  for (const ev of bundle.toolEvents ?? []) {
+    if (!VERIFY_TOOLS.has(ev.toolName)) continue;
+    if (ev.status !== "succeeded" && ev.status !== "failed") continue;
+    if (ev.inputLocator && receiptLocators.has(ev.inputLocator)) continue;
+    const cmd = toolTarget(ev) || ev.toolName;
+    if (!isVerificationCommand(cmd)) continue;
+    const output = ev.outputSummary || "";
+    const summary = parseTestSummary(output);
+    if (!summary) continue;
+    const anchorRef = refToolInput(ev);
+    verifications.push({
+      kind: "bash",
+      anchorRef,
+      anchorPos: posOf.get(`tool_event:${ev.id}`),
+      idPart: ev.id,
+      command: cmd,
+      status: ev.status,
+      exitCode: undefined,
+      output: output.slice(0, VERIFY_OUTPUT_MAX),
+      summary,
+      toolActivity: [{ toolName: "Bash", status: ev.status, summary: cmd, evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)] }],
+    });
+  }
+  const firstFailPos = verifications
+    .filter((v) => v.status === "failed")
+    .reduce((min, v) => Math.min(min, v.anchorPos ?? Infinity), Infinity);
+
+  // (a) diagnosis reasoning steps (gate 2 exception): a reasoning excerpt with an
+  // observed FAILING verification before it AND a landed change after it.
+  const landedPositions = (bundle.codeEvidence ?? [])
+    .filter((c) => c.completeness === "landed")
+    .map((c) => {
+      const ev = (bundle.toolEvents ?? []).find((t) => t.id === c.toolEventId);
+      return ev ? posOf.get(`tool_event:${ev.id}`) : undefined;
+    })
+    .filter((p) => p !== undefined);
+  for (const e of bundle.excerpts ?? []) {
+    if (!REASONING_KINDS.has(e.kind)) continue;
+    if (e.id === objectiveSourceId || e.id === finalExplanationId) continue;
+    const pos = posOf.get(`excerpt:${e.id}`);
+    if (pos === undefined) continue;
+    const hasPriorFailure = firstFailPos < pos;
+    const hasLaterLanding = landedPositions.some((lp) => lp > pos);
+    if (!(hasPriorFailure && hasLaterLanding)) continue;
+    const anchorRef = refExcerpt(e);
+    const quoted = e.text.slice(0, 200);
+    descriptors.push({
+      kind: "diagnosis",
+      anchorRef,
+      anchorPos: pos,
+      step: {
+        id: `step:${e.id}`,
+        title: clip(`Diagnosis: ${e.text.slice(0, 60)}`),
+        intent: { text: quoted, status: "observed", evidence: [anchorRef] },
+        toolActivity: [],
+        outcome: { text: "Root cause identified from the failing check.", evidence: [anchorRef] },
+        unknowns: [],
+      },
+    });
+  }
+
+  // (b) change steps: GROUP landed edits by implementation unit (file). One step per
+  // unit, carrying every landed CodeExcerpt, anchored at the unit's EARLIEST attested
+  // change tool event (gate 3). Labels are behavior-specific.
+  const unitOrder = [];
+  const unitMap = new Map();
+  for (const ev of bundle.toolEvents ?? []) {
+    if (ev.status !== "succeeded") continue;
+    if (!CHANGE_TOOLS.has(ev.toolName)) continue;
+    const all = codeByToolEvent.get(ev.id) || [];
+    const path = all[0]?.path || toolTarget(ev) || ev.toolName;
+    const pos = posOf.get(`tool_event:${ev.id}`);
+    if (!unitMap.has(path)) { unitMap.set(path, { path, eventRefs: [], landed: [], unknown: [], earliestPos: pos, earliestEvId: ev.id, toolActivity: [] }); unitOrder.push(path); }
+    const u = unitMap.get(path);
+    if (pos !== undefined && (u.earliestPos === undefined || pos < u.earliestPos)) { u.earliestPos = pos; u.earliestEvId = ev.id; }
+    for (const c of all) {
+      if (c.completeness === "landed") u.landed.push(c);
+      else u.unknown.push(c);
+    }
+    u.toolActivity.push({
+      toolName: ev.toolName,
+      status: ev.status,
+      summary: toolLabel(ev),
+      evidence: ev.outputLocator ? [refToolInput(ev), refToolOutput(ev)] : [refToolInput(ev)],
+    });
+  }
+  const changeUnits = unitOrder.map((path) => unitMap.get(path));
+  const unitDescriptors = changeUnits.map((u) => {
+    const anchorEv = (bundle.toolEvents ?? []).find((t) => t.id === u.earliestEvId);
+    const anchorRef = refToolInput(anchorEv);
+    const label = deriveChangeLabel(u.path, u.landed);
+    return {
+      kind: "change",
+      anchorRef,
+      anchorPos: u.earliestPos,
+      unit: u,
+      step: {
+        id: `step:${u.earliestEvId}`,
+        title: label.title,
+        intent: { text: label.intent, status: "inferred", evidence: [anchorRef] },
+        toolActivity: u.toolActivity,
+        ...(u.landed.length ? { codeChange: u.landed.map((c) => ({ ...c })) } : {}),
+        outcome: {
+          text: u.landed.length ? `${u.landed.length} landed change(s) in ${u.path}.` : `Change applied to ${u.path}.`,
+          evidence: u.landed.length ? u.landed.map(refCode) : [anchorRef],
+        },
+        unknowns: u.unknown.map((c) => ({ text: `${c.path}: exact code not confirmed as landed`, reason: c.unknownReason || "unconfirmed" })),
+      },
+    };
+  });
+  descriptors.push(...unitDescriptors);
+
+  // (c) verification steps: one per attested verification, anchored at its slot.
+  for (const v of verifications) {
+    const countTxt = v.summary ? ` (${v.summary.pass}/${v.summary.total} passed${v.summary.fail ? `, ${v.summary.fail} failed` : ""})` : "";
+    descriptors.push({
+      kind: "verification",
+      anchorRef: v.anchorRef,
+      anchorPos: v.anchorPos,
+      verify: v,
+      step: {
+        id: `step:${v.idPart}`,
+        title: clip(`${v.status === "failed" ? "Failing" : v.status === "succeeded" ? "Passing" : "Ran"} check: ${v.command}${countTxt}`, 90),
+        intent: { text: `Run \`${v.command}\` to verify behavior.`, status: "inferred", evidence: [v.anchorRef] },
+        toolActivity: v.toolActivity,
+        verification: [
+          {
+            command: v.command,
+            status: v.status,
+            ...(v.exitCode !== undefined ? { exitCode: v.exitCode } : {}),
+            outputExcerpt: v.output,
+            evidence: [v.anchorRef],
+          },
+        ],
+        outcome: {
+          text: v.status === "failed"
+            ? `Verification failed${v.summary ? ` — ${v.summary.fail} of ${v.summary.total} test(s) failing` : ""}.`
+            : v.status === "succeeded"
+              ? `Verification passed${v.summary ? ` — ${v.summary.pass}/${v.summary.total} test(s)` : ""}.`
+              : "Verification outcome masked.",
+          evidence: [v.anchorRef],
+        },
+        unknowns: [],
+      },
+    });
+  }
+
+  // Order every step by its attested timeline position, then apply the cap (gate 1).
+  descriptors.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
+  capOverview(descriptors, MAX_OVERVIEW_STEPS);
+  return { descriptors, verifications };
+}
+
 // --- fail-closed validator ---
 //
 // Called WITH the validated bundle so every EvidenceRef can be re-resolved. The
@@ -893,83 +1334,66 @@ export function validateChangeStory(story, bundle) {
     const stepNodeByStepId = new Map();
     for (const n of ov.nodes) if (isObj(n) && nonEmpty(n.stepId)) stepNodeByStepId.set(n.stepId, n);
 
-    // CANONICAL AGGREGATION (task #43 REVISE finding #2). An attacker-controlled
-    // `step:agg:` id prefix grants NOTHING. Reconstruct the full expected change-unit
-    // partition from the bundle and derive — from cap necessity — whether the builder
-    // would produce an aggregate at all, and if so its EXACT folded path set + derived
-    // id. Only a step matching that reconstruction may span multiple paths; a forged
-    // `step:agg:*` on a small story (no fold needed) is rejected, closing the
-    // later-unit→earliest collapse + aggregate-ID rename attack.
-    //
-    // Canonical units: landed code evidence grouped by file path, ordered by earliest
-    // attested change position; each unit's derived step id is `step:${earliestEvId}`
-    // (mirrors the builder). This is bundle-derived and NOT attacker-controllable.
-    const unitByPath = new Map();
-    for (const c of bundle.codeEvidence ?? []) {
-      if (!(isObj(c) && c.completeness === "landed" && nonEmpty(c.id))) continue;
-      const path = c.path ?? "";
-      const pos = nonEmpty(c.toolEventId) ? posByKey.get(`tool_event:${c.toolEventId}`) : undefined;
-      if (!unitByPath.has(path)) unitByPath.set(path, { path, members: new Set(), earliestPos: Infinity, earliestEvId: null });
-      const u = unitByPath.get(path);
-      u.members.add(c.id);
-      if (pos !== undefined && pos < u.earliestPos) { u.earliestPos = pos; u.earliestEvId = c.toolEventId; }
+    // FULL-PARTITION CANONICAL EQUALITY (task #39 REVISE round 4, task #44 findings
+    // #1/#2). Round 3 re-derived only a SUBSET of the builder's partition here — it
+    // computed fold necessity from the mutable `story.steps` (finding #1) and bound
+    // an aggregate's id + path set but not its title/intent/tool-activity/outcome
+    // (finding #2). The drift-proof fix is to re-run the SINGLE shared derivation and
+    // require the story's ENTIRE ordered step partition to be canonically identical
+    // to what the builder deterministically produces from the bundle. Because the
+    // derivation reads ONLY bundle-required evidence (implementation edits, diagnosis
+    // reasoning, and the narrow-grammar verification set) — never `story.steps` — an
+    // attacker cannot change fold necessity by adding/removing a story step, and
+    // every aggregate semantic field (members, earliest anchor, derived id,
+    // title/intent, tool-activity refs, outcome text + evidence) is bound exactly.
+    let derived = null;
+    try {
+      derived = deriveChangeDescriptors(bundle);
+    } catch {
+      derived = null;
+      err("steps", "the shared canonical derivation could not be recomputed from the bundle (task #39 finding #1/#2)");
     }
-    const canonUnits = [...unitByPath.values()].sort((a, b) => (a.earliestPos ?? Infinity) - (b.earliestPos ?? Infinity));
-    const U = canonUnits.length;
-    // Non-change steps (verification / diagnosis) consume overview slots. After the
-    // verification-evidence and diagnosis-intent checks above, a step carrying NO
-    // landed code change is a trustworthy non-change step; count them to mirror
-    // capOverview's `nonChange` arithmetic exactly.
-    const stepHasLanded = (s) => Array.isArray(s.codeChange) && s.codeChange.some((c) => {
-      const src = isObj(c) ? codeById.get(c.id) : null;
-      return src && src.completeness === "landed";
-    });
-    const nonChange = story.steps.filter((s) => isObj(s) && !stepHasLanded(s)).length;
-    // Mirror capOverview: fold happens iff the un-aggregated overview exceeds the cap
-    // AND change units exceed the individual slots AND at least two units fold.
-    const slots = MAX_OVERVIEW_STEPS - nonChange;
-    const keepIndividual = Math.max(0, slots - 1);
-    const foldNeeded = (U + nonChange) > MAX_OVERVIEW_STEPS && slots >= 1 && U > slots && (U - keepIndividual) >= 2;
-    const foldedUnits = foldNeeded ? canonUnits.slice(keepIndividual) : [];
-    const expectedFoldedPaths = new Set(foldedUnits.map((u) => u.path));
-    const foldAnchor = foldedUnits.reduce((a, b) => (a && (a.earliestPos ?? Infinity) <= (b.earliestPos ?? Infinity) ? a : b), foldedUnits[0] ?? null);
-    const expectedAggId = foldNeeded && foldAnchor ? `step:agg:${foldAnchor.earliestEvId}` : null;
-
-    // A step is a LEGITIMATE aggregate ONLY when a fold is canonically necessary AND
-    // its id equals the derived aggregate id AND it binds exactly the expected folded
-    // path set. Everything else — including any `step:agg:*`-prefixed id that is not
-    // the canonical one — is rejected below.
-    const stepPaths = (s) => {
-      const paths = new Set();
-      if (isObj(s) && Array.isArray(s.codeChange)) {
-        for (const c of s.codeChange) {
-          const src = isObj(c) ? codeById.get(c.id) : null;
-          if (src && src.completeness === "landed") paths.add(src.path ?? "");
+    if (derived) {
+      const expectedSteps = derived.descriptors.map((d) => d.step);
+      const expectedById = new Map(expectedSteps.map((s) => [s.id, s]));
+      const expectedIdOrder = expectedSteps.map((s) => s.id);
+      const actualIdOrder = story.steps.map((s) => (isObj(s) ? s.id : ""));
+      // (1) Same steps, same order. A missing/extra/renamed/reordered step is a
+      // partition that the builder would not produce from this bundle.
+      if (expectedIdOrder.length !== actualIdOrder.length) {
+        err("steps", `the story presents ${actualIdOrder.length} step(s) but the bundle deterministically yields ${expectedIdOrder.length} (task #39 finding #1: the partition is reconstructed from bundle evidence, not story steps)`);
+      } else {
+        for (let i = 0; i < expectedIdOrder.length; i += 1) {
+          if (expectedIdOrder[i] !== actualIdOrder[i]) {
+            err("steps", `step ${i} is "${actualIdOrder[i]}" but the bundle-derived partition has "${expectedIdOrder[i]}" at that position (task #39 finding #1/#2)`);
+          }
         }
       }
-      return paths;
-    };
-    const isAggregateStep = (s) => {
-      if (!(isObj(s) && isStr(s.id))) return false;
-      if (!foldNeeded || s.id !== expectedAggId) return false;
-      const paths = stepPaths(s);
-      if (paths.size !== expectedFoldedPaths.size) return false;
-      for (const p of paths) if (!expectedFoldedPaths.has(p)) return false;
-      return true;
-    };
-    // Reject any forged aggregate id: a `step:agg:*` step that is not the canonical
-    // aggregate (wrong id, wrong folded set, or no fold needed at all).
-    for (const s of story.steps) {
-      if (isObj(s) && isStr(s.id) && s.id.startsWith("step:agg:") && !isAggregateStep(s)) {
-        err("steps", foldNeeded
-          ? `step "${s.id}" claims to be a canonical aggregate but does not match the expected aggregate (id ${expectedAggId}, paths [${[...expectedFoldedPaths].join(", ")}]) recomputed from the bundle (task #39 gate 3 / finding #2)`
-          : `step "${s.id}" is an aggregate but the ${U} canonical change unit(s) plus ${nonChange} non-change step(s) fit within the ${MAX_OVERVIEW_STEPS}-step cap, so no aggregation is permitted (task #39 gate 3 / finding #2)`);
+      // (2) Every present step must be canonically identical to its derived twin —
+      // this binds title, intent (text/status/evidence), tool activity (name/status/
+      // summary/evidence refs), codeChange members, verification blocks, outcome text
+      // + evidence, and unknowns, all at once. An aggregate whose label, tool refs, or
+      // outcome evidence was hand-edited (finding #2) no longer matches its twin.
+      for (const s of story.steps) {
+        if (!isObj(s) || !isStr(s.id)) continue;
+        const twin = expectedById.get(s.id);
+        if (!twin) {
+          err("steps", `step "${s.id}" is not a step the bundle-derived partition contains (task #39 finding #1/#2)`);
+          continue;
+        }
+        if (JSON.stringify(canonicalStep(s)) !== JSON.stringify(canonicalStep(twin))) {
+          err("steps", `step "${s.id}" does not match the deterministic builder result recomputed from the bundle — its title/intent/tool-activity/code/verification/outcome must equal the canonical derivation (task #39 finding #2)`);
+        }
       }
     }
-    // If a fold IS canonically necessary, the aggregate must actually be present.
-    if (foldNeeded && !story.steps.some((s) => isAggregateStep(s))) {
-      err("steps", `the bundle's ${U} canonical change unit(s) plus ${nonChange} non-change step(s) exceed the ${MAX_OVERVIEW_STEPS}-step cap, so a canonical aggregate (${expectedAggId}) spanning [${[...expectedFoldedPaths].join(", ")}] is required but absent (task #39 gate 3 / finding #2)`);
-    }
+
+    // The ONLY step that may legitimately span multiple file paths is a cap-produced
+    // aggregate the shared derivation itself emitted. Anything else spanning paths is
+    // a collapse/relabel attack. (Redundant with full-partition equality above, kept
+    // as cheap, independent defense-in-depth for the grouping tamper surface.)
+    const expectedAggIds = new Set(
+      derived ? derived.descriptors.filter((d) => isObj(d.step) && isStr(d.step.id) && d.step.id.startsWith("step:agg:")).map((d) => d.step.id) : [],
+    );
 
     // (a) same-file grouping: a path may not be split across steps.
     const stepsByPath = new Map();
@@ -1002,7 +1426,7 @@ export function validateChangeStory(story, bundle) {
         const src = isObj(c) ? codeById.get(c.id) : null;
         if (src && src.completeness === "landed") paths.add(src.path ?? "");
       }
-      if (paths.size > 1 && !isAggregateStep(s)) {
+      if (paths.size > 1 && !(isStr(s.id) && expectedAggIds.has(s.id))) {
         err("steps", `non-aggregate step "${s.id}" binds ${paths.size} distinct file paths (${[...paths].join(", ")}); only a canonical cap-produced aggregate (step:agg:*) may span files (task #39 gate 3 / finding #3)`);
       }
     }
