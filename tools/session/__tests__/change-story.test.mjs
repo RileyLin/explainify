@@ -1013,6 +1013,44 @@ test("R4 #2: relabeling or emptying the aggregate's semantic fields fails closed
   }
 });
 
+test("R5 #1: diverging a selectable overview node label from its canonical step title fails closed (task #45 finding #1)", () => {
+  // Round 4 bound step.title but never required the overview node's own `label` — the
+  // first thing a reader selects — to equal that canonical title. Rewrite a real step
+  // node's label, keep everything else well-formed, rehash: the node-label binding
+  // must reject it even though the step body is untouched.
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const stepNode = story.overview.nodes.find((n) => typeof n.stepId === "string" && n.stepId.length);
+  assert.ok(stepNode, "the story has a selectable step node");
+  const step = story.steps.find((s) => s.id === stepNode.stepId);
+  assert.equal(stepNode.label, step.title, "baseline: node label equals its step title");
+  stepNode.label = "Attacker-controlled overview label";
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /does not equal its canonical step title/.test(e)),
+    `expected a node-label/title mismatch (finding #1), got ${JSON.stringify(errors)}`);
+});
+
+test("R5 #2: rewriting the story-level outcome claim while keeping the real refs fails closed (task #45 finding #2)", () => {
+  // Round 4's outcome check bound only WHICH verification refs the outcome may cite,
+  // not the sentence itself — so an attacker could keep the real 5/5 evidence refs and
+  // rewrite the visible text to "99/99 passing". The outcome is now derived by the
+  // shared function and bound canonically, so the relabel must be rejected with the
+  // real refs intact.
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  assert.ok(/3\/3 passing/.test(story.outcome.text), `baseline: outcome states the attested 3/3, got ${story.outcome.text}`);
+  const realEvidence = story.outcome.evidence.map((r) => ({ ...r }));
+  story.outcome.text = "The final test run reported 99/99 passing.";
+  story.outcome.evidence = realEvidence; // keep the genuine refs — only the sentence lies
+  story.provenance.changeStorySha256 = hashChangeStory(story);
+  const { ok, errors } = validateChangeStory(story, bundle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => /does not match the deterministic verification summary recomputed from the bundle/.test(e)),
+    `expected a bundle-derived outcome mismatch (finding #2), got ${JSON.stringify(errors)}`);
+});
+
 test("R2 #3: fabricating an exitCode on a Bash-event verification fails closed (finding #3 exit)", () => {
   const bundle = multiFileBundle(); // its verification is a bare Bash event (no receipt/exitCode)
   const story = buildChangeStory(bundle);

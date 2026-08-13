@@ -849,7 +849,36 @@ export function deriveChangeDescriptors(bundle) {
   // Order every step by its attested timeline position, then apply the cap (gate 1).
   descriptors.sort((a, b) => (a.anchorPos ?? Infinity) - (b.anchorPos ?? Infinity));
   capOverview(descriptors, MAX_OVERVIEW_STEPS);
-  return { descriptors, verifications };
+
+  // (d) story-level OUTCOME summary — the visible first-viewport verification claim.
+  // Derived here (not in the builder) so the validator can re-run it and require the
+  // story's outcome text/status/evidence to equal this bundle-derived summary exactly
+  // (task #45 finding #2: a rehashed outcome may not claim 99/99 while retaining the
+  // real 5/5 refs). Mirrors the prior builder computation byte-for-byte.
+  const landedCount = (bundle.codeEvidence ?? []).filter((c) => c.completeness === "landed").length;
+  const changedCount = (bundle.repository?.changedFiles ?? []).length;
+  const passCount = verifications.filter((v) => v.status === "succeeded").length;
+  const failCount = verifications.filter((v) => v.status === "failed").length;
+  const lastVerify = verifications.slice().sort((a, b) => (a.anchorPos ?? 0) - (b.anchorPos ?? 0)).pop();
+  const testTotals = lastVerify && lastVerify.summary ? lastVerify.summary : null;
+  const verifSentence = verifications.length
+    ? testTotals
+      ? ` The final test run reported ${testTotals.pass}/${testTotals.total} passing${testTotals.fail ? ` (${testTotals.fail} failing)` : ""}.`
+      : ` ${passCount} passing and ${failCount} failing verification run(s) were recorded.`
+    : "";
+  const outcomeText = changedCount
+    ? `The session changed ${changedCount} file(s); ${landedCount} code change(s) are confirmed present in the final tree.${verifSentence}`
+    : "The session investigated the objective without a recorded file change.";
+  const outcome = {
+    text: outcomeText,
+    status: "inferred",
+    evidence: [
+      ...verifications.slice(0, 3).map((v) => v.anchorRef),
+      ...(finalExplanation ? [refExcerpt(finalExplanation)] : []),
+    ],
+  };
+
+  return { descriptors, verifications, outcome };
 }
 
 // --- fail-closed validator ---
@@ -1384,6 +1413,28 @@ export function validateChangeStory(story, bundle) {
         if (JSON.stringify(canonicalStep(s)) !== JSON.stringify(canonicalStep(twin))) {
           err("steps", `step "${s.id}" does not match the deterministic builder result recomputed from the bundle — its title/intent/tool-activity/code/verification/outcome must equal the canonical derivation (task #39 finding #2)`);
         }
+      }
+
+      // (3) FIRST-VIEWPORT NODE LABEL (task #45 finding #1): the selectable overview
+      // node label is the first thing a reader sees, yet full-step equality bound only
+      // step.title, not the node's own `label`. Require every step node's label to
+      // equal its canonical step title, so a rehashed node label cannot diverge from
+      // the bundle-derived step it points at.
+      for (const [stepId, node] of stepNodeByStepId) {
+        const twin = expectedById.get(stepId);
+        if (twin && isObj(node) && node.label !== twin.title) {
+          err("overview.nodes", `step node "${stepId}" label "${node.label}" does not equal its canonical step title "${twin.title}" — the selectable overview label must equal the bundle-derived title (task #45 finding #1)`);
+        }
+      }
+
+      // (4) STORY-LEVEL OUTCOME (task #45 finding #2): the visible verification claim
+      // (outcome text/status/evidence) is derived by the SAME shared function; require
+      // the story's outcome to equal that bundle-derived summary canonically. Round 4
+      // bound only which verification refs the outcome may cite — so an attacker could
+      // keep the real 5/5 refs while rewriting the sentence to "99/99 passing". Binding
+      // the full derived claim closes that surviving form of task #40 finding #2.
+      if (derived.outcome && JSON.stringify(canonicalClaim(story.outcome)) !== JSON.stringify(canonicalClaim(derived.outcome))) {
+        err("outcome", "does not match the deterministic verification summary recomputed from the bundle — its text/status/evidence must equal the bundle-derived outcome (task #45 finding #2)");
       }
     }
 

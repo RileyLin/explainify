@@ -42,9 +42,6 @@ export function buildChangeStory(bundle) {
     evidence: objectiveExcerpt ? [refExcerpt(objectiveExcerpt)] : [],
   };
 
-  const landedCount = bundle.codeEvidence.filter((c) => c.completeness === "landed").length;
-  const changedCount = bundle.repository.changedFiles.length;
-  const finalExplanation = [...bundle.excerpts].reverse().find((e) => e.kind === "agent_explanation");
   const errorExcerpt = bundle.excerpts.find((e) => e.kind === "error");
 
   // --- steps: SEMANTICALLY COMPACTED (Phase 1F, task #39) ---
@@ -57,35 +54,13 @@ export function buildChangeStory(bundle) {
   // bound to this one bundle-derived result, never to the mutable story. The builder
   // no longer re-implements the partition; it only maps descriptors into the story
   // shell (nodes/edges/outcome/drawer).
-  const { descriptors, verifications } = deriveChangeDescriptors(bundle);
+  const { descriptors, verifications, outcome } = deriveChangeDescriptors(bundle);
   const steps = descriptors.map((d) => d.step);
-
-  // --- outcome (DERIVED summary that BINDS the attested verification, gate 4) ---
+  // The story-level outcome (visible verification claim) is DERIVED by the shared
+  // function too (task #45 finding #2), so the validator re-runs it and binds
+  // text/status/evidence to the bundle — the builder only consumes it here.
   const passCount = verifications.filter((v) => v.status === "succeeded").length;
   const failCount = verifications.filter((v) => v.status === "failed").length;
-  // Prefer a parsed test count from the LAST attested verification (most recent
-  // result) so the outcome reads "5/5 tests passed", not just "1 run".
-  const lastVerify = verifications.slice().sort((a, b) => (a.anchorPos ?? 0) - (b.anchorPos ?? 0)).pop();
-  const testTotals = lastVerify && lastVerify.summary ? lastVerify.summary : null;
-  const verifSentence = verifications.length
-    ? testTotals
-      ? ` The final test run reported ${testTotals.pass}/${testTotals.total} passing${testTotals.fail ? ` (${testTotals.fail} failing)` : ""}.`
-      : ` ${passCount} passing and ${failCount} failing verification run(s) were recorded.`
-    : "";
-  const outcomeText = changedCount
-    ? `The session changed ${changedCount} file(s); ${landedCount} code change(s) are confirmed present in the final tree.${verifSentence}`
-    : "The session investigated the objective without a recorded file change.";
-  // Bind the outcome to the attested verifications (gate 4: no raw-only green) plus
-  // the final explanation quote. Status is "inferred" (a derived summary, not a
-  // single observed quote), so the framing edge into it stays derived (finding #2).
-  const outcome = {
-    text: outcomeText,
-    status: "inferred",
-    evidence: [
-      ...verifications.slice(0, 3).map((v) => v.anchorRef),
-      ...(finalExplanation ? [refExcerpt(finalExplanation)] : []),
-    ],
-  };
 
   // --- overview nodes + edges ---
   // Framing nodes (objective, outcome) bracket the observed steps; the edges INTO
