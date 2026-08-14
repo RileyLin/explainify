@@ -1078,20 +1078,42 @@ test("R2 #3: erasing a verification's output to empty fails closed (finding #3 o
     `expected an output-slice mismatch, got ${JSON.stringify(errors)}`);
 });
 
-// --- task #50 REVISE: overview label must fit its node box (PM/codex readability) ---
+// --- task #50 REVISE (r2/r3): overview label must fit its node box (PM/codex readability) ---
 import {
   fitOverviewLabel,
+  overviewLabelAdvance,
   OVERVIEW_LABEL_MAX_ADVANCE,
-  OVERVIEW_LABEL_GLYPH_W,
 } from "../change-story-schema.mjs";
 
-test("fitOverviewLabel: short labels pass through unchanged", () => {
-  for (const s of ["Add multiply", "Add cancelOrder", "Passing check: node --test 2>&1 (2/2 passed)"]) {
+// The unit invariant every test below relies on: whatever fitOverviewLabel RETURNS
+// must have an upper-bound advance within the budget. The estimator is measured
+// per-glyph (not a flat average), so this is the same bound that makes an
+// untruncated label safe to draw without a textLength pin. The AUTHORITATIVE
+// physical proof is the Chromium getBBox gate (scripts/label-bbox-check.mjs); this
+// asserts the arithmetic the renderer trusts. NOTE: it deliberately does NOT use a
+// single average width — codex task #51 showed an average lets wide glyphs bypass.
+function assertFits(fitted, ctx) {
+  assert.ok(overviewLabelAdvance(fitted) <= OVERVIEW_LABEL_MAX_ADVANCE,
+    `${ctx}: drawn "${fitted}" upper-bound advance ${overviewLabelAdvance(fitted).toFixed(2)} exceeds budget ${OVERVIEW_LABEL_MAX_ADVANCE}`);
+}
+
+test("fitOverviewLabel: genuinely short labels pass through UNCHANGED and fit", () => {
+  for (const s of ["Add multiply", "Add cancelOrder", "Add square helper", "Passing check: 3/3 tests", "Add normalizeLabels"]) {
     const fitted = fitOverviewLabel(s);
-    // Any label the builder emits must fit the advance budget at the calibrated
-    // worst-case glyph width; short ones keep their full text.
-    assert.ok(Array.from(fitted).length * OVERVIEW_LABEL_GLYPH_W <= OVERVIEW_LABEL_MAX_ADVANCE,
-      `"${s}" -> "${fitted}" exceeds the node advance budget`);
+    assert.equal(fitted, s, `short label "${s}" must keep its full natural text`);
+    assertFits(fitted, "short");
+  }
+});
+
+test("fitOverviewLabel: wide-glyph bypass is closed — W×34 and M×34 are bounded", () => {
+  // codex task #51 blocker: the old flat 8.4/glyph average called W×34 (285.6 by
+  // that math) "fits" and drew it unpinned at ~487px (+181 overflow). With a
+  // per-glyph UPPER bound, these must now truncate and fit.
+  for (const s of ["W".repeat(34), "M".repeat(34), "W".repeat(80), "@".repeat(40), "%".repeat(40)]) {
+    const fitted = fitOverviewLabel(s);
+    assert.notEqual(fitted, s, `wide-glyph "${s.slice(0, 6)}…" must be truncated, not passed through`);
+    assert.ok(fitted.endsWith("…"), "truncated wide-glyph label ends with an ellipsis");
+    assertFits(fitted, "wide-glyph");
   }
 });
 
@@ -1105,13 +1127,17 @@ test("fitOverviewLabel: an adversarially long label is truncated with an ellipsi
     const fitted = fitOverviewLabel(s);
     assert.notEqual(fitted, s, "a long label must be truncated");
     assert.ok(fitted.endsWith("…"), "truncated label ends with an ellipsis");
-    // The DRAWN string fits the box even at the reviewer's measured real advance
-    // (~8.09px/glyph); we assert against the calibrated worst-case budget.
-    assert.ok(Array.from(fitted).length * OVERVIEW_LABEL_GLYPH_W <= OVERVIEW_LABEL_MAX_ADVANCE,
-      `fitted "${fitted}" (${Array.from(fitted).length} chars) exceeds budget ${OVERVIEW_LABEL_MAX_ADVANCE}`);
-    // Even at the real measured advance the string stays inside the box.
-    assert.ok(Array.from(fitted).length * 8.09 <= OVERVIEW_LABEL_MAX_ADVANCE + 1,
-      `fitted "${fitted}" would clip at the measured 8.09px/glyph advance`);
+    assertFits(fitted, "long-ascii");
+  }
+});
+
+test("fitOverviewLabel: Unicode-wide and mixed scripts are bounded", () => {
+  // Non-ASCII glyphs are charged a conservative fallback advance; the fitted
+  // result must still fit the budget (over-truncation is safe, under is not).
+  for (const s of ["中".repeat(60), "😀".repeat(40), "Añadir función que multiplica ".repeat(4), "—".repeat(50)]) {
+    const fitted = fitOverviewLabel(s);
+    assertFits(fitted, "unicode");
+    assert.ok(Array.from(fitted).length >= 1, "keeps at least one content glyph");
   }
 });
 
@@ -1120,6 +1146,7 @@ test("fitOverviewLabel: is deterministic and preserves at least one content glyp
   assert.equal(fitOverviewLabel(s), fitOverviewLabel(s), "deterministic");
   const fitted = fitOverviewLabel(s);
   assert.ok(fitted.length >= 2 && fitted.endsWith("…"), "keeps content + ellipsis");
+  assertFits(fitted, "overflow");
 });
 
 test("renderer: a long overview label is drawn fitted and physically pinned (textLength)", () => {

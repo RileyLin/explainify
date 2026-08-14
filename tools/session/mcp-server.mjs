@@ -128,7 +128,7 @@ async function runCapture(input) {
   });
 }
 
-const server = new McpServer({ name: "explainify-session", version: "0.4.1" });
+const server = new McpServer({ name: "explainify-session", version: "0.4.2" });
 
 server.registerTool(
   "explainify.explain_session",

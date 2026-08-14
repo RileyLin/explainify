@@ -266,10 +266,12 @@ function renderOverviewSvg(story) {
         <rect width="${NODE_W}" height="${NODE_H}" rx="9" fill="${color}" class="nbox"/>
         <text x="14" y="22" class="nkind">${escapeHtml(n.kind)}</text>
         ${(() => {
-          // Deterministic, font-unaware fit shared with the schema (task #50
-          // REVISE): truncate the STRING to the box's advance budget, and for a
-          // truncated label ALSO pin the physical draw width via textLength so
-          // the browser cannot paint past the box under any font fallback.
+          // Deterministic fit shared with the schema (task #50 REVISE r2/r3):
+          // fitOverviewLabel truncates using a measured PER-GLYPH UPPER BOUND
+          // (not an average — task #51 showed an average lets wide glyphs like
+          // W/M bypass), so a returned FULL label is guaranteed to fit the box.
+          // A returned TRUNCATED label is ALSO hard-pinned via textLength below
+          // so the browser cannot paint past the box under any font fallback.
           const fitted = fitOverviewLabel(n.label);
           const pin = fitted !== n.label ? ` textLength="${OVERVIEW_LABEL_MAX_ADVANCE}" lengthAdjust="spacingAndGlyphs"` : "";
           return `<text x="14" y="40" class="nlabel"${pin}>${escapeHtml(fitted)}</text>`;

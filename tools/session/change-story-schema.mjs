@@ -90,27 +90,77 @@ export const OVERVIEW_NLABEL_X = 14; // label left inset inside the box
 export const OVERVIEW_LABEL_PAD = 14; // right inset so glyphs never touch the edge
 // Max physical advance (user units) the label text may occupy.
 export const OVERVIEW_LABEL_MAX_ADVANCE = OVERVIEW_NODE_W - OVERVIEW_NLABEL_X - OVERVIEW_LABEL_PAD; // 292
-// Conservative upper bound on glyph advance at 13px semibold. Calibrated from
-// the reviewer's own getBBox: a 44-char label measured 356.08px → ~8.09px/glyph
-// under their system-ui fallback. We use 8.4 (above that worst case) so even a
-// NON-truncated label (which passed chars*8.4 <= budget) still fits at the real
-// ~8.09px advance with margin; truncated labels are additionally hard-pinned via
-// textLength so they physically cannot exceed the budget under any font.
-export const OVERVIEW_LABEL_GLYPH_W = 8.4;
 export const OVERVIEW_ELLIPSIS = "…";
 
-// Return the exact string the overview will DRAW for a node label: the full
-// label if it fits the advance budget, else a hard-truncated prefix + ellipsis.
-// Deterministic and font-independent (pure arithmetic on code points), so the
-// renderer and a validator/test compute byte-identical results.
-export function fitOverviewLabel(label, glyphW = OVERVIEW_LABEL_GLYPH_W) {
+// A single flat average (the old 8.4/glyph) is NOT an advance bound: task #51
+// showed "W"×34 slipping through the "fits, render natural" branch because W
+// actually advances ~14.34px at this face, not 8.4. The fit DECISION must use a
+// per-glyph UPPER BOUND, never an average. This table is the measured advance
+// (getComputedTextLength ÷ n) of each printable ASCII glyph at the overview label
+// face — 13px / weight 600, font stack Inter,ui-sans-serif,system-ui — in the
+// same headless Chromium the reviewers use (scripts/glyph-table-probe.mjs).
+// Index = codePoint - 0x20 (0x20 SPACE first). Advance ≥ ink getBBox width, and
+// the reviewer gate measures ink getBBox, so an advance-based estimate is a
+// strictly safe upper bound on the drawn box width.
+export const OVERVIEW_GLYPH_ADVANCE = [
+  0, 5.929, 6.773, 10.893, 9.045, 13.025, 11.337, 3.98, 5.941, 5.941, 6.798,
+  10.893, 4.939, 5.396, 4.939, 4.748, 9.045, 9.045, 9.045, 9.045, 9.045, 9.045,
+  9.045, 9.045, 9.045, 9.045, 5.199, 5.199, 10.893, 10.893, 10.893, 7.541, 13,
+  10.061, 9.909, 9.541, 10.791, 8.88, 8.88, 10.67, 10.88, 4.837, 4.837, 10.074,
+  8.284, 12.937, 10.88, 11.051, 9.528, 11.051, 10.01, 8.793, 9.159, 10.556,
+  10.061, 14.339, 10.023, 9.414, 9.426, 5.941, 4.748, 5.941, 10.893, 6.5, 6.5,
+  8.773, 9.306, 7.706, 9.306, 8.817, 5.265, 9.306, 9.255, 4.456, 4.456, 8.646,
+  4.456, 13.546, 9.255, 8.931, 9.306, 9.306, 6.411, 7.738, 6.214, 9.255, 8.474,
+  12.01, 8.385, 8.474, 7.566, 9.255, 4.748, 9.255, 10.893,
+];
+// Any code point outside the measured ASCII range (accents, CJK, emoji, symbols,
+// the ellipsis itself) is charged this conservative constant. It is ≥ the widest
+// single glyph we ever observed (ASCII "W" 14.339; emoji "😀" 13.546; CJK ~7.8),
+// so a non-ASCII glyph can never advance more than we budget for it. This may
+// slightly over-truncate very wide scripts, which is safe (fits) — never unsafe.
+export const OVERVIEW_GLYPH_FALLBACK = 14.5;
+// Applied to every estimate so sub-pixel hinting / minor font-metric drift across
+// Chromium builds cannot push a "fits" label past the real budget.
+export const OVERVIEW_GLYPH_SAFETY = 1.02;
+
+// Upper-bound advance (user units) of one code point at the overview label face.
+function glyphAdvance(cp) {
+  if (cp >= 0x20 && cp <= 0x7e) return OVERVIEW_GLYPH_ADVANCE[cp - 0x20];
+  return OVERVIEW_GLYPH_FALLBACK;
+}
+
+// Upper-bound advance of a whole string. Deterministic (pure arithmetic on code
+// points), so renderer and validator/test compute byte-identical results.
+export function overviewLabelAdvance(text) {
+  let total = 0;
+  for (const ch of String(text)) total += glyphAdvance(ch.codePointAt(0));
+  return total * OVERVIEW_GLYPH_SAFETY;
+}
+
+// Return the exact string the overview will DRAW for a node label: the full label
+// when its UPPER-BOUND advance fits the budget, else the longest prefix whose
+// upper-bound advance (plus the ellipsis) still fits, with the ellipsis appended.
+// Because the fit test is an upper bound, a returned full (untruncated) label is
+// guaranteed to draw inside the budget; a returned truncated label is additionally
+// hard-pinned by the renderer via SVG textLength so it physically cannot exceed
+// the budget under any font at all.
+export function fitOverviewLabel(label) {
   const text = String(label);
-  const chars = Array.from(text); // code points, so multibyte glyphs count as one
   const budget = OVERVIEW_LABEL_MAX_ADVANCE;
-  if (chars.length * glyphW <= budget) return text;
-  // Reserve room for the ellipsis; keep at least one content glyph.
-  const maxContent = Math.max(1, Math.floor(budget / glyphW) - 1);
-  return chars.slice(0, maxContent).join("") + OVERVIEW_ELLIPSIS;
+  if (overviewLabelAdvance(text) <= budget) return text;
+  const chars = Array.from(text); // code points, so multibyte glyphs count as one
+  const ellipsisAdvance = glyphAdvance(OVERVIEW_ELLIPSIS.codePointAt(0)) * OVERVIEW_GLYPH_SAFETY;
+  const contentBudget = budget - ellipsisAdvance;
+  let used = 0;
+  let n = 0;
+  for (const ch of chars) {
+    const w = glyphAdvance(ch.codePointAt(0)) * OVERVIEW_GLYPH_SAFETY;
+    if (used + w > contentBudget) break;
+    used += w;
+    n++;
+  }
+  n = Math.max(1, n); // always keep at least one content glyph
+  return chars.slice(0, n).join("") + OVERVIEW_ELLIPSIS;
 }
 
 // --------------------------------------------------------------------------
