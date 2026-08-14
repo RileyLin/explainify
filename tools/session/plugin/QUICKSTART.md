@@ -34,7 +34,9 @@ cd /path/to/your-repo
 
 # Register Explainify's git-backed marketplace (project scope = this repo).
 # --sparse fetches only the catalog + the plugin directory, not the whole repo.
-claude plugin marketplace add RileyLin/explainify@session/phase-1c-integration \
+# Pin to the immutable release tag so you always get the exact integrated
+# plugin runtime (Phase 1F semantic compaction + trust gates + reviewed deps).
+claude plugin marketplace add RileyLin/explainify@explainify-session-v0.4.0 \
   --sparse .claude-plugin tools/session/plugin --scope project
 
 # Install + enable the plugin
@@ -151,6 +153,25 @@ claude plugin update explainify-session@explainify-local --scope project
 # Remove entirely (project scope):
 claude plugin uninstall explainify-session@explainify-local --scope project
 claude plugin marketplace remove explainify-local --scope project
+```
+
+### Upgrading from an older install (e.g. a `0.3.0` cache)
+
+If you previously registered the marketplace at a branch ref (an older
+Explainify build), `marketplace update` will *not* move you to the pinned
+release tag — it refreshes the ref you originally registered. Re-point the
+marketplace at the immutable tag so the new plugin version (`0.4.0`) replaces
+the cached `0.3.0` bytes, then restart:
+
+```bash
+claude plugin marketplace remove explainify-local --scope project
+claude plugin marketplace add RileyLin/explainify@explainify-session-v0.4.0 \
+  --sparse .claude-plugin tools/session/plugin --scope project
+claude plugin install explainify-session@explainify-local --scope project
+# then restart Claude Code
+
+# Confirm the runtime is the new version:
+claude plugin details explainify-session@explainify-local   # version 0.4.0
 ```
 
 ## Troubleshooting
