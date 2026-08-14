@@ -70,6 +70,50 @@ const HEX64 = /^[0-9a-f]{64}$/;
 export const VERIFY_OUTPUT_MAX = 300;
 
 // --------------------------------------------------------------------------
+// Overview-node label fitting (task #50 REVISE — PM/codex readability finding).
+// The overview SVG draws each label as a single <text> line inside a fixed
+// node box. The old renderer truncated by CHARACTER COUNT (label.slice(0,43)),
+// which is font-unaware: 44 chars of bold 13px can still exceed the box under
+// any real font (PM measured +36.08 / +12.75 user-space units, clipped mid-word
+// at 320px and desktop). This is the SINGLE deterministic treatment shared by
+// the renderer (to emit) and any check (to reproduce the exact drawn string),
+// so producer and validator cannot disagree on what the box shows.
+//
+// Geometry (must match renderOverviewSvg): the label starts at x = NLABEL_X
+// inside a NODE_W-wide box, so the horizontal budget is NODE_W - NLABEL_X - pad.
+// We bound the STRING to a deterministic max advance using a conservative
+// per-glyph width for the 13px semibold face, then the renderer ALSO pins the
+// physical draw width with SVG textLength + lengthAdjust so the browser cannot
+// paint past the budget regardless of which font actually loads.
+export const OVERVIEW_NODE_W = 320; // node box width (user units) — matches renderer
+export const OVERVIEW_NLABEL_X = 14; // label left inset inside the box
+export const OVERVIEW_LABEL_PAD = 14; // right inset so glyphs never touch the edge
+// Max physical advance (user units) the label text may occupy.
+export const OVERVIEW_LABEL_MAX_ADVANCE = OVERVIEW_NODE_W - OVERVIEW_NLABEL_X - OVERVIEW_LABEL_PAD; // 292
+// Conservative upper bound on glyph advance at 13px semibold. Calibrated from
+// the reviewer's own getBBox: a 44-char label measured 356.08px → ~8.09px/glyph
+// under their system-ui fallback. We use 8.4 (above that worst case) so even a
+// NON-truncated label (which passed chars*8.4 <= budget) still fits at the real
+// ~8.09px advance with margin; truncated labels are additionally hard-pinned via
+// textLength so they physically cannot exceed the budget under any font.
+export const OVERVIEW_LABEL_GLYPH_W = 8.4;
+export const OVERVIEW_ELLIPSIS = "…";
+
+// Return the exact string the overview will DRAW for a node label: the full
+// label if it fits the advance budget, else a hard-truncated prefix + ellipsis.
+// Deterministic and font-independent (pure arithmetic on code points), so the
+// renderer and a validator/test compute byte-identical results.
+export function fitOverviewLabel(label, glyphW = OVERVIEW_LABEL_GLYPH_W) {
+  const text = String(label);
+  const chars = Array.from(text); // code points, so multibyte glyphs count as one
+  const budget = OVERVIEW_LABEL_MAX_ADVANCE;
+  if (chars.length * glyphW <= budget) return text;
+  // Reserve room for the ellipsis; keep at least one content glyph.
+  const maxContent = Math.max(1, Math.floor(budget / glyphW) - 1);
+  return chars.slice(0, maxContent).join("") + OVERVIEW_ELLIPSIS;
+}
+
+// --------------------------------------------------------------------------
 // Quote-aware TOP-LEVEL shell safety for verification promotion (task #40 REVISE
 // finding #1). A bare Bash event may be surfaced as a verification ONLY when its
 // command is a SINGLE, unconditional, foreground run of a recognized test runner.

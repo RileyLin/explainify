@@ -21,6 +21,8 @@ import {
   CHANGE_STORY_SCHEMA_VERSION,
   deriveChangeDescriptors,
   refExcerpt,
+  fitOverviewLabel,
+  OVERVIEW_LABEL_MAX_ADVANCE,
 } from "../session/change-story-schema.mjs";
 import { sha256, stableStringify } from "../comprehension/util.mjs";
 
@@ -263,7 +265,15 @@ function renderOverviewSvg(story) {
       `<g class="node ${n.kind}" ${dataStep} ${isStep ? `tabindex="0" role="tab" id="node-${tabIndex}" aria-controls="panel-${tabIndex}"` : ""} transform="translate(${PAD},${pos.y})">
         <rect width="${NODE_W}" height="${NODE_H}" rx="9" fill="${color}" class="nbox"/>
         <text x="14" y="22" class="nkind">${escapeHtml(n.kind)}</text>
-        <text x="14" y="40" class="nlabel">${escapeHtml(n.label.length > 44 ? n.label.slice(0, 43) + "…" : n.label)}</text>
+        ${(() => {
+          // Deterministic, font-unaware fit shared with the schema (task #50
+          // REVISE): truncate the STRING to the box's advance budget, and for a
+          // truncated label ALSO pin the physical draw width via textLength so
+          // the browser cannot paint past the box under any font fallback.
+          const fitted = fitOverviewLabel(n.label);
+          const pin = fitted !== n.label ? ` textLength="${OVERVIEW_LABEL_MAX_ADVANCE}" lengthAdjust="spacingAndGlyphs"` : "";
+          return `<text x="14" y="40" class="nlabel"${pin}>${escapeHtml(fitted)}</text>`;
+        })()}
       </g>`,
     );
   });

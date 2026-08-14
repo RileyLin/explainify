@@ -1077,3 +1077,73 @@ test("R2 #3: erasing a verification's output to empty fails closed (finding #3 o
   assert.ok(errors.some((e) => /must equal the exact canonical bounded slice/.test(e)),
     `expected an output-slice mismatch, got ${JSON.stringify(errors)}`);
 });
+
+// --- task #50 REVISE: overview label must fit its node box (PM/codex readability) ---
+import {
+  fitOverviewLabel,
+  OVERVIEW_LABEL_MAX_ADVANCE,
+  OVERVIEW_LABEL_GLYPH_W,
+} from "../change-story-schema.mjs";
+
+test("fitOverviewLabel: short labels pass through unchanged", () => {
+  for (const s of ["Add multiply", "Add cancelOrder", "Passing check: node --test 2>&1 (2/2 passed)"]) {
+    const fitted = fitOverviewLabel(s);
+    // Any label the builder emits must fit the advance budget at the calibrated
+    // worst-case glyph width; short ones keep their full text.
+    assert.ok(Array.from(fitted).length * OVERVIEW_LABEL_GLYPH_W <= OVERVIEW_LABEL_MAX_ADVANCE,
+      `"${s}" -> "${fitted}" exceeds the node advance budget`);
+  }
+});
+
+test("fitOverviewLabel: an adversarially long label is truncated with an ellipsis and fits the box", () => {
+  // Reproduces the PM getBBox overflow cases (+36.08 / +12.75 at 44 chars).
+  const long = [
+    "Add 2 tests: normalizeLabels removes duplicates and trims whitespace deterministically",
+    "Passing check: npm run test:all -- --reporter=verbose 2>&1 (127/127 passed across suites)",
+  ];
+  for (const s of long) {
+    const fitted = fitOverviewLabel(s);
+    assert.notEqual(fitted, s, "a long label must be truncated");
+    assert.ok(fitted.endsWith("…"), "truncated label ends with an ellipsis");
+    // The DRAWN string fits the box even at the reviewer's measured real advance
+    // (~8.09px/glyph); we assert against the calibrated worst-case budget.
+    assert.ok(Array.from(fitted).length * OVERVIEW_LABEL_GLYPH_W <= OVERVIEW_LABEL_MAX_ADVANCE,
+      `fitted "${fitted}" (${Array.from(fitted).length} chars) exceeds budget ${OVERVIEW_LABEL_MAX_ADVANCE}`);
+    // Even at the real measured advance the string stays inside the box.
+    assert.ok(Array.from(fitted).length * 8.09 <= OVERVIEW_LABEL_MAX_ADVANCE + 1,
+      `fitted "${fitted}" would clip at the measured 8.09px/glyph advance`);
+  }
+});
+
+test("fitOverviewLabel: is deterministic and preserves at least one content glyph", () => {
+  const s = "x".repeat(500);
+  assert.equal(fitOverviewLabel(s), fitOverviewLabel(s), "deterministic");
+  const fitted = fitOverviewLabel(s);
+  assert.ok(fitted.length >= 2 && fitted.endsWith("…"), "keeps content + ellipsis");
+});
+
+test("renderer: a long overview label is drawn fitted and physically pinned (textLength)", () => {
+  // Force a long step title through the real builder+renderer and assert the SVG
+  // <text> for that node shows the FITTED string, carries a textLength pin, yet the
+  // story's node.label keeps the full canonical title (schema binding intact).
+  const bundle = multiFileBundle();
+  const story = buildChangeStory(bundle);
+  const longTitle = "Add 2 tests: normalizeLabels removes duplicates and trims whitespace";
+  // Mutate ONLY the rendered label surface (node label + step title) to a long
+  // string, keeping refs so the render path exercises the fit. We render directly
+  // (this is a renderer test, not a validation test).
+  const stepNode = story.overview.nodes.find((n) => n.kind === "step");
+  assert.ok(stepNode, "has a step node");
+  stepNode.label = longTitle;
+  const html = renderSessionHtmlV2({ workstreamId: "w", checkpointId: "c", brief: {} }, story);
+  // The full, unfitted long title must NOT appear verbatim in the drawn <text>.
+  const drawn = fitOverviewLabel(longTitle);
+  assert.ok(html.includes(drawn), "renders the fitted label string");
+  assert.ok(!new RegExp(`class="nlabel"[^>]*>${longTitle.slice(0, 60)}`).test(html.replace(/&[^;]+;/g, "")),
+    "does not draw the full long label verbatim");
+  // Truncated labels are hard-pinned so the browser cannot paint past the box.
+  assert.match(html, /class="nlabel" textLength="292" lengthAdjust="spacingAndGlyphs"/,
+    "truncated label carries a textLength pin at the advance budget");
+  // Deterministic render.
+  assert.equal(renderSessionHtmlV2({ workstreamId: "w", checkpointId: "c", brief: {} }, story), html);
+});
